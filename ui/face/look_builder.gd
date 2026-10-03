@@ -58,28 +58,35 @@ static func build(spec: Dictionary, age: int, gender: String) -> Dictionary:
 	var style: String = clothes if typeof(clothes) == TYPE_STRING else CLOTHES[clampi(int(clothes), 0, CLOTHES.size() - 1)]
 	var colors: Array = CLOTHES_COLORS.get(style, ["#4a5260", "#dddddd"])
 	var female := gender == "mulher"
+	var male := gender == "homem"
+	# Dimorfismo: [rosto largura, comprimento, mandíbula, queixo, maçãs, olhos, altura olho, nariz larg., nariz compr., lábios, pescoço, ombros]
+	var dm: Array = [0.92, 0.96, 0.86, 0.82, 1.03, 1.12, 1.08, 0.82, 0.9, 1.3, 0.82, 0.86] if female else ([1.04, 1.03, 1.1, 1.2, 1.0, 0.92, 0.9, 1.08, 1.05, 0.8, 1.15, 1.06] if male else [0.97, 1.0, 0.98, 1.0, 1.01, 1.02, 1.0, 0.95, 0.98, 1.05, 0.98, 0.96])
 	var hair_color := Color(spec.get("cabelo_cor", HAIR_COLORS[_idx(spec, "cor_cabelo", HAIR_COLORS.size())]))
 	var skin := Color(spec.get("pele_cor", SKIN[_idx(spec, "pele", SKIN.size())]))
 	var look := {
 		"skin": skin,
-		"face_w": float(face[0]) * float(body[0]) * (0.95 if female else 1.0),
-		"face_len": float(face[1]),
-		"cheek": float(face[2]),
-		"jaw": (float(face[3]) + float(body[4])) * (0.92 if female else 1.03),
-		"chin_w": (float(face[4]) + float(body[5])) * (0.88 if female else 1.0),
+		"face_w": float(face[0]) * float(body[0]) * dm[0],
+		"face_len": float(face[1]) * dm[1],
+		"cheek": float(face[2]) * dm[4],
+		"jaw": minf((float(face[3]) + float(body[4])) * dm[2], 0.98),
+		"chin_w": (float(face[4]) + float(body[5])) * dm[3],
 		"weathered": face[5],
-		"neck": float(body[1]) * (0.85 if female else 1.0),
+		"neck": float(body[1]) * dm[10],
+		"shoulders": dm[11],
 		"double_chin": body[2], "hollow": body[3],
-		"eye_h": tr[0], "eye_tilt": tr[1], "nose_w": float(tr[2]) * (0.88 if female else 1.0), "lips": float(tr[3]) * (1.15 if female else 0.95),
-		"eye_size": 1.04 if female else 1.0, "nose_len": 1.0,
+		"eye_h": float(tr[0]) * dm[6], "eye_tilt": tr[1], "nose_w": float(tr[2]) * dm[7], "lips": float(tr[3]) * dm[9],
+		"eye_size": dm[5], "nose_len": dm[8],
+		"lashes": female,
+		"adams_apple": male,
+		"shadow_beard": male,
 		"hair": HAIR[_idx(spec, "cabelo", HAIR.size())],
 		"hair_color": hair_color,
 		"eye_color": Color(spec.get("olhos_cor", EYE_COLORS[eye_i])),
 		"hetero": eye_i == 6,
 		"beard": BEARD[_idx(spec, "barba", BEARD.size())],
 		"brow_shape": int(spec.get("sobrancelha", -1)) if int(spec.get("sobrancelha", -1)) >= 0 else (2 if female else 0),
-		"brow_w": 0.8 if female else 1.15,
-		"brow_y": 0.0,
+		"brow_w": 0.7 if female else (1.3 if male else 1.0),
+		"brow_y": 0.5 if female else (-0.5 if male else 0.0),
 		"clothes": style,
 		"clothes_color": Color(spec.get("cor_roupa", colors[0])),
 		"clothes_color2": Color(colors[1]),
@@ -91,7 +98,9 @@ static func build(spec: Dictionary, age: int, gender: String) -> Dictionary:
 	if spec.has("sobrancelha_cor"):
 		look["brow_color"] = Color(spec["sobrancelha_cor"])
 	if female:
-		look["lip_color"] = skin.darkened(0.2).lerp(Color(0.7, 0.25, 0.3), 0.45)
+		look["lip_color"] = skin.darkened(0.15).lerp(Color(0.72, 0.24, 0.3), 0.5)
+	elif male:
+		look["lip_color"] = skin.darkened(0.18).lerp(Color(0.55, 0.3, 0.28), 0.15)
 	var adj: Dictionary = spec.get("ajustes", {})
 	for k in adj:
 		if RANGES.has(k):

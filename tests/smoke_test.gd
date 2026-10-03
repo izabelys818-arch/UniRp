@@ -117,13 +117,19 @@ func _ready() -> void:
 	creator.spec["cabelo"] = 1
 	creator.spec["marcas"] = [0]
 	creator.extra = "sorriso torto"
+	creator.spec["ajustes"]["face_len"] = 0.0
+	creator._update_preview()
+	var len_before := float(creator.portrait.look["face_len"])
 	creator.spec["ajustes"]["face_len"] = 1.0
 	creator._update_preview()
 	var pt: String = creator.describe()
 	print("PT: ", pt)
 	check("careca" in pt and "cicatriz no rosto" in pt and "sorriso torto" in pt, "descrição para os NPCs com careca, cicatriz e detalhes")
 	check(creator.portrait.look["hair"] == "careca" and 0 in creator.portrait.look["marks"], "prévia do rosto atualiza ao vivo")
-	check(float(creator.portrait.look["face_len"]) > 1.05, "controle deslizante muda o formato do rosto")
+	check(float(creator.portrait.look["face_len"]) > len_before + 0.08, "controle deslizante muda o formato do rosto")
+	var man: Dictionary = creator.LookBuilder.build({}, 30, "homem")
+	var woman: Dictionary = creator.LookBuilder.build({}, 30, "mulher")
+	check(man["jaw"] > woman["jaw"] + 0.15 and woman["eye_size"] > man["eye_size"] and woman["lashes"] and man["adams_apple"], "homem e mulher bem diferentes")
 	creator.spec["sobrancelha"] = 3
 	creator._update_preview()
 	check(creator.portrait.look["brow_shape"] == 3, "formato da sobrancelha escolhido")

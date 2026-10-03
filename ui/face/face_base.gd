@@ -219,7 +219,9 @@ func _draw() -> void:
 			.translated_local(HEAD_POS).rotated_local(cur["tilt"]).scaled_local(Vector2(HS, HS)).translated_local(-C)
 		draw_set_transform_matrix(head_xf)
 		_draw_back_hair()
-		draw_set_transform_matrix(Transform2D(0.0, origin + body_off * s).scaled_local(Vector2(s, s)))
+		var shoulders := float(_l("shoulders", 1.0))
+		draw_set_transform_matrix(Transform2D(0.0, origin + body_off * s).scaled_local(Vector2(s, s)) \
+			.translated_local(Vector2(150, 0)).scaled_local(Vector2(shoulders, 1.0)).translated_local(Vector2(-150, 0)))
 		_draw_body()
 		draw_set_transform_matrix(head_xf)
 		_draw_head()
@@ -385,6 +387,9 @@ func _draw_body() -> void:
 	_line(PackedVector2Array([neck[0], neck[3]]), INK, 3.0)
 	_line(PackedVector2Array([neck[1], neck[2]]), INK, 3.0)
 	_line(PackedVector2Array([Vector2(150 - nx * 0.5, 246), Vector2(150 - nx * 0.3, 268)]), Color(INK, 0.4), 1.4)
+	if _l("adams_apple", false):
+		_line(_quad(Vector2(146, 250), Vector2(151, 245), Vector2(155, 251), 6), Color(INK, 0.55), 1.6)
+		_poly(_ellipse(Vector2(150, 254), 5, 4, 10), Color(_shadow_of(skin), 0.6))
 	if 1 in _l("marks", []):
 		_line(PackedVector2Array([Vector2(158, 236), Vector2(166, 244), Vector2(160, 252), Vector2(168, 258)]), Color(0.15, 0.2, 0.3, 0.85), 2.5)
 		_line(_closed(_ellipse(Vector2(140, 248), 5, 5, 10)), Color(0.15, 0.2, 0.3, 0.85), 1.6)

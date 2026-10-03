@@ -105,26 +105,45 @@ func _hairline(height: float, part: float = 0.0) -> PackedVector2Array:
 	return a
 
 
+func style_is(s: String) -> bool:
+	return str(_l("hair", "")) == s
+
+
+func _hairline_shaped(height: float, part: float, male: bool) -> PackedVector2Array:
+	if not male:
+		return _hairline(height, part)
+	var age := float(_l("age", 30))
+	var recede := 0.06 + (0.1 if age > 45 else 0.0)
+	var pts := _quad(_rel(0.97, -0.3), _rel(0.9, -0.6 - recede), _rel(0.62, -0.62 - recede), 6)
+	var mid := _quad(_rel(0.62, -0.62 - recede), _rel(0.32, -height - 0.02), _rel(part, -height), 8)
+	mid.remove_at(0)
+	pts.append_array(mid)
+	var mid2 := _quad(_rel(part, -height), _rel(-0.32, -height - 0.02), _rel(-0.62, -0.62 - recede), 8)
+	mid2.remove_at(0)
+	pts.append_array(mid2)
+	var end := _quad(_rel(-0.62, -0.62 - recede), _rel(-0.9, -0.6 - recede), _rel(-0.97, -0.3), 6)
+	end.remove_at(0)
+	pts.append_array(end)
+	return pts
+
+
 func _draw_back_hair() -> void:
 	var hc := _hair_color()
 	var dark := _shadow_of(hc).darkened(0.12)
 	var w := _W()
 	var h := _H()
 	match str(_l("hair", "curto")):
-		"medio":
-			var pts := _cranium(10, 170, 370)
-			pts.append(_rel(1.12, 0.62))
-			pts.append(_rel(-1.12, 0.62))
-			_poly(_sorted_around(pts), dark)
-		"longo":
-			var pts := PackedVector2Array([_rel(-1.05, -0.5), _rel(-1.2, 0.6), _rel(-1.3, 1.75), _rel(-0.6, 1.95), _rel(0.6, 1.95), _rel(1.3, 1.75), _rel(1.2, 0.6), _rel(1.05, -0.5)])
-			pts.append_array(_cranium(12))
-			_poly(_sorted_around(pts), dark)
-			for i in 9:
-				var x := lerpf(-1.25, 1.25, i / 8.0)
-				if absf(x) < 0.9:
-					continue
-				_line(_quad(_rel(x * 0.9, -0.3), _rel(x * 1.05, 0.7), _rel(x, 1.85)), Color(INK, 0.5), 1.4)
+		"medio", "longo", "franja":
+			var length := 0.85 if style_is("medio") else (1.95 if style_is("longo") else 0.6)
+			var pts := _cranium(14, 170, 370)
+			pts.append(_rel(1.18, length))
+			pts.append(_rel(-1.18, length))
+			_poly(_sorted_around(pts), dark.darkened(0.15))
+			for side in [-1, 1]:
+				for k in 4:
+					var start := _rel(side * (0.5 + k * 0.12), -0.95)
+					var end := _rel(side * (1.0 + k * 0.06), length + 0.05 - k * 0.05)
+					_hair_lock(_quad(start, _rel(side * (1.3 + k * 0.04), 0.0), end, 14), 20.0, 6.0, dark, false)
 		"black_power":
 			var cloud := PackedVector2Array()
 			for i in 40:
@@ -183,8 +202,11 @@ func _draw_head() -> void:
 	_shade(head, _head_shadow_mask(), sh)
 	_shade(head, _ellipse(_rel(0.0, 1.1), w * 1.0, h * 0.2), sh)
 	_shade(head, PackedVector2Array([_rel(-1.0, 0.1), _rel(-0.68, 0.16), _rel(-0.74, 0.46), _rel(-1.0, 0.42)]), Color(sh, 0.55))
+	var ridge := 0.7 if _l("adams_apple", false) else 0.45
 	for side in [-1, 1]:
-		_poly(_ellipse(_eye_center(side) + Vector2(side * 2, -5), w * 0.3, h * 0.11), Color(sh, 0.5))
+		_poly(_ellipse(_eye_center(side) + Vector2(side * 2, -6), w * 0.31, h * 0.12), Color(sh, ridge))
+	if _l("adams_apple", false):
+		_line(_quad(_rel(-0.5, -0.24), _rel(0.0, -0.3), _rel(0.5, -0.24)), Color(INK, 0.18), 1.4)
 	_poly(_ellipse(_rel(-0.32, -0.56), w * 0.28, h * 0.1), _light_of(skin))
 	_poly(_ellipse(_rel(-0.62, 0.08), w * 0.16, h * 0.045), _light_of(skin))
 	if _l("double_chin", false):
@@ -280,12 +302,24 @@ func _draw_eye(side: int) -> void:
 		lid_shadow.append_array(lower)
 		_shade(lid_shadow, white, Color(0.2, 0.12, 0.12, 0.35))
 		draw_circle(ic + Vector2(-2.0, -2.0), 1.4, Color(1, 1, 1, 0.85))
-	var female := str(_l("gender", "homem")) == "mulher"
-	_line(top, INK, 3.2 if female else 2.8)
-	_line(PackedVector2Array([outer, outer + Vector2(side * (6 if female else 3), -3)]), INK, 2.2)
+	var female: bool = _l("lashes", false)
+	var crease_pts := _quad(inner + Vector2(side * 2, -5), c + Vector2(side * w * 0.15, -h * 1.35 - 6), outer + Vector2(-side * 1, -5), 10)
+	if female:
+		var lid := crease_pts.duplicate()
+		var tr := top.duplicate()
+		tr.reverse()
+		lid.append_array(tr)
+		_poly(lid, Color(0.32, 0.18, 0.22, 0.3))
+	_line(top, INK, 3.6 if female else 2.6)
+	_line(PackedVector2Array([outer, outer + Vector2(side * (7 if female else 2), -3 if female else -1)]), INK, 2.4 if female else 1.8)
+	if female and h > 1.0:
+		for k in 5:
+			var idx := 6 + k
+			var p: Vector2 = top[idx]
+			var dir := Vector2(side * (1.5 + k * 0.9), -4.5 - k * 0.4)
+			_line(PackedVector2Array([p, p + dir]), INK, 1.4)
 	_line(bot, Color(INK, 0.55), 1.3)
-	var crease := _quad(inner + Vector2(side * 2, -5), c + Vector2(side * w * 0.15, -h * 1.35 - 6), outer + Vector2(-side * 1, -5), 10)
-	_line(crease, Color(INK, 0.45), 1.4)
+	_line(crease_pts, Color(INK, 0.45), 1.4)
 	_line(_quad(inner + Vector2(side * 3, 6), c + Vector2(0, h + 8), outer + Vector2(-side * 3, 5), 8), Color(INK, 0.22), 1.2)
 	if 7 in _l("marks", []):
 		var frame := _ellipse(c, w + 8, 15, 24)
@@ -418,9 +452,11 @@ func _draw_mouth(skin: Color) -> void:
 
 func _draw_beard() -> void:
 	var b := str(_l("beard", "none"))
-	if b == "none":
-		return
 	var hc := _hair_color()
+	if b == "none":
+		if _l("shadow_beard", false):
+			_stubble(hc, 0.16)
+		return
 	match b:
 		"stubble":
 			_stubble(hc, 0.6)
@@ -564,11 +600,45 @@ func _draw_fx() -> void:
 			_line(_closed(drop), Color(INK, 0.6 * a2), 1.0)
 
 
-func _lock(root: Vector2, ctrl: Vector2, tip: Vector2, width: float, col: Color) -> void:
-	var path := _quad(root, ctrl, tip, 10)
-	var shape := _taper(path, width, width * 0.12)
+func _offset_path(path: PackedVector2Array, a0: float, a1: float) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for i in path.size():
+		var a := path[maxi(i - 1, 0)]
+		var b := path[mini(i + 1, path.size() - 1)]
+		var n := (b - a).orthogonal().normalized()
+		out.append(path[i] + n * lerpf(a0, a1, float(i) / maxf(1.0, path.size() - 1.0)))
+	return out
+
+
+func _hair_lock(path: PackedVector2Array, w0: float, w1: float, col: Color, shaded: bool = true) -> void:
+	var shape := _taper(path, w0, w1)
 	_poly(shape, col)
-	_line(_closed(shape), Color(INK, 0.55), 1.0)
+	if shaded:
+		_shade(shape, _head_shadow_mask(), Color(_shadow_of(col), 0.55))
+	for k in 4:
+		var f := lerpf(-0.32, 0.32, k / 3.0)
+		_line(_offset_path(path, w0 * f, w1 * f), Color(col.darkened(0.4), 0.65), 1.0)
+	_line(_offset_path(path, -w0 * 0.12, -w1 * 0.12), Color(col.lightened(0.35), 0.5), 1.2)
+	_line(_closed(shape), Color(INK, 0.75), 1.1)
+
+
+func _lock(root: Vector2, ctrl: Vector2, tip: Vector2, width: float, col: Color) -> void:
+	_hair_lock(_quad(root, ctrl, tip, 12), width, width * 0.15, col)
+
+
+func _hair_params(style: String) -> Dictionary:
+	match style:
+		"curto":
+			return {"th": 10.0, "height": 0.66, "part": -0.32, "side": 0.0, "fringe": false, "messy": false}
+		"medio":
+			return {"th": 16.0, "height": 0.6, "part": -0.36, "side": 0.8, "fringe": false, "messy": false, "swept": true}
+		"longo":
+			return {"th": 16.0, "height": 0.6, "part": -0.36, "side": 1.85, "fringe": false, "messy": false, "swept": true}
+		"franja":
+			return {"th": 13.0, "height": 0.62, "part": 0.0, "side": 0.55, "fringe": true, "messy": false}
+		"desgrenhado":
+			return {"th": 16.0, "height": 0.6, "part": 0.1, "side": 0.25, "fringe": false, "messy": true}
+	return {}
 
 
 func _draw_front_hair() -> void:
@@ -583,100 +653,119 @@ func _draw_front_hair() -> void:
 		var shaved := _cranium(1)
 		shaved.append_array(_hairline(0.62))
 		_stipple(shaved, Color(hc, 0.5), 220, 4)
-		var strip := PackedVector2Array()
-		for i in 11:
-			var u := i / 10.0
-			var a := deg_to_rad(lerpf(225, 315, u))
-			var spike := 26.0 if i % 2 == 0 else 6.0
-			strip.append(C + Vector2(cos(a) * _W() * 0.32, sin(a) * (_H() * 0.97 + spike)))
-		strip.append(_rel(0.2, -0.64))
-		strip.append(_rel(-0.2, -0.64))
-		_poly(strip, hc)
-		_shade(strip, _head_shadow_mask(), dark)
-		_line(_closed(strip), INK, 2.6)
+		for i in 9:
+			var u := i / 8.0
+			var x := lerpf(-0.14, 0.14, u)
+			var root := _rel(x, -0.62)
+			var tip := _rel(x * 1.4, -1.0 - 0.18 - (0.06 if i % 2 == 0 else 0.0))
+			_hair_lock(_quad(root, root.lerp(tip, 0.5) + Vector2(4, 0), tip, 8), 12.0, 2.0, hc)
 		return
-	var height := 0.64
-	var th := 9.0
-	var locks := 11
-	var sweep := 0.18
-	var part := -0.18
-	match style:
-		"franja":
-			height = 0.4
-			locks = 13
-			sweep = 0.06
-			part = 0.0
-		"raspado":
-			th = 1.5
-		"medio", "longo":
-			th = 12.0
-			locks = 12
-		"desgrenhado":
-			th = 14.0
-			locks = 14
-			sweep = 0.4
-		"cacheado", "black_power":
-			th = 14.0
-		"coque", "rabo", "trancas":
-			th = 4.0
-			part = 0.0
+	var p := _hair_params(style)
+	if p.is_empty():
+		_draw_tied_or_curly(style, hc, dark, light)
+		return
+	var th: float = p["th"]
+	var male_cut: bool = style in ["curto", "desgrenhado"] and not _l("lashes", false)
+	var line := _hairline_shaped(p["height"], p["part"] * 0.3, male_cut)
 	var mass := _cranium(th)
-	mass.append_array(_hairline(height, part * 0.3))
+	if male_cut:
+		for i in mass.size():
+			if i % 2 == 1:
+				mass.set(i, mass[i] + (mass[i] - C).normalized() * 4.0)
+	mass.append_array(line)
+	_poly(mass, hc.darkened(0.3))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 17 + style.hash() % 100
+	var tones := [hc.darkened(0.14), hc, hc.lightened(0.12)]
+	var crown := _rel(p["part"], -1.0) + Vector2(0, -th * 0.6)
+	var n := 18
+	var order: Array = []
+	for i in n:
+		order.append(i)
+	order.sort_custom(func(a, b): return absf(a / float(n - 1) - 0.5) > absf(b / float(n - 1) - 0.5))
+	for i: int in order:
+		var u := (i + 0.5) / n
+		var tip: Vector2 = line[int(u * (line.size() - 1))]
+		tip += (tip - C).normalized() * (4.0 if male_cut else 1.0)
+		if p["messy"]:
+			tip += Vector2(rng.randf_range(-10, 10), rng.randf_range(-4, 16))
+		var root := crown + Vector2(rng.randf_range(-8, 8), rng.randf_range(-3, 3))
+		var mid := root.lerp(tip, 0.5)
+		var ctrl := mid + (mid - C).normalized() * th * (1.1 if male_cut else 1.8) + Vector2(rng.randf_range(-4, 4), 0)
+		_hair_lock(_quad(root, ctrl, tip, 14), th * 1.6 + rng.randf_range(-2, 3), 1.5, tones[(i * 7) % 3])
+	if p["side"] > 0.0:
+		var length: float = p["side"]
+		for side in [-1, 1]:
+			for k in range(5, -1, -1):
+				var start := _rel(side * (0.3 + k * 0.12), -0.95 + k * 0.1)
+				var ctrl := _rel(side * (0.84 + k * 0.06), 0.05 + k * 0.03)
+				var wave := sin(k * 1.7) * 0.06
+				var end := _rel(side * (0.68 + k * 0.09 + wave), length - k * 0.07)
+				_hair_lock(_quad(start, ctrl, end, 16), 21.0 - k, 5.0, tones[(k + (1 if side == 1 else 0)) % 3])
+	if p.get("swept", false):
+		for k in 4:
+			var root2 := crown + Vector2(6 + k * 4, 6)
+			var tip2 := _rel(0.55 + k * 0.12, -0.42 + k * 0.07)
+			_hair_lock(_quad(root2, _rel(0.08 + k * 0.1, -0.8), tip2, 14), 19.0 - k * 2, 3.0, tones[k % 3])
+	if p["fringe"]:
+		for i in 10:
+			var u := (i + 0.5) / 10.0
+			var x := lerpf(-0.8, 0.8, u)
+			var root := _rel(x * 0.7, -0.85)
+			var tip := _rel(x * 0.95 + 0.03, -0.3 + rng.randf_range(-0.03, 0.03))
+			_hair_lock(_quad(root, root.lerp(tip, 0.5) + Vector2(3, -2), tip, 10), 17.0, 2.0, tones[i % 3])
+	if not p["messy"]:
+		_line(_quad(crown, crown.lerp(_rel(p["part"] * 0.3, -p["height"]), 0.5), _rel(p["part"] * 0.6, -0.8), 6), Color(INK, 0.6), 1.4)
+	_shade(mass, _ellipse(_rel(-0.4, -0.95), _W() * 0.4, _H() * 0.08), Color(light, 0.3))
+	_line(_closed(mass), INK, 2.6)
+	if male_cut:
+		for side in [-1, 1]:
+			var sb := PackedVector2Array([_rel(side * 0.97, -0.3), _rel(side * 1.0, -0.06), _rel(side * 0.93, -0.03), _rel(side * 0.9, -0.26)])
+			_poly(sb, hc if side == -1 else dark)
+			for k in 3:
+				_line(PackedVector2Array([_rel(side * (0.91 + k * 0.03), -0.26), _rel(side * (0.93 + k * 0.025), -0.05)]), Color(INK, 0.4), 1.0)
+
+
+func _draw_tied_or_curly(style: String, hc: Color, dark: Color, light: Color) -> void:
+	var th := 14.0 if style in ["cacheado", "black_power"] else (1.5 if style == "raspado" else 4.0)
+	var height := 0.64
+	var mass := _cranium(th)
+	mass.append_array(_hairline(height, 0.0))
 	if style == "raspado":
 		_poly(mass, Color(hc, 0.35))
 		_stipple(mass, Color(hc.darkened(0.2), 0.55), 450, 6)
 		return
 	_poly(mass, hc)
-	if style in ["curto", "medio", "longo", "franja", "desgrenhado"]:
-		var line := _hairline(height, part * 0.3)
-		var rng := RandomNumberGenerator.new()
-		rng.seed = 17
-		for i in locks:
-			var u := (i + 0.5) / locks
-			var tip: Vector2 = line[int(u * (line.size() - 1))]
-			if style == "desgrenhado":
-				tip += Vector2(rng.randf_range(-8, 8), rng.randf_range(0, 14))
-			if style == "franja":
-				tip += Vector2(0, 8)
-			var root := _rel(part + lerpf(-0.25, 0.25, u), -1.0) + Vector2(0, -th * 0.5)
-			var mid := root.lerp(tip, 0.55) + Vector2((u - 0.5 + sweep) * _W() * 0.5, 0)
-			_lock(root, mid, tip, th * 1.6 + rng.randf_range(-2, 4), hc if i % 2 == 0 else hc.lightened(0.07))
-	elif style in ["coque", "rabo", "trancas"]:
+	if style in ["coque", "rabo", "trancas"]:
 		var line2 := _hairline(height, 0.0)
-		for i in 9:
-			var u := (i + 0.5) / 9.0
+		for i in 14:
+			var u := (i + 0.5) / 14.0
 			var tip: Vector2 = line2[int(u * (line2.size() - 1))]
+			var crown := _rel((u - 0.5) * 0.5 if style == "trancas" else 0.0, -1.02)
+			var path := _quad(tip, tip.lerp(crown, 0.5) + (tip.lerp(crown, 0.5) - C).normalized() * 6.0, crown, 10)
 			if style == "trancas":
-				_line(_quad(tip, tip.lerp(_rel(0, -1.0), 0.5) + Vector2((u - 0.5) * 20, 0), _rel((u - 0.5) * 0.6, -1.0)), Color(INK, 0.8), 2.0)
+				_line(path, Color(INK, 0.85), 2.2)
+				for k in 5:
+					var q: Vector2 = path[2 + k * 2]
+					_poly(_ellipse(q, 3.5, 2.5, 8), hc.lightened(0.1))
 			else:
-				_line(_quad(tip, tip.lerp(_rel(0, -1.05), 0.5), _rel(0, -1.02)), Color(INK, 0.45), 1.3)
-	elif style in ["cacheado", "black_power"]:
+				_line(path, Color(hc.darkened(0.4), 0.7), 1.1)
+				if i % 3 == 0:
+					_line(_offset_path(path, -2.0, -1.0), Color(hc.lightened(0.3), 0.5), 1.0)
+	else:
 		var arc := _hairline(height, 0.0)
 		var top_arc := _cranium(th)
-		for src in [arc, top_arc]:
+		for src in [top_arc, arc]:
 			for i in range(0, src.size(), 2):
-				var p: Vector2 = src[i]
+				var q: Vector2 = src[i]
 				var r := 7.0 + (i % 3)
-				var curl := _ellipse(p, r, r, 12)
-				_poly(curl, hc if p.x < C.x + 10 else dark)
-				_line(_quad(p + Vector2(-r * 0.5, 0), p + Vector2(0, -r * 0.7), p + Vector2(r * 0.5, 0), 6), Color(INK, 0.6), 1.2)
+				var curl := _ellipse(q, r, r, 12)
+				_poly(curl, hc if q.x < C.x + 10 else dark)
+				_line(_quad(q + Vector2(-r * 0.5, 0), q + Vector2(0, -r * 0.7), q + Vector2(r * 0.5, 0), 6), Color(INK, 0.6), 1.2)
 				_line(_closed(curl), Color(INK, 0.7), 1.2)
 	_shade(mass, _head_shadow_mask(), Color(dark, 0.6))
-	_shade(mass, _ellipse(_rel(-0.4, -0.95), _W() * 0.35, _H() * 0.09), Color(light, 0.45))
-	_line(_closed(mass), INK, 3.0)
-	if style in ["curto", "desgrenhado", "franja", "medio"]:
-		for side in [-1, 1]:
-			var sb := PackedVector2Array([_rel(side * 0.97, -0.3), _rel(side * 1.0, -0.06), _rel(side * 0.93, -0.03), _rel(side * 0.9, -0.26)])
-			_poly(sb, hc if side == -1 else dark)
-	if style in ["medio", "longo"]:
-		var length := 0.6 if style == "medio" else 1.6
-		for side in [-1, 1]:
-			var curtain := PackedVector2Array([_rel(side * 0.86, -0.5), _rel(side * 1.08, -0.3), _rel(side * 1.12, 0.3), _rel(side * 1.1, length), _rel(side * 0.94, length - 0.1), _rel(side * 0.92, 0.1)])
-			_poly(curtain, hc if side == -1 else dark)
-			for k in 3:
-				var x: float = side * (0.94 + k * 0.06)
-				_line(_quad(_rel(x, -0.35), _rel(x + side * 0.06, 0.2), _rel(x, length - 0.05)), Color(INK, 0.5), 1.2)
-			_line(_closed(curtain), INK, 2.6)
+	_shade(mass, _ellipse(_rel(-0.4, -0.95), _W() * 0.35, _H() * 0.09), Color(light, 0.4))
+	_line(_closed(mass), INK, 2.8)
 
 
 func _draw_headwear() -> void:

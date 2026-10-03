@@ -21,7 +21,15 @@ func _ready() -> void:
 	root.add_child(grid)
 	var args := OS.get_cmdline_user_args()
 	var mode := args[0] if args.size() > 0 else "npcs"
-	if mode == "grande":
+	if mode == "generos":
+		grid.columns = 4
+		cell_size = Vector2(330, 420)
+		var base := {"pele": 2, "cor_cabelo": 1, "olhos": 0}
+		for c in [["homem", 0, "homem - curto"], ["mulher", 4, "mulher - longo"], ["homem", 13, "homem - desgrenhado"], ["mulher", 3, "mulher - médio"], ["mulher", 12, "mulher - franja"], ["homem", 3, "homem - médio"], ["mulher", 0, "mulher - curto"], ["homem", 4, "homem - longo"]]:
+			var sp := base.duplicate()
+			sp["cabelo"] = c[1]
+			_cell_spec(grid, sp, 30, c[0], c[2])
+	elif mode == "grande":
 		grid.columns = 3
 		cell_size = Vector2(440, 560)
 		for pair in [["marina", "chorando"], ["ruan", "furioso"], ["helena", "neutro"]]:
@@ -40,6 +48,20 @@ func _ready() -> void:
 	get_viewport().get_texture().get_image().save_png(path)
 	print("SHOT: ", path)
 	get_tree().quit()
+
+
+func _cell_spec(grid: GridContainer, sp: Dictionary, age: int, gender: String, label: String) -> void:
+	var box := VBoxContainer.new()
+	grid.add_child(box)
+	var face := FaceRig.new()
+	face.custom_minimum_size = cell_size
+	face.scene = "casa"
+	box.add_child(face)
+	face.set_look(LookBuilder.build(sp, age, gender))
+	face.next_blink = 999.0
+	var l := Label.new()
+	l.text = label
+	box.add_child(l)
 
 
 func _cell(grid: GridContainer, looks: Dictionary, id: String, emo: String, label: String) -> void:

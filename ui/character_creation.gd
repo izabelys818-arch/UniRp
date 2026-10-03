@@ -23,6 +23,7 @@ var origin_idx: int = 0
 var traits: Array = []
 var backstory: String = ""
 var extra: String = ""
+var hair_touched: bool = false
 
 var portrait: FaceRig
 var content: VBoxContainer
@@ -166,7 +167,10 @@ func _selector(title: String, options: Array, getter: Callable, setter: Callable
 
 
 func _spec_selector(title: String, key: String, options: Array) -> void:
-	_selector(title, options, func(): return maxi(int(spec.get(key, 0)), 0), func(v): spec[key] = v)
+	_selector(title, options, func(): return maxi(int(spec.get(key, 0)), 0), func(v):
+		spec[key] = v
+		if key == "cabelo":
+			hair_touched = true)
 
 
 func _slider(title: String, key: String) -> void:
@@ -274,7 +278,12 @@ func _tab_identity() -> void:
 		_update_preview())
 	age_row.add_child(age_slider)
 	age_row.add_child(age_label)
-	_selector("Gênero", GENDERS, func(): return gender, func(v): gender = v)
+	_selector("Gênero", GENDERS, func(): return gender, func(v):
+		gender = v
+		if not hair_touched:
+			spec["cabelo"] = 4 if v == 1 else 0
+		if v == 1:
+			spec["barba"] = 0)
 	var origin_desc := UI.label("", 14, UI.MUTED)
 	var names: Array = World.origins.map(func(o): return o["nome"])
 	_selector("Como chegou na cidade", names, func(): return origin_idx, func(v):
