@@ -37,7 +37,9 @@ func _ready() -> void:
 	var creator = preload("res://ui/character_creation.gd").new()
 	creator.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root.add_child(creator)
-	creator.name_edit.text = "Rafa"
+	creator.player_name = "Rafa"
+	creator._show_tab(1)
+	creator.tab_buttons[1].button_pressed = true
 	await _shot("screenshot_creator.png")
 	get_tree().quit()
 

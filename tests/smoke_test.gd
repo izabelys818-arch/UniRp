@@ -107,20 +107,28 @@ func _ready() -> void:
 	var creator = preload("res://ui/character_creation.gd").new()
 	add_child(creator)
 	await get_tree().process_frame
-	creator.name_edit.text = "Joana"
-	creator.gender_opt.select(1)
+	for i in creator.TABS.size():
+		creator._show_tab(i)
+		await get_tree().process_frame
+		check(creator.content.get_child_count() > 1, "aba %s montada" % creator.TABS[i])
 	creator._randomize_look()
-	creator.look_opts["cabelo"].select(1)
-	creator.mark_boxes[0].button_pressed = true
-	creator.extra_edit.text = "sorriso torto"
+	creator.player_name = "Joana"
+	creator.gender = 1
+	creator.spec["cabelo"] = 1
+	creator.spec["marcas"] = [0]
+	creator.extra = "sorriso torto"
+	creator.spec["ajustes"]["face_len"] = 1.0
+	creator._update_preview()
 	var pt: String = creator.describe()
 	print("PT: ", pt)
 	check("careca" in pt and "cicatriz no rosto" in pt and "sorriso torto" in pt, "descrição para os NPCs com careca, cicatriz e detalhes")
 	check(creator.portrait.look["hair"] == "careca" and 0 in creator.portrait.look["marks"], "prévia do rosto atualiza ao vivo")
-	creator._toggle_expressions()
-	check(creator.portrait.emotion == "neutro" and creator.expr_label.text == "NEUTRO", "teste de expressões começa")
-	creator._next_expression()
-	check(creator.portrait.emotion == "feliz", "teste de expressões avança")
+	check(float(creator.portrait.look["face_len"]) > 1.05, "controle deslizante muda o formato do rosto")
+	creator.spec["sobrancelha"] = 3
+	creator._update_preview()
+	check(creator.portrait.look["brow_shape"] == 3, "formato da sobrancelha escolhido")
+	creator.portrait.set_emotion("chorando")
+	check(creator.portrait.emotion == "chorando", "botões de expressão funcionam")
 	creator._start()
 	check(GameState.player["name"] == "Joana" and GameState.player["look"]["cabelo"] == 1, "personagem criado com aparência")
 	creator.queue_free()

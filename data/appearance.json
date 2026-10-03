@@ -77,6 +77,15 @@
 			["olhos cinza", "grey eyes"],
 			["olhos de cores diferentes", "heterochromia, one eye of each color"]
 		]},
+		{"id": "sobrancelha", "nome": "Sobrancelhas", "opcoes": [
+			["sobrancelhas naturais", "natural"],
+			["sobrancelhas retas", "straight"],
+			["sobrancelhas arqueadas", "arched"],
+			["sobrancelhas angulosas", "angular"],
+			["sobrancelhas grossas", "thick"],
+			["sobrancelhas finas", "thin"],
+			["sobrancelhas desgrenhadas", "bushy"]
+		]},
 		{"id": "barba", "nome": "Barba / pelos faciais", "opcoes": [
 			["sem barba", "clean-shaven"],
 			["barba por fazer", "stubble"],

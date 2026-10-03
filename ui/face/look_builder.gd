@@ -17,12 +17,32 @@ const CLOTHES_COLORS := {
 	"avental": ["#e8e4da", "#4a3428"], "macacao": ["#2d4f7a", "#2d4f7a"], "havaiana": ["#2a8a7a", "#f4a261"],
 	"cobertor": ["#5a5a50", "#5a5a50"],
 }
-# [face_w, jaw, chin, weathered, chin_round]
-const FACE := [[1.0, 0.72, 1.0, false, 0.75], [1.05, 0.9, 0.93, false, 0.55], [1.08, 0.84, 0.88, false, 0.7], [0.9, 0.6, 1.03, false, 0.85], [0.98, 0.78, 1.0, true, 0.7]]
-# [face_w mult, neck, double_chin, hollow]
-const BODY := [[0.94, 0.85, false, false], [1.0, 1.0, false, false], [1.0, 1.08, false, false], [1.05, 1.35, false, false], [1.1, 1.12, false, false], [1.18, 1.22, true, false], [0.88, 0.78, false, true]]
+# [face_w, face_len, cheek, jaw, chin_w, weathered]
+const FACE := [
+	[1.0, 1.0, 1.0, 0.76, 0.34, false],
+	[1.05, 0.97, 1.0, 0.9, 0.44, false],
+	[1.06, 0.92, 1.03, 0.84, 0.4, false],
+	[0.92, 1.06, 0.96, 0.66, 0.28, false],
+	[0.98, 1.03, 1.04, 0.78, 0.36, true],
+]
+# [face_w mult, neck, double_chin, hollow, jaw add, chin add]
+const BODY := [
+	[0.95, 0.85, false, false, -0.03, -0.02],
+	[1.0, 1.0, false, false, 0.0, 0.0],
+	[1.0, 1.08, false, false, 0.03, 0.02],
+	[1.04, 1.35, false, false, 0.07, 0.04],
+	[1.08, 1.12, false, false, 0.08, 0.06],
+	[1.14, 1.22, true, false, 0.12, 0.1],
+	[0.9, 0.78, false, true, -0.06, -0.03],
+]
 # [eye_h, eye_tilt, nose_w, lips]
 const TRAITS := [[1.0, 0.0, 1.05, 1.05], [1.0, 0.0, 0.92, 0.9], [1.05, 0.0, 1.3, 1.35], [0.72, 0.35, 0.98, 1.0], [0.85, 0.15, 1.15, 1.1], [1.0, 0.0, 1.08, 1.05], [0.95, 0.0, 1.12, 1.05]]
+# Quanto cada controle deslizante do criador (-1..1) muda o parâmetro.
+const RANGES := {
+	"face_w": 0.14, "face_len": 0.12, "cheek": 0.1, "jaw": 0.14, "chin_w": 0.12,
+	"nose_w": 0.35, "nose_len": 0.25, "lips": 0.4, "eye_size": 0.2, "eye_tilt": 0.4,
+	"brow_w": 0.5, "brow_y": 1.0,
+}
 
 
 static func _idx(spec: Dictionary, key: String, n: int) -> int:
@@ -37,32 +57,43 @@ static func build(spec: Dictionary, age: int, gender: String) -> Dictionary:
 	var clothes = spec.get("roupa", 0)
 	var style: String = clothes if typeof(clothes) == TYPE_STRING else CLOTHES[clampi(int(clothes), 0, CLOTHES.size() - 1)]
 	var colors: Array = CLOTHES_COLORS.get(style, ["#4a5260", "#dddddd"])
-	var c1 := Color(spec.get("cor_roupa", colors[0]))
-	var skin := Color(SKIN[_idx(spec, "pele", SKIN.size())])
+	var female := gender == "mulher"
+	var hair_color := Color(spec.get("cabelo_cor", HAIR_COLORS[_idx(spec, "cor_cabelo", HAIR_COLORS.size())]))
+	var skin := Color(spec.get("pele_cor", SKIN[_idx(spec, "pele", SKIN.size())]))
 	var look := {
 		"skin": skin,
-		"face_w": float(face[0]) * float(body[0]),
-		"jaw": face[1], "chin": face[2], "weathered": face[3], "chin_round": face[4],
-		"neck": body[1], "double_chin": body[2], "hollow": body[3],
-		"eye_h": tr[0], "eye_tilt": tr[1], "nose_w": tr[2], "lips": tr[3],
+		"face_w": float(face[0]) * float(body[0]) * (0.95 if female else 1.0),
+		"face_len": float(face[1]),
+		"cheek": float(face[2]),
+		"jaw": (float(face[3]) + float(body[4])) * (0.92 if female else 1.03),
+		"chin_w": (float(face[4]) + float(body[5])) * (0.88 if female else 1.0),
+		"weathered": face[5],
+		"neck": float(body[1]) * (0.85 if female else 1.0),
+		"double_chin": body[2], "hollow": body[3],
+		"eye_h": tr[0], "eye_tilt": tr[1], "nose_w": float(tr[2]) * (0.88 if female else 1.0), "lips": float(tr[3]) * (1.15 if female else 0.95),
+		"eye_size": 1.04 if female else 1.0, "nose_len": 1.0,
 		"hair": HAIR[_idx(spec, "cabelo", HAIR.size())],
-		"hair_color": Color(HAIR_COLORS[_idx(spec, "cor_cabelo", HAIR_COLORS.size())]),
-		"eye_color": Color(EYE_COLORS[eye_i]),
+		"hair_color": hair_color,
+		"eye_color": Color(spec.get("olhos_cor", EYE_COLORS[eye_i])),
 		"hetero": eye_i == 6,
 		"beard": BEARD[_idx(spec, "barba", BEARD.size())],
+		"brow_shape": int(spec.get("sobrancelha", -1)) if int(spec.get("sobrancelha", -1)) >= 0 else (2 if female else 0),
+		"brow_w": 0.8 if female else 1.15,
+		"brow_y": 0.0,
 		"clothes": style,
-		"clothes_color": c1,
+		"clothes_color": Color(spec.get("cor_roupa", colors[0])),
 		"clothes_color2": Color(colors[1]),
 		"marks": spec.get("marcas", []).map(func(m): return int(m)),
 		"extras": spec.get("extras", []),
 		"age": age,
 		"gender": gender,
-		"brow_w": 5.5 if gender == "homem" else (3.8 if gender == "mulher" else 4.6),
 	}
-	if gender == "mulher":
+	if spec.has("sobrancelha_cor"):
+		look["brow_color"] = Color(spec["sobrancelha_cor"])
+	if female:
 		look["lip_color"] = skin.darkened(0.2).lerp(Color(0.7, 0.25, 0.3), 0.45)
+	var adj: Dictionary = spec.get("ajustes", {})
+	for k in adj:
+		if RANGES.has(k):
+			look[k] = float(look.get(k, 0.0)) + float(adj[k]) * float(RANGES[k]) * (1.0 if k in ["eye_tilt", "brow_y"] else float(look.get(k, 1.0)))
 	return look
-
-
-static func spec_from_npc(npc_looks: Dictionary, npc_id: String) -> Dictionary:
-	return npc_looks.get(npc_id, {})
