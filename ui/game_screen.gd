@@ -3,7 +3,8 @@ extends Control
 signal navigate(screen: String, args: Dictionary)
 
 const UI = preload("res://ui/ui_theme.gd")
-const PortraitView = preload("res://ui/portrait_view.gd")
+const FaceRig = preload("res://ui/face/face_rig.gd")
+const LookBuilder = preload("res://ui/face/look_builder.gd")
 
 var args: Dictionary = {}
 
@@ -18,12 +19,12 @@ var input: LineEdit
 var send_btn: Button
 var money_spin: SpinBox
 var give_btn: Button
-var portrait: PortraitView
-var player_portrait: PortraitView
+var portrait: FaceRig
+var player_portrait: FaceRig
+var shown_npc: String = "-"
 var player_name_label: Label
 var player_state_label: Label
 var emotion_label: Label
-var portrait_status: Label
 var npc_name_label: Label
 var npc_info_label: Label
 var end_btn: Button
@@ -49,8 +50,7 @@ func _ready() -> void:
 	NPCManager.conversation_changed.connect(_queue_refresh.unbind(1))
 	NPCManager.npc_replied.connect(_queue_refresh.unbind(2))
 	NPCManager.npc_thinking.connect(_on_npc_thinking)
-	PortraitService.portrait_ready.connect(_queue_refresh.unbind(2))
-	PortraitService.status_changed.connect(_on_portrait_status)
+	NPCManager.npc_replied.connect(_on_npc_replied)
 	_refresh()
 
 	if args.has("new_origin"):
@@ -88,9 +88,11 @@ func _build() -> void:
 	cols.add_child(left_panel)
 	player_name_label = UI.title(GameState.player.get("name", ""), 17)
 	left.add_child(player_name_label)
-	player_portrait = PortraitView.new()
-	player_portrait.min_size = Vector2(190, 220)
+	player_portrait = FaceRig.new()
+	player_portrait.custom_minimum_size = Vector2(186, 230)
 	left.add_child(player_portrait)
+	var p := GameState.player
+	player_portrait.set_look(LookBuilder.build(p.get("look", {}), int(p.get("age", 30)), str(p.get("gender", "homem"))))
 	player_state_label = UI.label("", 12, UI.MUTED)
 	player_state_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	left.add_child(player_state_label)
@@ -115,7 +117,8 @@ func _build() -> void:
 	npc_name_label = UI.title("", 20)
 	npc_name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	face_col.add_child(npc_name_label)
-	portrait = PortraitView.new()
+	portrait = FaceRig.new()
+	portrait.custom_minimum_size = Vector2(300, 380)
 	portrait.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	face_col.add_child(portrait)
 	emotion_label = UI.title("", 18)
@@ -123,8 +126,6 @@ func _build() -> void:
 	face_col.add_child(emotion_label)
 	npc_info_label = UI.label("", 13, UI.MUTED)
 	face_col.add_child(npc_info_label)
-	portrait_status = UI.label("", 12, UI.MUTED)
-	face_col.add_child(portrait_status)
 	end_btn = UI.button("Encerrar conversa", NPCManager.end_conversation)
 	face_col.add_child(end_btn)
 
@@ -197,8 +198,11 @@ func _refresh() -> void:
 		bars[k].add_theme_stylebox_override("fill", UI._box(c, 3, 0))
 
 	var pemo := player_emotion()
-	PortraitService.request(PortraitService.PLAYER, pemo)
-	player_portrait.show_npc(PortraitService.PLAYER, pemo, UI.PANEL_LIGHT, str(p.get("name", "?")).substr(0, 1).to_upper())
+	var scene := FaceRig.scene_for_location(World.current_id(), str(World.current().get("tipo", "")))
+	if pemo != player_portrait.emotion:
+		player_portrait.set_emotion(pemo)
+	player_portrait.scene = scene
+	portrait.scene = scene
 	player_state_label.text = "" if pemo == "neutro" else World.emotions[pemo]["pt"].to_upper()
 
 	for c in inventory_box.get_children():
@@ -234,7 +238,9 @@ func _refresh_conversation() -> void:
 	var id := NPCManager.talking_to
 	var can_act := GameState.active and not NPCManager.busy and not narrating
 	if id == "":
-		portrait.show_npc("", "neutro", UI.PANEL_LIGHT, "?")
+		if shown_npc != "":
+			portrait.set_look({})
+			shown_npc = ""
 		npc_name_label.text = "Ninguém"
 		emotion_label.text = ""
 		npc_info_label.text = "Escolha alguém na lista \"Pessoas aqui\" para conversar."
@@ -248,7 +254,13 @@ func _refresh_conversation() -> void:
 	var st: Dictionary = NPCManager.state[id]
 	var shown := NPCManager.display_name(id)
 	var emo := str(st["emocao"])
-	portrait.show_npc(id, emo, Color(n["cor"]), shown.substr(0, 1).to_upper())
+	if shown_npc != id:
+		shown_npc = id
+		portrait.bg_color = Color(n["cor"])
+		portrait.set_look(LookBuilder.build(World.npc_looks.get(id, {}), int(n["idade"]), n["genero"]))
+		portrait.set_emotion(emo, true)
+	elif emo != portrait.emotion:
+		portrait.set_emotion(emo)
 	npc_name_label.text = shown
 	emotion_label.text = World.emotions.get(emo, {"pt": emo})["pt"].to_upper()
 	npc_info_label.text = "Confiança %d  •  Afeto %d  •  Medo %d  •  Suspeita %d" % [
@@ -274,13 +286,8 @@ func _refresh_side() -> void:
 	if here.is_empty():
 		side_box.add_child(UI.label("Não há ninguém por perto.", 14, UI.MUTED))
 	for id in here:
-		PortraitService.request(id, "neutro")
 		var b := UI.button(NPCManager.display_name(id), NPCManager.start_conversation.bind(id))
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		b.custom_minimum_size = Vector2(0, 56)
-		b.add_theme_constant_override("icon_max_width", 42)
-		b.icon = PortraitService.get_texture(id, "neutro")
-		b.expand_icon = true
 		b.disabled = not can_act or id == NPCManager.talking_to
 		side_box.add_child(b)
 
@@ -332,8 +339,10 @@ func _on_npc_thinking(npc_id: String, thinking: bool) -> void:
 		input.grab_focus.call_deferred()
 
 
-func _on_portrait_status(text: String) -> void:
-	portrait_status.text = text
+func _on_npc_replied(npc_id: String, data: Dictionary) -> void:
+	if npc_id == NPCManager.talking_to:
+		portrait.talk(clampf(str(data.get("fala", "")).length() * 0.06, 0.6, 6.0))
+	_queue_refresh()
 
 
 func _on_narrator_busy(busy: bool) -> void:

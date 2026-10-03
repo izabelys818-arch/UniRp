@@ -71,20 +71,12 @@ func _ready() -> void:
 	check(SaveManager.load_game(), "carregou o save")
 	check(GameState.money() == saved_money and TimeManager.total_minutes == saved_time, "save restaurou dinheiro e hora")
 
-	PortraitService.dir = "user://test_portraits"
 	check(World.emotions.has("chorando"), "emoção chorando existe")
-	check(PortraitService.best_texture("marina", "chorando") == null, "sem rosto antes de gerar")
-	PortraitService.request("marina", "chorando")
-	check(PortraitService.queue.is_empty(), "sem modelo de imagem, não gera nada")
-	var img := Image.create(800, 1000, false, Image.FORMAT_RGB8)
-	img.fill(Color.DARK_SLATE_GRAY)
-	PortraitService.store("marina", "neutro", img)
-	PortraitService.cache.clear()
-	var tex := PortraitService.best_texture("marina", "chorando")
-	check(tex != null, "expressão faltando usa o rosto neutro (lido do disco)")
-	check(tex != null and tex.get_width() == 640, "rosto redimensionado para 640px")
-	var png := FileAccess.get_file_as_bytes(PortraitService.file_path("marina", "neutro"))
-	check(AIService.decode_image(png) != null, "decodifica PNG")
+	var FaceRig = preload("res://ui/face/face_rig.gd")
+	for emo in World.emotions:
+		check(FaceRig.EXPRESSIONS.has(emo), "rosto tem a expressão " + emo)
+	for id in NPCManager.npcs:
+		check(World.npc_looks.has(id), "aparência definida para " + id)
 
 	World.move_player_to("lanchonete")
 	TimeManager.total_minutes = (TimeManager.day() * 1440) + 9 * 60
@@ -101,9 +93,13 @@ func _ready() -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
 	check(screen.side_box.get_child_count() > 5, "tela do jogo montou painel lateral")
-	check(screen.portrait.front.texture != null, "retrato aparece na conversa")
+	check(not screen.portrait.look.is_empty(), "rosto da Marina aparece na conversa")
+	check(screen.portrait.emotion == "chorando", "rosto mostra a emoção da IA")
+	check(screen.portrait.scene == "comida", "cenário da lanchonete atrás do NPC")
 	check(screen.emotion_label.text == "CHORANDO", "rótulo de emoção mostrado")
-	check(screen.player_portrait != null, "retrato do jogador existe")
+	check(not screen.player_portrait.look.is_empty(), "rosto do jogador desenhado")
+	screen._on_npc_replied("marina", {"fala": "Me deixa em paz, por favor."})
+	check(screen.portrait.talk_left > 0.0, "boca anima quando o NPC fala")
 	await get_tree().create_timer(0.5).timeout
 	screen.queue_free()
 	await get_tree().process_frame
@@ -115,27 +111,19 @@ func _ready() -> void:
 	creator.gender_opt.select(1)
 	creator._randomize_look()
 	creator.look_opts["cabelo"].select(1)
+	creator.mark_boxes[0].button_pressed = true
 	creator.extra_edit.text = "sorriso torto"
-	var en: String = creator.describe(1)
-	var pt: String = creator.describe(0)
-	print("EN: ", en)
+	var pt: String = creator.describe()
 	print("PT: ", pt)
-	check(en.begins_with("a 28-year-old woman with"), "descrição em inglês para a IA de imagem")
-	check("careca" in pt and "sorriso torto" in pt, "descrição em português com careca e detalhes extras")
-	var photo := Image.create(1200, 800, false, Image.FORMAT_RGB8)
-	photo.fill(Color.BROWN)
-	var photo_path := OS.get_user_data_dir() + "/test_photo.png"
-	photo.save_png(photo_path)
-	creator._on_photo_selected(photo_path)
-	var draft := PortraitService.get_texture("player_draft", "neutro")
-	check(draft != null and absf(float(draft.get_width()) / draft.get_height() - 0.75) < 0.01, "foto importada recortada em 3:4")
+	check("careca" in pt and "cicatriz no rosto" in pt and "sorriso torto" in pt, "descrição para os NPCs com careca, cicatriz e detalhes")
+	check(creator.portrait.look["hair"] == "careca" and 0 in creator.portrait.look["marks"], "prévia do rosto atualiza ao vivo")
+	creator._toggle_expressions()
+	check(creator.portrait.emotion == "neutro" and creator.expr_label.text == "NEUTRO", "teste de expressões começa")
+	creator._next_expression()
+	check(creator.portrait.emotion == "feliz", "teste de expressões avança")
 	creator._start()
-	check(GameState.player["name"] == "Joana" and GameState.player["appearance_en"] == en, "personagem criado com aparência")
-	check(PortraitService.get_texture("player", "neutro") != null, "rosto do rascunho virou o rosto do jogador")
-	check(PortraitService.get_texture("player_draft", "neutro") == null, "rascunho limpo")
+	check(GameState.player["name"] == "Joana" and GameState.player["look"]["cabelo"] == 1, "personagem criado com aparência")
 	creator.queue_free()
-	DirAccess.remove_absolute(photo_path)
-	PortraitService.clear_all()
 	await get_tree().process_frame
 	TimeManager.advance(10)
 

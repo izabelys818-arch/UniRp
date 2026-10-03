@@ -1,0 +1,17 @@
+{
+	"ze": {"pele": 2, "tracos": 0, "corpo": 4, "rosto": 4, "cabelo": 1, "cor_cabelo": 5, "olhos": 0, "barba": 3, "roupa": 0, "cor_roupa": "#6b5a3a", "extras": ["toalha"]},
+	"marina": {"pele": 2, "tracos": 0, "corpo": 0, "rosto": 0, "cabelo": 11, "cor_cabelo": 1, "olhos": 0, "barba": 0, "roupa": "avental", "marcas": [9]},
+	"ruan": {"pele": 3, "tracos": 0, "corpo": 2, "rosto": 1, "cabelo": 2, "cor_cabelo": 0, "olhos": 1, "barba": 1, "roupa": 9, "marcas": [0, 12]},
+	"helena": {"pele": 0, "tracos": 1, "corpo": 0, "rosto": 3, "cabelo": 0, "cor_cabelo": 5, "olhos": 5, "barba": 0, "roupa": "jaleco"},
+	"otavio": {"pele": 2, "tracos": 0, "corpo": 4, "rosto": 1, "cabelo": 2, "cor_cabelo": 5, "olhos": 0, "barba": 3, "roupa": "farda", "extras": ["oculos_testa"]},
+	"bia": {"pele": 3, "tracos": 0, "corpo": 0, "rosto": 2, "cabelo": 5, "cor_cabelo": 0, "olhos": 0, "barba": 0, "roupa": 1, "cor_roupa": "#5b3f8a", "marcas": [3], "extras": ["fone"]},
+	"padre": {"pele": 0, "tracos": 1, "corpo": 0, "rosto": 4, "cabelo": 2, "cor_cabelo": 6, "olhos": 0, "barba": 0, "roupa": "batina", "marcas": [7]},
+	"dona_cida": {"pele": 2, "tracos": 0, "corpo": 4, "rosto": 2, "cabelo": 0, "cor_cabelo": 5, "olhos": 0, "barba": 0, "roupa": 8, "cor_roupa": "#c97a5a", "marcas": [7], "extras": ["bobes"]},
+	"leo": {"pele": 1, "tracos": 0, "corpo": 0, "rosto": 3, "cabelo": 0, "cor_cabelo": 2, "olhos": 0, "barba": 0, "roupa": 10, "marcas": [11, 15]},
+	"kaio": {"pele": 4, "tracos": 2, "corpo": 6, "rosto": 4, "cabelo": 13, "cor_cabelo": 0, "olhos": 1, "barba": 5, "roupa": "cobertor", "marcas": [9]},
+	"vanessa": {"pele": 2, "tracos": 0, "corpo": 1, "rosto": 0, "cabelo": 10, "cor_cabelo": 1, "olhos": 0, "barba": 0, "roupa": 8, "cor_roupa": "#3f8f7a", "marcas": [9]},
+	"tiago": {"pele": 3, "tracos": 0, "corpo": 1, "rosto": 1, "cabelo": 0, "cor_cabelo": 0, "olhos": 0, "barba": 1, "roupa": "havaiana", "marcas": [10], "extras": ["oculos_testa", "dente_ouro"]},
+	"irene": {"pele": 1, "tracos": 1, "corpo": 0, "rosto": 3, "cabelo": 10, "cor_cabelo": 1, "olhos": 2, "barba": 0, "roupa": 5, "cor_roupa": "#a8916f", "marcas": [13]},
+	"gabriel": {"pele": 1, "tracos": 0, "corpo": 0, "rosto": 0, "cabelo": 4, "cor_cabelo": 2, "olhos": 4, "barba": 1, "roupa": 0, "cor_roupa": "#7a3b2e", "extras": ["chapeu"]},
+	"silas": {"pele": 0, "tracos": 1, "corpo": 1, "rosto": 0, "cabelo": 0, "cor_cabelo": 0, "olhos": 1, "barba": 0, "roupa": "macacao"}
+}

@@ -3,11 +3,10 @@ extends Control
 signal navigate(screen: String, args: Dictionary)
 
 const UI = preload("res://ui/ui_theme.gd")
-const PortraitView = preload("res://ui/portrait_view.gd")
+const FaceRig = preload("res://ui/face/face_rig.gd")
+const LookBuilder = preload("res://ui/face/look_builder.gd")
 const MAX_TRAITS := 3
 const GENDERS := ["homem", "mulher", "pessoa não-binária"]
-const GENDERS_EN := ["man", "woman", "androgynous non-binary person"]
-const DRAFT := "player_draft"
 
 var args: Dictionary = {}
 var name_edit: LineEdit
@@ -19,18 +18,16 @@ var origin_opt: OptionButton
 var origin_desc: Label
 var look_opts: Dictionary = {}
 var mark_boxes: Array = []
+var clothes_color: ColorPickerButton
 var extra_edit: TextEdit
-var portrait: PortraitView
-var face_status: Label
-var refine_edit: LineEdit
-var face_buttons: Array = []
-var file_dialog: FileDialog
+var portrait: FaceRig
+var expr_label: Label
+var expr_timer: Timer
+var expr_index: int = -1
 var error_label: Label
-var busy: bool = false
 
 
 func _ready() -> void:
-	PortraitService.clear_id(DRAFT)
 	var root := UI.vbox(8)
 	var outer := UI.margin(root, 20)
 	outer.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -54,16 +51,12 @@ func _ready() -> void:
 	var start := UI.button("Começar a viver", _start)
 	start.custom_minimum_size = Vector2(240, 0)
 	brow.add_child(start)
-	face_buttons.append(start)
 
-	file_dialog = FileDialog.new()
-	file_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
-	file_dialog.access = FileDialog.ACCESS_FILESYSTEM
-	file_dialog.use_native_dialog = true
-	file_dialog.filters = PackedStringArray(["*.png, *.jpg, *.jpeg, *.webp ; Imagens"])
-	file_dialog.file_selected.connect(_on_photo_selected)
-	add_child(file_dialog)
-	_update_face_buttons()
+	expr_timer = Timer.new()
+	expr_timer.wait_time = 1.4
+	expr_timer.timeout.connect(_next_expression)
+	add_child(expr_timer)
+	_update_preview()
 
 
 func _column(content: Control) -> Control:
@@ -100,8 +93,10 @@ func _build_identity() -> Control:
 	age_spin.min_value = 18
 	age_spin.max_value = 85
 	age_spin.value = 28
+	age_spin.value_changed.connect(_update_preview.unbind(1))
 	box.add_child(_row("Idade", age_spin))
 	gender_opt = _option("Gênero", GENDERS)
+	gender_opt.item_selected.connect(_update_preview.unbind(1))
 	box.add_child(_row("Gênero", gender_opt))
 
 	var names: Array = World.origins.map(func(o): return o["nome"])
@@ -143,8 +138,14 @@ func _build_look() -> Control:
 	head.add_child(UI.button("Aleatório", _randomize_look))
 	for cat in World.appearance["categorias"]:
 		var opt := _option(cat["nome"], cat["opcoes"].map(func(o): return o[0]))
+		opt.item_selected.connect(_update_preview.unbind(1))
 		look_opts[cat["id"]] = opt
 		box.add_child(_row(cat["nome"], opt))
+	clothes_color = ColorPickerButton.new()
+	clothes_color.color = Color("#4a5260")
+	clothes_color.custom_minimum_size = Vector2(0, 30)
+	clothes_color.color_changed.connect(_update_preview.unbind(1))
+	box.add_child(_row("Cor da roupa", clothes_color))
 	box.add_child(UI.label("Marcas e acessórios", 14, UI.MUTED))
 	var grid := GridContainer.new()
 	grid.columns = 2
@@ -152,12 +153,13 @@ func _build_look() -> Control:
 	for m in World.appearance["marcas"]:
 		var cb := CheckBox.new()
 		cb.text = m[0]
+		cb.toggled.connect(_update_preview.unbind(1))
 		grid.add_child(cb)
 		mark_boxes.append(cb)
-	box.add_child(UI.label("Detalhes extras (qualquer coisa: estilo, idade aparente, expressão, objetos...)", 14, UI.MUTED))
+	box.add_child(UI.label("Detalhes extras (os NPCs vão notar)", 14, UI.MUTED))
 	extra_edit = TextEdit.new()
-	extra_edit.placeholder_text = "Ex: parece mais velho do que é, sobrancelha cortada, sorriso torto, brinco de argola só na esquerda"
-	extra_edit.custom_minimum_size = Vector2(0, 80)
+	extra_edit.placeholder_text = "Ex: parece mais velho do que é, sorriso torto, cheiro de cigarro"
+	extra_edit.custom_minimum_size = Vector2(0, 70)
 	extra_edit.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
 	box.add_child(extra_edit)
 	return box
@@ -166,24 +168,15 @@ func _build_look() -> Control:
 func _build_face() -> Control:
 	var box := UI.vbox(8)
 	box.add_child(UI.label("Seu rosto", 18, UI.ACCENT))
-	portrait = PortraitView.new()
-	portrait.min_size = Vector2(250, 310)
+	portrait = FaceRig.new()
+	portrait.custom_minimum_size = Vector2(270, 340)
+	portrait.scene = "casa"
 	box.add_child(portrait)
-	face_status = UI.label("", 13, UI.MUTED)
-	box.add_child(face_status)
-	var b1 := UI.button("Gerar rosto", _generate_face)
-	box.add_child(b1)
-	var b2 := UI.button("Usar foto do meu PC", func(): file_dialog.popup_centered_ratio(0.7))
-	box.add_child(b2)
-	refine_edit = LineEdit.new()
-	refine_edit.placeholder_text = "Ajuste: ex. cabelo mais curto, mais velho..."
-	refine_edit.text_submitted.connect(_refine_face.unbind(1))
-	box.add_child(refine_edit)
-	var b3 := UI.button("Aplicar ajuste no rosto", _refine_face)
-	box.add_child(b3)
-	face_buttons.append_array([b1, b2, b3])
-	if not Settings.images_ready():
-		face_status.text = "Escolha um modelo de imagem em Configurações para gerar seu rosto. Você ainda pode usar uma foto do PC."
+	expr_label = UI.label("", 14, UI.ACCENT)
+	expr_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(expr_label)
+	box.add_child(UI.button("Testar expressões", _toggle_expressions))
+	box.add_child(UI.button("Testar fala", func(): portrait.talk(2.5)))
 	return box
 
 
@@ -212,96 +205,70 @@ func _randomize_look() -> void:
 		var opt: OptionButton = look_opts[id]
 		opt.select(randi() % opt.item_count)
 	for cb in mark_boxes:
-		cb.button_pressed = randf() < 0.12
+		cb.set_pressed_no_signal(randf() < 0.12)
+	clothes_color.color = Color.from_hsv(randf(), randf_range(0.2, 0.6), randf_range(0.25, 0.7))
+	_update_preview()
 
 
-func _pick(cat_id: String) -> Array:
-	for cat in World.appearance["categorias"]:
-		if cat["id"] == cat_id:
-			return cat["opcoes"][look_opts[cat_id].selected]
-	return ["", ""]
-
-
-func describe(lang: int) -> String:
-	# lang 0 = português (para NPCs), 1 = inglês (para a IA de imagem)
-	var parts: Array = []
-	for id in ["pele", "tracos", "corpo", "altura", "rosto", "olhos"]:
-		parts.append(_pick(id)[lang])
-	var hair := _pick("cabelo")
-	if look_opts["cabelo"].selected == 1:
-		parts.append(hair[lang])
-	elif lang == 0:
-		parts.append("%s %s" % [hair[0], _pick("cor_cabelo")[0]])
-	else:
-		parts.append("%s %s" % [_pick("cor_cabelo")[1], hair[1]])
-	if look_opts["barba"].selected != 0:
-		parts.append(_pick("barba")[lang])
+func look_spec() -> Dictionary:
+	var spec := {}
+	for id in look_opts:
+		spec[id] = look_opts[id].selected
+	var marks: Array = []
 	for i in mark_boxes.size():
 		if mark_boxes[i].button_pressed:
-			parts.append(World.appearance["marcas"][i][lang])
-	parts.append(_pick("roupa")[lang])
+			marks.append(i)
+	spec["marcas"] = marks
+	spec["cor_roupa"] = "#" + clothes_color.color.to_html(false)
+	return spec
+
+
+func _update_preview() -> void:
+	if portrait:
+		portrait.set_look(LookBuilder.build(look_spec(), int(age_spin.value), GENDERS[gender_opt.selected]))
+
+
+func _toggle_expressions() -> void:
+	if expr_timer.is_stopped():
+		expr_index = -1
+		_next_expression()
+		expr_timer.start()
+	else:
+		expr_timer.stop()
+		portrait.set_emotion("neutro")
+		expr_label.text = ""
+
+
+func _next_expression() -> void:
+	var keys: Array = World.emotions.keys()
+	expr_index = (expr_index + 1) % keys.size()
+	portrait.set_emotion(keys[expr_index])
+	expr_label.text = World.emotions[keys[expr_index]]["pt"].to_upper()
+
+
+func describe() -> String:
+	var parts: Array = []
+	for cat in World.appearance["categorias"]:
+		if cat["id"] == "barba" and look_opts["barba"].selected == 0:
+			continue
+		var opt: String = cat["opcoes"][look_opts[cat["id"]].selected][0]
+		if cat["id"] == "cor_cabelo":
+			if look_opts["cabelo"].selected == 1:
+				continue
+			opt = "cabelo " + opt
+		parts.append(opt)
+	for i in mark_boxes.size():
+		if mark_boxes[i].button_pressed:
+			parts.append(World.appearance["marcas"][i][0])
 	var text := ", ".join(parts)
 	var extra := extra_edit.text.strip_edges()
-	if lang == 1:
-		var origin: Dictionary = World.origins[origin_opt.selected]
-		text = "a %d-year-old %s with %s." % [int(age_spin.value), GENDERS_EN[gender_opt.selected], text]
-		if extra != "":
-			text += " Additional details (in Portuguese): " + extra + "."
-		if str(origin.get("aparencia_extra", "")) != "":
-			text += " Current state (in Portuguese): " + origin["aparencia_extra"] + "."
-		return text
 	return text + ("; " + extra if extra != "" else "")
-
-
-func _update_face_buttons() -> void:
-	for b in face_buttons:
-		b.disabled = busy
-	portrait.show_npc(DRAFT, "neutro", UI.PANEL_LIGHT, name_edit.text.substr(0, 1).to_upper() if name_edit.text != "" else "?")
-
-
-func _generate_face() -> void:
-	if busy:
-		return
-	busy = true
-	face_status.text = "Gerando seu rosto... (pode levar até 1 minuto)"
-	_update_face_buttons()
-	var res: Dictionary = await PortraitService.generate_base(DRAFT, describe(1))
-	busy = false
-	face_status.text = "Gostou? Gere de novo ou aplique ajustes." if res["ok"] else str(res["error"])
-	_update_face_buttons()
-
-
-func _refine_face() -> void:
-	var instr := refine_edit.text.strip_edges()
-	if busy or instr == "":
-		return
-	busy = true
-	face_status.text = "Aplicando ajuste..."
-	_update_face_buttons()
-	var res: Dictionary = await PortraitService.refine(DRAFT, instr)
-	busy = false
-	if res["ok"]:
-		refine_edit.text = ""
-		face_status.text = "Ajuste aplicado."
-	else:
-		face_status.text = str(res["error"])
-	_update_face_buttons()
-
-
-func _on_photo_selected(path: String) -> void:
-	if PortraitService.import_photo(DRAFT, path):
-		face_status.text = "Foto carregada. As expressões serão geradas a partir dela."
-	else:
-		face_status.text = "Não consegui abrir essa imagem."
-	_update_face_buttons()
 
 
 func _start() -> void:
 	var pname := name_edit.text.strip_edges()
 	if pname == "":
 		error_label.text = "Seu personagem precisa de um nome."
-		return
-	if busy:
 		return
 	var origin: Dictionary = World.origins[origin_opt.selected]
 	var inventory := {}
@@ -311,8 +278,8 @@ func _start() -> void:
 		"name": pname,
 		"age": int(age_spin.value),
 		"gender": GENDERS[gender_opt.selected],
-		"appearance": describe(0),
-		"appearance_en": describe(1),
+		"appearance": describe(),
+		"look": look_spec(),
 		"appearance_extra": origin.get("aparencia_extra", ""),
 		"backstory": backstory_edit.text.strip_edges(),
 		"traits": _selected_traits(),
@@ -323,7 +290,6 @@ func _start() -> void:
 		"inventory": inventory,
 		"alive": true,
 	}
-	PortraitService.promote_draft()
 	GameState.new_game(player)
 	TimeManager.total_minutes = int(origin["hora"]) * 60
 	NeedsSystem.reset(origin["necessidades"])

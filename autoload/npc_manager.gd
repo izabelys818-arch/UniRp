@@ -74,7 +74,6 @@ func start_conversation(npc_id: String) -> void:
 		GameState.add_log("%s vira o rosto e te ignora." % display_name(npc_id), "info")
 		return
 	talking_to = npc_id
-	PortraitService.request(npc_id, "neutro")
 	GameState.add_log("Você se aproxima de %s (%s)." % [display_name(npc_id), npcs[npc_id]["aparencia"]], "info")
 	conversation_changed.emit(npc_id)
 
@@ -139,7 +138,6 @@ func _apply_reply(id: String, data: Dictionary) -> void:
 	if not World.emotions.has(emo):
 		emo = "neutro"
 	st["emocao"] = emo
-	PortraitService.request(id, emo)
 
 	var body := str(data.get("acao_corporal", "")).strip_edges()
 	var speech := str(data.get("fala", "")).strip_edges()
