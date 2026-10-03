@@ -18,6 +18,7 @@ const KIND_COLORS := {
 	"death": "#ff3b3b",
 	"error": "#d1495b",
 	"system": "#6c757d",
+	"phone": "#6fd3a8",
 }
 
 

@@ -12,7 +12,13 @@ func _auth_headers() -> PackedStringArray:
 	])
 
 
+var mock: Callable
+
+
 func chat(messages: Array, max_tokens: int = 400) -> Dictionary:
+	if mock.is_valid():
+		await get_tree().process_frame
+		return mock.call(messages)
 	if not Settings.is_ready():
 		return {"ok": false, "error": "IA não configurada: coloque sua chave e escolha um modelo em Configurações."}
 	var body := {

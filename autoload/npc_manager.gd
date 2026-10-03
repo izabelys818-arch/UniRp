@@ -8,10 +8,14 @@ const Prompts = preload("res://ai/prompts.gd")
 const MAX_HISTORY := 24
 const MAX_MEMORIES := 25
 const REL_KEYS := ["confianca", "afeto", "medo", "suspeita"]
+const PRESENCIAL := "presencial"
+const LIGACAO := "ligacao"
+const MENSAGEM := "mensagem"
 
 var npcs: Dictionary = {}
 var state: Dictionary = {}
 var talking_to: String = ""
+var channel: String = PRESENCIAL
 var busy: bool = false
 
 
@@ -23,6 +27,7 @@ func _ready() -> void:
 func reset_state(origin: Dictionary) -> void:
 	state.clear()
 	talking_to = ""
+	channel = PRESENCIAL
 	busy = false
 	var known: Array = origin.get("conhecidos", [])
 	for id in npcs:
@@ -35,11 +40,14 @@ func reset_state(origin: Dictionary) -> void:
 			"memorias": ["É um vizinho conhecido de longa data, mora no bairro há anos."] if is_known else [],
 			"historico": [],
 			"vivo": true,
+			"conheceu": is_known,
 			"conhece_nome": is_known,
 			"sabe_nome_jogador": is_known,
 			"dinheiro": int(npcs[id]["dinheiro"]),
 			"evita_ate": 0,
 			"emocao": "neutro",
+			"namoro": false,
+			"bloqueado": false,
 		}
 
 
@@ -50,6 +58,11 @@ func location_of(npc_id: String, h: int = -1) -> String:
 		if World.hour_in_range(h, int(slot["de"]), int(slot["ate"])):
 			return slot["local"]
 	return ""
+
+
+func is_asleep(npc_id: String) -> bool:
+	var h := TimeManager.hour()
+	return location_of(npc_id) == "" and (h < 7 or h >= 23)
 
 
 func npcs_here() -> Array:
@@ -66,6 +79,29 @@ func display_name(npc_id: String) -> String:
 	return n["nome"] if state[npc_id]["conhece_nome"] else n["apelido_visual"]
 
 
+func relation_label(npc_id: String) -> String:
+	var st: Dictionary = state[npc_id]
+	if not st.get("vivo", true):
+		return "Morto(a)"
+	if st.get("namoro", false):
+		return "Namorando"
+	if st.get("bloqueado", false):
+		return "Te bloqueou"
+	var trust := int(st["confianca"])
+	var love := int(st["afeto"])
+	if trust <= -40 or love <= -40:
+		return "Inimigo(a)"
+	if love >= 65 and trust >= 45:
+		return "Melhor amigo(a)"
+	if love >= 35 and trust >= 25:
+		return "Amigo(a)"
+	if love <= -15 or trust <= -15:
+		return "Não gosta de você"
+	if st.get("conheceu", false):
+		return "Conhecido(a)"
+	return "Desconhecido(a)"
+
+
 func start_conversation(npc_id: String) -> void:
 	if busy or not GameState.active:
 		return
@@ -74,15 +110,41 @@ func start_conversation(npc_id: String) -> void:
 		GameState.add_log("%s vira o rosto e te ignora." % display_name(npc_id), "info")
 		return
 	talking_to = npc_id
+	channel = PRESENCIAL
+	st["conheceu"] = true
 	GameState.add_log("Você se aproxima de %s (%s)." % [display_name(npc_id), npcs[npc_id]["aparencia"]], "info")
+	conversation_changed.emit(npc_id)
+
+
+func start_call(npc_id: String) -> void:
+	talking_to = npc_id
+	channel = LIGACAO
+	GameState.add_log("Você está em ligação com %s." % display_name(npc_id), "phone")
 	conversation_changed.emit(npc_id)
 
 
 func end_conversation() -> void:
 	if talking_to == "":
 		return
+	if channel == LIGACAO:
+		GameState.add_log("Ligação encerrada.", "phone")
 	talking_to = ""
+	channel = PRESENCIAL
 	conversation_changed.emit("")
+
+
+func _request(id: String, chan: String, extra_user: String = "") -> Dictionary:
+	var st: Dictionary = state[id]
+	var messages: Array = [{"role": "system", "content": Prompts.npc_system(id, chan)}]
+	messages.append_array(st["historico"].slice(-MAX_HISTORY))
+	if extra_user != "":
+		messages.append({"role": "user", "content": extra_user})
+	var res: Dictionary = await AIService.chat(messages, 350)
+	if res["ok"]:
+		st["historico"].append({"role": "assistant", "content": res["text"]})
+		if st["historico"].size() > MAX_HISTORY * 2:
+			st["historico"] = st["historico"].slice(-MAX_HISTORY)
+	return res
 
 
 func talk(text: String) -> void:
@@ -91,31 +153,45 @@ func talk(text: String) -> void:
 	if id == "" or busy or text == "" or not GameState.active:
 		return
 	busy = true
+	var chan := channel
 	var st: Dictionary = state[id]
 	GameState.add_log(text, "player", GameState.player["name"])
-	st["historico"].append({"role": "user", "content": text})
+	st["historico"].append({"role": "user", "content": ("[ao telefone] " if chan == LIGACAO else "") + text})
 	TimeManager.advance(3)
 	npc_thinking.emit(id, true)
-
-	var messages: Array = [{"role": "system", "content": Prompts.npc_system(id)}]
-	messages.append_array(st["historico"].slice(-MAX_HISTORY))
-	var res: Dictionary = await AIService.chat(messages, 350)
-
+	var res := await _request(id, chan)
 	npc_thinking.emit(id, false)
 	busy = false
 	if not res["ok"]:
 		st["historico"].pop_back()
 		GameState.add_log(res["error"], "error")
 		return
-	st["historico"].append({"role": "assistant", "content": res["text"]})
-	if st["historico"].size() > MAX_HISTORY * 2:
-		st["historico"] = st["historico"].slice(-MAX_HISTORY)
+	_apply_reply(id, Prompts.parse_npc_reply(res["text"]), chan)
+
+
+func text_reply(id: String, player_text: String) -> Dictionary:
+	var st: Dictionary = state[id]
+	st["historico"].append({"role": "user", "content": "[mensagem de celular] " + player_text})
+	var res := await _request(id, MENSAGEM)
+	if not res["ok"]:
+		st["historico"].pop_back()
+		return res
 	var data := Prompts.parse_npc_reply(res["text"])
-	_apply_reply(id, data)
+	_apply_reply(id, data, MENSAGEM)
+	return {"ok": true, "data": data}
+
+
+func spontaneous_message(id: String) -> Dictionary:
+	var res := await _request(id, MENSAGEM, Prompts.spontaneous_instruction())
+	if not res["ok"]:
+		return res
+	var data := Prompts.parse_npc_reply(res["text"])
+	_apply_reply(id, data, MENSAGEM)
+	return {"ok": true, "data": data}
 
 
 func give_money(amount: int) -> void:
-	if talking_to == "" or busy or amount <= 0:
+	if talking_to == "" or busy or amount <= 0 or channel != PRESENCIAL:
 		return
 	if GameState.money() < amount:
 		GameState.add_log("Você não tem R$ %d." % amount, "info")
@@ -125,9 +201,8 @@ func give_money(amount: int) -> void:
 	talk("*entrega R$ %d em dinheiro*" % amount)
 
 
-func _apply_reply(id: String, data: Dictionary) -> void:
+func _apply_reply(id: String, data: Dictionary, chan: String = PRESENCIAL) -> void:
 	var st: Dictionary = state[id]
-	var n: Dictionary = npcs[id]
 
 	if data.get("revela_nome", false) and not st["conhece_nome"]:
 		st["conhece_nome"] = true
@@ -139,13 +214,14 @@ func _apply_reply(id: String, data: Dictionary) -> void:
 		emo = "neutro"
 	st["emocao"] = emo
 
-	var body := str(data.get("acao_corporal", "")).strip_edges()
-	var speech := str(data.get("fala", "")).strip_edges()
-	var line := ""
-	if body != "":
-		line += "*" + body + "* "
-	line += speech
-	GameState.add_log(line.strip_edges(), "npc", display_name(id))
+	if chan != MENSAGEM:
+		var body := str(data.get("acao_corporal", "")).strip_edges()
+		var speech := str(data.get("fala", "")).strip_edges()
+		var line := ""
+		if body != "" and chan == PRESENCIAL:
+			line += "*" + body + "* "
+		line += speech
+		GameState.add_log(line.strip_edges(), "npc", display_name(id) + (" (ao telefone)" if chan == LIGACAO else ""))
 
 	var rel = data.get("relacao", {})
 	if typeof(rel) == TYPE_DICTIONARY:
@@ -165,12 +241,12 @@ func _apply_reply(id: String, data: Dictionary) -> void:
 	if typeof(acts) == TYPE_ARRAY:
 		for a in acts:
 			if typeof(a) == TYPE_DICTIONARY:
-				_apply_action(id, a)
+				_apply_action(id, a, chan)
 
 	npc_replied.emit(id, data)
 
 
-func _apply_action(id: String, a: Dictionary) -> void:
+func _apply_action(id: String, a: Dictionary, chan: String) -> void:
 	var st: Dictionary = state[id]
 	var who := display_name(id)
 	match str(a.get("tipo", "")):
@@ -179,24 +255,53 @@ func _apply_action(id: String, a: Dictionary) -> void:
 			if v > 0:
 				st["dinheiro"] = int(st["dinheiro"]) - v
 				GameState.add_money(v)
-				GameState.add_log("%s te deu R$ %d." % [who, v], "event")
+				if chan == PRESENCIAL:
+					GameState.add_log("%s te deu R$ %d." % [who, v], "event")
+				else:
+					PhoneSystem.log_bank("PIX recebido de %s" % who, v)
+					GameState.add_log("PIX recebido de %s: R$ %d." % [who, v], "phone")
 		"dar_item":
 			var item := str(a.get("item", ""))
-			if World.items.has(item):
+			if World.items.has(item) and chan == PRESENCIAL:
 				GameState.add_item(item)
 				GameState.add_log("%s te deu: %s." % [who, World.item_name(item)], "event")
+		"dar_numero":
+			if not PhoneSystem.has_contact(id):
+				st["conhece_nome"] = true
+				PhoneSystem.add_contact(id)
+				GameState.add_log("%s te passou o número de celular." % display_name(id), "phone")
+		"comecar_namoro":
+			if not st.get("namoro", false) and int(st["afeto"]) >= 40:
+				st["namoro"] = true
+				GameState.add_log("Você e %s estão namorando." % who, "event")
+		"terminar_namoro":
+			if st.get("namoro", false):
+				st["namoro"] = false
+				st["afeto"] = mini(int(st["afeto"]), 10)
+				GameState.add_log("%s terminou com você." % who, "danger")
+		"bloquear":
+			if not st.get("bloqueado", false):
+				st["bloqueado"] = true
+				GameState.add_log("%s te bloqueou no celular." % who, "danger")
+				if chan == LIGACAO:
+					end_conversation()
 		"ir_embora":
-			st["evita_ate"] = TimeManager.total_minutes + 180
-			GameState.add_log("%s encerra a conversa e se afasta." % who, "event")
-			end_conversation()
+			if chan == PRESENCIAL:
+				st["evita_ate"] = TimeManager.total_minutes + 180
+				GameState.add_log("%s encerra a conversa e se afasta." % who, "event")
+				end_conversation()
+			elif chan == LIGACAO:
+				GameState.add_log("%s desligou na sua cara." % who, "event")
+				end_conversation()
 		"atacar":
-			var dmg := clampi(int(a.get("dano", 10)), 5, 40)
-			GameState.add_log("%s te ataca! (-%d de saúde)" % [who, dmg], "danger")
-			NeedsSystem.apply({"saude": -dmg, "sanidade": -10}, "atacado por %s" % npcs[id]["nome"])
+			if chan == PRESENCIAL:
+				var dmg := clampi(int(a.get("dano", 10)), 5, 40)
+				GameState.add_log("%s te ataca! (-%d de saúde)" % [who, dmg], "danger")
+				NeedsSystem.apply({"saude": -dmg, "sanidade": -10}, "atacado por %s" % npcs[id]["nome"])
 
 
 func _on_time_advanced(_minutes: int, _sleeping: bool) -> void:
-	if talking_to != "" and location_of(talking_to) != World.current_id():
+	if talking_to != "" and channel == PRESENCIAL and location_of(talking_to) != World.current_id():
 		GameState.add_log("%s vai embora." % display_name(talking_to), "info")
 		end_conversation()
 
@@ -207,5 +312,13 @@ func to_dict() -> Dictionary:
 
 func from_dict(d: Dictionary) -> void:
 	state = d["state"]
+	for id in state:
+		var st: Dictionary = state[id]
+		for k in ["namoro", "bloqueado"]:
+			if not st.has(k):
+				st[k] = false
+		if not st.has("conheceu"):
+			st["conheceu"] = not st["historico"].is_empty()
 	talking_to = ""
+	channel = PRESENCIAL
 	busy = false

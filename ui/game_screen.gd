@@ -5,6 +5,7 @@ signal navigate(screen: String, args: Dictionary)
 const UI = preload("res://ui/ui_theme.gd")
 const FaceRig = preload("res://ui/face/face_rig.gd")
 const LookBuilder = preload("res://ui/face/look_builder.gd")
+const PhonePanel = preload("res://ui/phone/phone_panel.gd")
 
 var args: Dictionary = {}
 
@@ -22,6 +23,11 @@ var give_btn: Button
 var portrait: FaceRig
 var player_portrait: FaceRig
 var shown_npc: String = "-"
+var phone: PhonePanel
+var phone_btn: Button
+var toast_label: Label
+var toast_panel: PanelContainer
+var toast_tween: Tween
 var player_name_label: Label
 var player_state_label: Label
 var emotion_label: Label
@@ -51,6 +57,25 @@ func _ready() -> void:
 	NPCManager.npc_replied.connect(_queue_refresh.unbind(2))
 	NPCManager.npc_thinking.connect(_on_npc_thinking)
 	NPCManager.npc_replied.connect(_on_npc_replied)
+	PhoneSystem.changed.connect(_queue_refresh)
+	PhoneSystem.notify.connect(_toast)
+
+	phone = PhonePanel.new()
+	add_child(phone)
+	toast_label = UI.label("", 16, Color.WHITE)
+	toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var toast_box := PanelContainer.new()
+	toast_box.add_theme_stylebox_override("panel", UI._box(Color(0.12, 0.3, 0.24, 0.95), 8, 10))
+	toast_box.add_child(toast_label)
+	toast_box.anchor_left = 0.5
+	toast_box.anchor_right = 0.5
+	toast_box.offset_left = -200
+	toast_box.offset_right = 200
+	toast_box.offset_top = 70
+	toast_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	toast_box.hide()
+	add_child(toast_box)
+	toast_panel = toast_box
 	_refresh()
 
 	if args.has("new_origin"):
@@ -73,6 +98,10 @@ func _build() -> void:
 	place_label = UI.label("")
 	place_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(place_label)
+	phone_btn = UI.button("Celular", func(): phone.open("home"))
+	phone_btn.custom_minimum_size = Vector2(130, 0)
+	phone_btn.add_theme_stylebox_override("normal", UI._box(Color("#1f4f3f"), 5, 8))
+	top.add_child(phone_btn)
 	top.add_child(UI.button("Salvar", SaveManager.save_game))
 	top.add_child(UI.button("Configurações", func(): navigate.emit("settings", {"back": "game"})))
 	top.add_child(UI.button("Menu", _to_menu))
@@ -204,6 +233,9 @@ func _refresh() -> void:
 	player_portrait.scene = scene
 	portrait.scene = scene
 	player_state_label.text = "" if pemo == "neutro" else World.emotions[pemo]["pt"].to_upper()
+	var unread := PhoneSystem.unread() if GameState.active else 0
+	phone_btn.text = "Celular (%d)" % unread if unread > 0 else "Celular"
+	phone_btn.add_theme_color_override("font_color", UI.ACCENT if unread > 0 else UI.TEXT)
 
 	for c in inventory_box.get_children():
 		c.queue_free()
@@ -254,6 +286,7 @@ func _refresh_conversation() -> void:
 	var st: Dictionary = NPCManager.state[id]
 	var shown := NPCManager.display_name(id)
 	var emo := str(st["emocao"])
+	var on_call := NPCManager.channel == NPCManager.LIGACAO
 	if shown_npc != id:
 		shown_npc = id
 		portrait.bg_color = Color(n["cor"])
@@ -261,15 +294,19 @@ func _refresh_conversation() -> void:
 		portrait.set_emotion(emo, true)
 	elif emo != portrait.emotion:
 		portrait.set_emotion(emo)
-	npc_name_label.text = shown
+	if on_call:
+		var their_loc := NPCManager.location_of(id)
+		portrait.scene = FaceRig.scene_for_location(their_loc, str(World.locations[their_loc]["tipo"])) if their_loc != "" else "casa"
+	npc_name_label.text = shown + ("  (em ligação)" if on_call else "")
 	emotion_label.text = World.emotions.get(emo, {"pt": emo})["pt"].to_upper()
-	npc_info_label.text = "Confiança %d  •  Afeto %d  •  Medo %d  •  Suspeita %d" % [
-		int(st["confianca"]), int(st["afeto"]), int(st["medo"]), int(st["suspeita"])]
-	input.placeholder_text = "Fale algo... use *asteriscos* para ações (ex: *entrego um cigarro*)"
+	npc_info_label.text = "%s\nConfiança %d  •  Afeto %d  •  Medo %d  •  Suspeita %d" % [
+		NPCManager.relation_label(id), int(st["confianca"]), int(st["afeto"]), int(st["medo"]), int(st["suspeita"])]
+	input.placeholder_text = "Fale ao telefone..." if on_call else "Fale algo... use *asteriscos* para ações (ex: *entrego um cigarro*)"
 	input.editable = can_act
 	send_btn.disabled = not can_act
-	give_btn.disabled = not can_act
+	give_btn.disabled = not can_act or on_call
 	end_btn.visible = true
+	end_btn.text = "Desligar" if on_call else "Encerrar conversa"
 
 
 func _refresh_side() -> void:
@@ -337,6 +374,18 @@ func _on_npc_thinking(npc_id: String, thinking: bool) -> void:
 	_queue_refresh()
 	if not thinking:
 		input.grab_focus.call_deferred()
+
+
+func _toast(text: String) -> void:
+	toast_label.text = text
+	toast_panel.show()
+	toast_panel.modulate.a = 1.0
+	if toast_tween:
+		toast_tween.kill()
+	toast_tween = create_tween()
+	toast_tween.tween_interval(3.0)
+	toast_tween.tween_property(toast_panel, "modulate:a", 0.0, 0.6)
+	toast_tween.tween_callback(toast_panel.hide)
 
 
 func _on_npc_replied(npc_id: String, data: Dictionary) -> void:

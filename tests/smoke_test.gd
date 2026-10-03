@@ -9,6 +9,92 @@ func check(cond: bool, msg: String) -> void:
 		printerr("FALHOU: ", msg)
 
 
+var mock_reply: Dictionary = {}
+
+
+func _mock(_messages: Array) -> Dictionary:
+	return {"ok": true, "text": JSON.stringify(mock_reply)}
+
+
+func _set_hour(h: int) -> void:
+	TimeManager.total_minutes = (TimeManager.day() * 1440) + h * 60
+
+
+func _phone_tests() -> void:
+	AIService.mock = _mock
+	var ps := PhoneSystem
+	World.move_player_to("lanchonete")
+	_set_hour(9)
+	NPCManager.start_conversation("marina")
+	mock_reply = {"fala": "Anota aí meu número.", "emocao": "feliz", "relacao": {"afeto": 10}, "acoes": [{"tipo": "dar_numero"}]}
+	await NPCManager.talk("Me passa seu número?")
+	check(ps.has_contact("marina"), "NPC passa o número e vira contato")
+	NPCManager.end_conversation()
+
+	mock_reply = {"fala": "oi sumido kkk", "emocao": "feliz"}
+	await ps.send_message("marina", "oi")
+	var th: Array = ps.thread("marina")
+	check(th.size() == 2 and not th[-1]["eu"] and th[-1]["texto"] == "oi sumido kkk", "mensagem enviada e respondida")
+	check(th[0]["status"] == "visualizada", "mensagem marcada como visualizada")
+	check(ps.unread("marina") == 1, "contador de não lidas")
+	ps.mark_read("marina")
+
+	mock_reply = {"responder": false, "fala": ""}
+	await ps.send_message("marina", "??")
+	check(ps.thread("marina").size() == 3 and ps.thread("marina")[-1]["status"] == "visualizada", "NPC pode deixar no vácuo")
+
+	_set_hour(3)
+	check(NPCManager.is_asleep("marina"), "Marina dorme de madrugada")
+	await ps.send_message("marina", "tá acordada?")
+	check("marina" in ps.phone()["pending"], "mensagem fica pendente enquanto o NPC dorme")
+	mock_reply = {"fala": "acordei agora, q foi?", "emocao": "neutro"}
+	TimeManager.advance(5 * 60)
+	for i in 5:
+		await get_tree().process_frame
+	check(ps.thread("marina")[-1]["texto"] == "acordei agora, q foi?", "NPC responde quando acorda")
+
+	_set_hour(10)
+	var answered := false
+	for i in 20:
+		if ps.call_contact("marina") == "atendeu":
+			answered = true
+			break
+	check(answered and NPCManager.channel == NPCManager.LIGACAO, "ligação atendida")
+	mock_reply = {"fala": "Alô? Quem é?", "emocao": "desconfiado"}
+	await NPCManager.talk("Alô, Marina?")
+	check(GameState.log_entries[-1]["speaker"].ends_with("(ao telefone)"), "fala na ligação aparece no registro")
+	NPCManager.end_conversation()
+
+	var before := GameState.money()
+	check(ps.send_pix("marina", 10), "PIX enviado")
+	for i in 5:
+		await get_tree().process_frame
+	check(GameState.money() == before - 10 and ps.phone()["bank_log"][-1]["valor"] == -10, "PIX sai do saldo e entra no extrato")
+
+	NPCManager.state["marina"]["afeto"] = 50
+	NPCManager._apply_action("marina", {"tipo": "comecar_namoro"}, NPCManager.MENSAGEM)
+	check(NPCManager.relation_label("marina") == "Namorando", "namoro começa")
+	NPCManager._apply_action("marina", {"tipo": "bloquear"}, NPCManager.MENSAGEM)
+	check(not ps.can_reach("marina"), "NPC bloqueia o jogador")
+	await ps.send_message("marina", "pq me bloqueou")
+	check(ps.thread("marina")[-1]["status"] == "não entregue", "mensagem não entregue quando bloqueado")
+	NPCManager.state["marina"]["bloqueado"] = false
+
+	mock_reply = {"fala": "ei, vc vem hj?", "emocao": "carinhoso"}
+	var n_before := ps.thread("marina").size()
+	await ps._spontaneous("marina")
+	check(ps.thread("marina").size() == n_before + 1, "NPC manda mensagem por conta própria")
+
+	var panel = preload("res://ui/phone/phone_panel.gd").new()
+	add_child(panel)
+	for s in [["home", ""], ["threads", ""], ["thread", "marina"], ["contacts", ""], ["bank", ""]]:
+		panel.open(s[0], s[1])
+		await get_tree().process_frame
+		check(panel.body.get_child_count() > 0, "tela do celular: " + s[0])
+	panel.queue_free()
+	AIService.mock = Callable()
+
+
 func _ready() -> void:
 	Settings.api_key = ""
 	Settings.model = ""
@@ -103,6 +189,8 @@ func _ready() -> void:
 	await get_tree().create_timer(0.5).timeout
 	screen.queue_free()
 	await get_tree().process_frame
+
+	await _phone_tests()
 
 	var creator = preload("res://ui/character_creation.gd").new()
 	add_child(creator)
