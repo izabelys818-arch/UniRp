@@ -1,0 +1,17 @@
+{
+	"pao": {"nome": "Pão de forma", "preco": 8, "efeitos": {"saciedade": 25}},
+	"pao_queijo": {"nome": "Pão de queijo", "preco": 6, "efeitos": {"saciedade": 15}},
+	"coxinha": {"nome": "Coxinha", "preco": 8, "efeitos": {"saciedade": 20}},
+	"prato_feito": {"nome": "Prato feito", "preco": 25, "efeitos": {"saciedade": 55, "sanidade": 3}},
+	"miojo": {"nome": "Miojo", "preco": 4, "efeitos": {"saciedade": 22}},
+	"frutas": {"nome": "Saco de frutas", "preco": 10, "efeitos": {"saciedade": 18, "hidratacao": 10, "saude": 2}},
+	"agua": {"nome": "Garrafa de água", "preco": 4, "efeitos": {"hidratacao": 35}},
+	"refrigerante": {"nome": "Refrigerante", "preco": 7, "efeitos": {"hidratacao": 25, "saciedade": 5}},
+	"cafe": {"nome": "Café", "preco": 5, "efeitos": {"energia": 10, "hidratacao": 5}},
+	"energetico": {"nome": "Energético", "preco": 9, "efeitos": {"energia": 25, "sanidade": -3}},
+	"cerveja": {"nome": "Cerveja", "preco": 10, "efeitos": {"hidratacao": 10, "sanidade": 8, "energia": -5}},
+	"cachaca": {"nome": "Dose de cachaça", "preco": 6, "efeitos": {"sanidade": 12, "saude": -2, "energia": -8}},
+	"cigarro": {"nome": "Maço de cigarro", "preco": 15, "efeitos": {"sanidade": 10, "saude": -3}},
+	"lenco_umedecido": {"nome": "Lenço umedecido", "preco": 9, "efeitos": {"higiene": 25}},
+	"analgesico": {"nome": "Analgésico", "preco": 12, "efeitos": {"saude": 10}}
+}

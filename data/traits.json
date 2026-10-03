@@ -1,0 +1,14 @@
+[
+	{"id": "carismatico", "nome": "Carismático", "descricao": "Fala bem e cativa as pessoas com facilidade."},
+	{"id": "intimidador", "nome": "Intimidador", "descricao": "Tem presença ameaçadora; as pessoas pensam duas vezes antes de te enfrentar."},
+	{"id": "mentiroso", "nome": "Mentiroso nato", "descricao": "Mente com naturalidade e é difícil perceber."},
+	{"id": "desconfiado", "nome": "Desconfiado", "descricao": "Percebe quando algo está errado e não acredita fácil."},
+	{"id": "ansioso", "nome": "Ansioso", "descricao": "Nervoso e inquieto. A sanidade cai mais rápido."},
+	{"id": "resistente", "nome": "Resistente", "descricao": "Aguenta fome, cansaço e dor melhor que a maioria."},
+	{"id": "forte", "nome": "Forte", "descricao": "Fisicamente forte, bom de briga."},
+	{"id": "inteligente", "nome": "Inteligente", "descricao": "Raciocínio rápido, vocabulário amplo."},
+	{"id": "atraente", "nome": "Atraente", "descricao": "Chama atenção pela aparência."},
+	{"id": "frio", "nome": "Frio", "descricao": "Demonstra pouca emoção. Difícil de ler, difícil de abalar."},
+	{"id": "empatico", "nome": "Empático", "descricao": "Entende como os outros se sentem; as pessoas se abrem com você."},
+	{"id": "impulsivo", "nome": "Impulsivo", "descricao": "Age antes de pensar. Explosivo."}
+]

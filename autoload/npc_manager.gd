@@ -1,0 +1,209 @@
+extends Node
+
+signal conversation_changed(npc_id: String)
+signal npc_thinking(npc_id: String, thinking: bool)
+signal npc_replied(npc_id: String, data: Dictionary)
+
+const Prompts = preload("res://ai/prompts.gd")
+const MAX_HISTORY := 24
+const MAX_MEMORIES := 25
+const REL_KEYS := ["confianca", "afeto", "medo", "suspeita"]
+
+var npcs: Dictionary = {}
+var state: Dictionary = {}
+var talking_to: String = ""
+var busy: bool = false
+
+
+func _ready() -> void:
+	npcs = World._load_json("res://data/npcs.json")
+	TimeManager.time_advanced.connect(_on_time_advanced)
+
+
+func reset_state(origin: Dictionary) -> void:
+	state.clear()
+	talking_to = ""
+	busy = false
+	var known: Array = origin.get("conhecidos", [])
+	for id in npcs:
+		var is_known: bool = id in known
+		state[id] = {
+			"confianca": 15 if is_known else 0,
+			"afeto": 15 if is_known else 0,
+			"medo": 0,
+			"suspeita": 0 if is_known else 15,
+			"memorias": ["É um vizinho conhecido de longa data, mora no bairro há anos."] if is_known else [],
+			"historico": [],
+			"vivo": true,
+			"conhece_nome": is_known,
+			"sabe_nome_jogador": is_known,
+			"dinheiro": int(npcs[id]["dinheiro"]),
+			"evita_ate": 0,
+			"emocao": "neutro",
+		}
+
+
+func location_of(npc_id: String, h: int = -1) -> String:
+	if h < 0:
+		h = TimeManager.hour()
+	for slot in npcs[npc_id]["rotina"]:
+		if World.hour_in_range(h, int(slot["de"]), int(slot["ate"])):
+			return slot["local"]
+	return ""
+
+
+func npcs_here() -> Array:
+	var here := World.current_id()
+	var out: Array = []
+	for id in npcs:
+		if state[id]["vivo"] and location_of(id) == here:
+			out.append(id)
+	return out
+
+
+func display_name(npc_id: String) -> String:
+	var n: Dictionary = npcs[npc_id]
+	return n["nome"] if state[npc_id]["conhece_nome"] else n["apelido_visual"]
+
+
+func start_conversation(npc_id: String) -> void:
+	if busy or not GameState.active:
+		return
+	var st: Dictionary = state[npc_id]
+	if TimeManager.total_minutes < int(st["evita_ate"]):
+		GameState.add_log("%s vira o rosto e te ignora." % display_name(npc_id), "info")
+		return
+	talking_to = npc_id
+	GameState.add_log("Você se aproxima de %s. %s" % [display_name(npc_id), npcs[npc_id]["aparencia"]], "info")
+	conversation_changed.emit(npc_id)
+
+
+func end_conversation() -> void:
+	if talking_to == "":
+		return
+	talking_to = ""
+	conversation_changed.emit("")
+
+
+func talk(text: String) -> void:
+	var id := talking_to
+	text = text.strip_edges()
+	if id == "" or busy or text == "" or not GameState.active:
+		return
+	busy = true
+	var st: Dictionary = state[id]
+	GameState.add_log(text, "player", GameState.player["name"])
+	st["historico"].append({"role": "user", "content": text})
+	TimeManager.advance(3)
+	npc_thinking.emit(id, true)
+
+	var messages: Array = [{"role": "system", "content": Prompts.npc_system(id)}]
+	messages.append_array(st["historico"].slice(-MAX_HISTORY))
+	var res: Dictionary = await AIService.chat(messages, 350)
+
+	npc_thinking.emit(id, false)
+	busy = false
+	if not res["ok"]:
+		st["historico"].pop_back()
+		GameState.add_log(res["error"], "error")
+		return
+	st["historico"].append({"role": "assistant", "content": res["text"]})
+	if st["historico"].size() > MAX_HISTORY * 2:
+		st["historico"] = st["historico"].slice(-MAX_HISTORY)
+	var data := Prompts.parse_npc_reply(res["text"])
+	_apply_reply(id, data)
+
+
+func give_money(amount: int) -> void:
+	if talking_to == "" or busy or amount <= 0:
+		return
+	if GameState.money() < amount:
+		GameState.add_log("Você não tem R$ %d." % amount, "info")
+		return
+	GameState.add_money(-amount)
+	state[talking_to]["dinheiro"] = int(state[talking_to]["dinheiro"]) + amount
+	talk("*entrega R$ %d em dinheiro*" % amount)
+
+
+func _apply_reply(id: String, data: Dictionary) -> void:
+	var st: Dictionary = state[id]
+	var n: Dictionary = npcs[id]
+
+	if data.get("revela_nome", false) and not st["conhece_nome"]:
+		st["conhece_nome"] = true
+	if data.get("aprendeu_nome_jogador", false):
+		st["sabe_nome_jogador"] = true
+
+	var emo := str(data.get("emocao", "neutro"))
+	st["emocao"] = emo
+
+	var body := str(data.get("acao_corporal", "")).strip_edges()
+	var speech := str(data.get("fala", "")).strip_edges()
+	var line := ""
+	if body != "":
+		line += "*" + body + "* "
+	line += speech
+	GameState.add_log(line.strip_edges(), "npc", display_name(id))
+
+	var rel = data.get("relacao", {})
+	if typeof(rel) == TYPE_DICTIONARY:
+		for k in REL_KEYS:
+			if rel.has(k):
+				var delta := clampi(int(rel[k]), -15, 15)
+				var lo := 0 if k in ["medo", "suspeita"] else -100
+				st[k] = clampi(int(st[k]) + delta, lo, 100)
+
+	var mem := str(data.get("memoria", "")).strip_edges()
+	if mem != "":
+		st["memorias"].append("[%s] %s" % [TimeManager.clock_str(), mem])
+		if st["memorias"].size() > MAX_MEMORIES:
+			st["memorias"].pop_front()
+
+	var acts = data.get("acoes", [])
+	if typeof(acts) == TYPE_ARRAY:
+		for a in acts:
+			if typeof(a) == TYPE_DICTIONARY:
+				_apply_action(id, a)
+
+	npc_replied.emit(id, data)
+
+
+func _apply_action(id: String, a: Dictionary) -> void:
+	var st: Dictionary = state[id]
+	var who := display_name(id)
+	match str(a.get("tipo", "")):
+		"dar_dinheiro":
+			var v := mini(mini(int(a.get("valor", 0)), int(st["dinheiro"])), 500)
+			if v > 0:
+				st["dinheiro"] = int(st["dinheiro"]) - v
+				GameState.add_money(v)
+				GameState.add_log("%s te deu R$ %d." % [who, v], "event")
+		"dar_item":
+			var item := str(a.get("item", ""))
+			if World.items.has(item):
+				GameState.add_item(item)
+				GameState.add_log("%s te deu: %s." % [who, World.item_name(item)], "event")
+		"ir_embora":
+			st["evita_ate"] = TimeManager.total_minutes + 180
+			GameState.add_log("%s encerra a conversa e se afasta." % who, "event")
+			end_conversation()
+		"atacar":
+			var dmg := clampi(int(a.get("dano", 10)), 5, 40)
+			GameState.add_log("%s te ataca! (-%d de saúde)" % [who, dmg], "danger")
+			NeedsSystem.apply({"saude": -dmg, "sanidade": -10}, "atacado por %s" % npcs[id]["nome"])
+
+
+func _on_time_advanced(_minutes: int, _sleeping: bool) -> void:
+	if talking_to != "" and location_of(talking_to) != World.current_id():
+		GameState.add_log("%s vai embora." % display_name(talking_to), "info")
+		end_conversation()
+
+
+func to_dict() -> Dictionary:
+	return {"state": state}
+
+
+func from_dict(d: Dictionary) -> void:
+	state = d["state"]
+	talking_to = ""
+	busy = false

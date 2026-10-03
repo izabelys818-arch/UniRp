@@ -1,0 +1,99 @@
+{
+	"apartamento": {
+		"nome": "Seu apartamento",
+		"tipo": "casa",
+		"privado": true,
+		"descricao": "Um quarto-e-sala apertado no terceiro andar de um prédio sem elevador. O reboco descasca, a geladeira faz barulho e da janela dá pra ver a praça.",
+		"abre": 0, "fecha": 24, "x": 30, "y": 40,
+		"loja": [],
+		"servicos": ["dormir_casa", "banho_casa"]
+	},
+	"praca": {
+		"nome": "Praça Central",
+		"tipo": "publico",
+		"descricao": "Bancos de concreto rachados, pombos, um chafariz seco e um coreto pichado. De dia tem movimento; à noite, só quem não tem pra onde ir.",
+		"abre": 0, "fecha": 24, "x": 40, "y": 45,
+		"loja": [],
+		"servicos": ["dormir_rua", "bico"]
+	},
+	"bar": {
+		"nome": "Bar do Zé",
+		"tipo": "bar",
+		"descricao": "Balcão de fórmica grudento, TV passando futebol sem som, cheiro de fritura e cerveja choca. Uma porta nos fundos vive fechada.",
+		"abre": 16, "fecha": 3, "x": 55, "y": 50,
+		"loja": ["cerveja", "cachaca", "cigarro", "coxinha", "agua"],
+		"servicos": []
+	},
+	"mercado": {
+		"nome": "Mercado Bom Preço",
+		"tipo": "loja",
+		"descricao": "Corredores estreitos, luz fluorescente piscando e uma caixa só funcionando. Câmeras velhas nos cantos.",
+		"abre": 7, "fecha": 22, "x": 35, "y": 30,
+		"loja": ["pao", "miojo", "frutas", "agua", "refrigerante", "lenco_umedecido", "analgesico", "energetico", "cigarro"],
+		"servicos": []
+	},
+	"lanchonete": {
+		"nome": "Lanchonete Estrela",
+		"tipo": "comida",
+		"descricao": "Mesas de plástico, um balcão com estufa de salgados e um rádio tocando sertanejo. O café é ralo, mas é barato.",
+		"abre": 6, "fecha": 23, "x": 45, "y": 35,
+		"loja": ["cafe", "pao_queijo", "coxinha", "prato_feito", "refrigerante", "agua"],
+		"servicos": []
+	},
+	"hospital": {
+		"nome": "Hospital Municipal São Lucas",
+		"tipo": "servico",
+		"descricao": "Corredores lotados, cheiro de álcool e desinfetante. A recepção tem uma fila que nunca acaba. Atendimento particular custa caro.",
+		"abre": 0, "fecha": 24, "x": 70, "y": 25,
+		"loja": ["analgesico", "agua"],
+		"servicos": ["atendimento"]
+	},
+	"delegacia": {
+		"nome": "Delegacia 4ª DP",
+		"tipo": "servico",
+		"descricao": "Prédio cinza com grades nas janelas. Um policial entediado no balcão e cartazes de procurados desbotados na parede.",
+		"abre": 0, "fecha": 24, "x": 60, "y": 35,
+		"loja": [],
+		"servicos": []
+	},
+	"parque": {
+		"nome": "Parque das Águas",
+		"tipo": "publico",
+		"descricao": "Trilhas de terra entre árvores altas e um lago escuro. Bonito de dia. À noite, a iluminação falha e ninguém escuta nada lá dentro.",
+		"abre": 0, "fecha": 24, "x": 80, "y": 60,
+		"loja": [],
+		"servicos": ["dormir_rua"]
+	},
+	"rodoviaria": {
+		"nome": "Rodoviária",
+		"tipo": "publico",
+		"descricao": "Ônibus chegando e partindo, ambulantes, taxistas oferecendo corrida e gente dormindo nos bancos de metal.",
+		"abre": 0, "fecha": 24, "x": 15, "y": 60,
+		"loja": ["agua", "cafe", "coxinha", "energetico"],
+		"servicos": ["dormir_rua", "bico"]
+	},
+	"beco": {
+		"nome": "Beco da Rua 7",
+		"tipo": "publico",
+		"descricao": "Um corredor estreito entre prédios, cheio de caçambas, poças e pichações. Quem passa por aqui geralmente não quer ser visto.",
+		"abre": 0, "fecha": 24, "x": 58, "y": 62,
+		"loja": [],
+		"servicos": ["dormir_rua"]
+	},
+	"igreja": {
+		"nome": "Igreja de Santa Rita",
+		"tipo": "publico",
+		"descricao": "Igreja antiga de paredes grossas e vitrais quebrados. Silenciosa, fresca, com velas acesas e cheiro de incenso.",
+		"abre": 6, "fecha": 20, "x": 25, "y": 25,
+		"loja": [],
+		"servicos": ["rezar"]
+	},
+	"pensao": {
+		"nome": "Pensão da Dona Cida",
+		"tipo": "hospedagem",
+		"descricao": "Casarão velho dividido em quartinhos. Banheiro coletivo, regras escritas à mão na parede e uma senhora que vê tudo.",
+		"abre": 0, "fecha": 24, "x": 20, "y": 45,
+		"loja": [],
+		"servicos": ["dormir_pensao", "banho_pensao"]
+	}
+}
