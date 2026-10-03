@@ -1,7 +1,5 @@
 extends RefCounted
 
-const EMOTIONS := ["neutro", "feliz", "irritado", "desconfiado", "assustado", "triste", "ameacador", "interessado", "nervoso", "sarcastico", "carinhoso", "entediado"]
-
 
 static func player_visible_description(p: Dictionary) -> String:
 	var parts: Array = ["%s, aparentando uns %d anos" % [p["gender"], int(p["age"])]]
@@ -72,13 +70,14 @@ FORMATO DE RESPOSTA: responda SOMENTE com um objeto JSON válido, nada fora dele
 {
  "acao_corporal": "gesto ou linguagem corporal curta em terceira pessoa (ex: cruza os braços e olha de lado), ou vazio",
  "fala": "o que você diz em voz alta (pode ser vazio se só reagir com gesto)",
- "emocao": "uma de: %s",
+ "emocao": "a expressão do seu ROSTO agora, exatamente uma de: %s",
  "relacao": {"confianca": 0, "afeto": 0, "medo": 0, "suspeita": 0},
  "memoria": "fato novo e importante para lembrar sobre o jogador (ex: disse que se chama X, mentiu sobre Y, me ameaçou), ou vazio",
  "revela_nome": false,
  "aprendeu_nome_jogador": false,
  "acoes": []
 }
+- "emocao" aparece no seu rosto para o jogador: seja expressivo e coerente. Se algo te abalar de verdade, chore ("chorando"); se for provocado ou humilhado, fique "irritado" ou "furioso"; se ameaçado, "assustado". Não fique sempre "neutro".
 - "relacao": variação desta fala, cada valor entre -15 e 15.
 - "revela_nome": true só se nesta fala você disse seu nome ao jogador.
 - "aprendeu_nome_jogador": true só se o jogador acabou de dizer o nome dele.
@@ -93,7 +92,7 @@ FORMATO DE RESPOSTA: responda SOMENTE com um objeto JSON válido, nada fora dele
 		TimeManager.clock_str(), TimeManager.period(),
 		player_visible_description(p), player_name,
 		int(st["confianca"]), int(st["afeto"]), int(st["medo"]), int(st["suspeita"]),
-		memories, " | ".join(EMOTIONS), items_ids,
+		memories, " | ".join(World.emotions.keys()), items_ids,
 	]
 
 

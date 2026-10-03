@@ -3,6 +3,7 @@ extends Control
 signal navigate(screen: String, args: Dictionary)
 
 const UI = preload("res://ui/ui_theme.gd")
+const PortraitView = preload("res://ui/portrait_view.gd")
 
 var args: Dictionary = {}
 
@@ -17,8 +18,9 @@ var input: LineEdit
 var send_btn: Button
 var money_spin: SpinBox
 var give_btn: Button
-var portrait: ColorRect
-var portrait_initials: Label
+var portrait: PortraitView
+var emotion_label: Label
+var portrait_status: Label
 var npc_name_label: Label
 var npc_info_label: Label
 var end_btn: Button
@@ -44,6 +46,8 @@ func _ready() -> void:
 	NPCManager.conversation_changed.connect(_queue_refresh.unbind(1))
 	NPCManager.npc_replied.connect(_queue_refresh.unbind(2))
 	NPCManager.npc_thinking.connect(_on_npc_thinking)
+	PortraitService.portrait_ready.connect(_queue_refresh.unbind(2))
+	PortraitService.status_changed.connect(_on_portrait_status)
 	_refresh()
 
 	if args.has("new_origin"):
@@ -77,7 +81,7 @@ func _build() -> void:
 	# Coluna esquerda: status e inventário
 	var left := UI.vbox(6)
 	var left_panel := UI.panel(left)
-	left_panel.custom_minimum_size = Vector2(250, 0)
+	left_panel.custom_minimum_size = Vector2(210, 0)
 	cols.add_child(left_panel)
 	left.add_child(UI.title("Estado", 18))
 	for k in NeedsSystem.KEYS:
@@ -93,32 +97,32 @@ func _build() -> void:
 	inventory_box = UI.vbox(4)
 	left.add_child(UI.scroll(inventory_box))
 
+	# Retrato do NPC (estilo I'm Not Human)
+	var face_col := UI.vbox(6)
+	var face_panel := UI.panel(face_col)
+	face_panel.custom_minimum_size = Vector2(320, 0)
+	cols.add_child(face_panel)
+	npc_name_label = UI.title("", 20)
+	npc_name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	face_col.add_child(npc_name_label)
+	portrait = PortraitView.new()
+	portrait.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	face_col.add_child(portrait)
+	emotion_label = UI.title("", 18)
+	emotion_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	face_col.add_child(emotion_label)
+	npc_info_label = UI.label("", 13, UI.MUTED)
+	face_col.add_child(npc_info_label)
+	portrait_status = UI.label("", 12, UI.MUTED)
+	face_col.add_child(portrait_status)
+	end_btn = UI.button("Encerrar conversa", NPCManager.end_conversation)
+	face_col.add_child(end_btn)
+
 	# Centro: conversa e narrativa
 	var center := UI.vbox(8)
 	var center_panel := UI.panel(center)
 	center_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	cols.add_child(center_panel)
-
-	var header := UI.hbox(12)
-	center.add_child(header)
-	portrait = ColorRect.new()
-	portrait.custom_minimum_size = Vector2(64, 64)
-	header.add_child(portrait)
-	portrait_initials = UI.title("", 26)
-	portrait_initials.set_anchors_preset(Control.PRESET_FULL_RECT)
-	portrait_initials.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	portrait_initials.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	portrait_initials.add_theme_color_override("font_color", Color.WHITE)
-	portrait.add_child(portrait_initials)
-	var hv := UI.vbox(2)
-	hv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	header.add_child(hv)
-	npc_name_label = UI.title("", 20)
-	hv.add_child(npc_name_label)
-	npc_info_label = UI.label("", 13, UI.MUTED)
-	hv.add_child(npc_info_label)
-	end_btn = UI.button("Encerrar conversa", NPCManager.end_conversation)
-	header.add_child(end_btn)
 
 	log_view = RichTextLabel.new()
 	log_view.bbcode_enabled = true
@@ -141,6 +145,9 @@ func _build() -> void:
 	input_row.add_child(input)
 	send_btn = UI.button("Falar", _send)
 	input_row.add_child(send_btn)
+	var money_row := UI.hbox(6)
+	center.add_child(money_row)
+	input_row = money_row
 	money_spin = SpinBox.new()
 	money_spin.min_value = 1
 	money_spin.max_value = 100000
@@ -153,7 +160,7 @@ func _build() -> void:
 	# Coluna direita: local, pessoas, ações, lojas, viagem
 	side_box = UI.vbox(6)
 	var right_panel := UI.panel(UI.scroll(side_box))
-	right_panel.custom_minimum_size = Vector2(320, 0)
+	right_panel.custom_minimum_size = Vector2(290, 0)
 	cols.add_child(right_panel)
 
 
@@ -200,9 +207,9 @@ func _refresh_conversation() -> void:
 	var id := NPCManager.talking_to
 	var can_act := GameState.active and not NPCManager.busy and not narrating
 	if id == "":
-		portrait.color = UI.PANEL_LIGHT
-		portrait_initials.text = "?"
+		portrait.show_npc("", "neutro", UI.PANEL_LIGHT, "?")
 		npc_name_label.text = "Ninguém"
+		emotion_label.text = ""
 		npc_info_label.text = "Escolha alguém na lista \"Pessoas aqui\" para conversar."
 		input.placeholder_text = "Escolha alguém para conversar..."
 		input.editable = false
@@ -213,11 +220,12 @@ func _refresh_conversation() -> void:
 	var n: Dictionary = NPCManager.npcs[id]
 	var st: Dictionary = NPCManager.state[id]
 	var shown := NPCManager.display_name(id)
-	portrait.color = Color(n["cor"])
-	portrait_initials.text = shown.substr(0, 1).to_upper()
+	var emo := str(st["emocao"])
+	portrait.show_npc(id, emo, Color(n["cor"]), shown.substr(0, 1).to_upper())
 	npc_name_label.text = shown
-	npc_info_label.text = "Humor: %s  •  Confiança %d  •  Afeto %d  •  Medo %d  •  Suspeita %d" % [
-		st["emocao"], int(st["confianca"]), int(st["afeto"]), int(st["medo"]), int(st["suspeita"])]
+	emotion_label.text = World.emotions.get(emo, {"pt": emo})["pt"].to_upper()
+	npc_info_label.text = "Confiança %d  •  Afeto %d  •  Medo %d  •  Suspeita %d" % [
+		int(st["confianca"]), int(st["afeto"]), int(st["medo"]), int(st["suspeita"])]
 	input.placeholder_text = "Fale algo... use *asteriscos* para ações (ex: *entrego um cigarro*)"
 	input.editable = can_act
 	send_btn.disabled = not can_act
@@ -239,8 +247,13 @@ func _refresh_side() -> void:
 	if here.is_empty():
 		side_box.add_child(UI.label("Não há ninguém por perto.", 14, UI.MUTED))
 	for id in here:
+		PortraitService.request(id, "neutro")
 		var b := UI.button(NPCManager.display_name(id), NPCManager.start_conversation.bind(id))
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.custom_minimum_size = Vector2(0, 56)
+		b.add_theme_constant_override("icon_max_width", 42)
+		b.icon = PortraitService.get_texture(id, "neutro")
+		b.expand_icon = true
 		b.disabled = not can_act or id == NPCManager.talking_to
 		side_box.add_child(b)
 
@@ -290,6 +303,10 @@ func _on_npc_thinking(npc_id: String, thinking: bool) -> void:
 	_queue_refresh()
 	if not thinking:
 		input.grab_focus.call_deferred()
+
+
+func _on_portrait_status(text: String) -> void:
+	portrait_status.text = text
 
 
 func _on_narrator_busy(busy: bool) -> void:

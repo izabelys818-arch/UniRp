@@ -1,0 +1,18 @@
+{
+	"neutro": {"pt": "neutro", "en": "a neutral, guarded, serious expression"},
+	"feliz": {"pt": "feliz", "en": "a genuine warm smile, happy bright eyes"},
+	"rindo": {"pt": "rindo", "en": "laughing out loud, eyes squinting, mouth wide open in laughter"},
+	"triste": {"pt": "triste", "en": "sad, downcast eyes, slight frown, melancholic and tired"},
+	"chorando": {"pt": "chorando", "en": "crying hard, tears streaming down the cheeks, red swollen watery eyes, trembling lips"},
+	"irritado": {"pt": "irritado", "en": "annoyed and irritated, furrowed brow, tight pressed lips"},
+	"furioso": {"pt": "furioso", "en": "furious and enraged, shouting, teeth showing, veins on the forehead, intense glare"},
+	"desconfiado": {"pt": "desconfiado", "en": "suspicious, narrowed eyes, sideways glance, skeptical"},
+	"assustado": {"pt": "assustado", "en": "terrified, wide open eyes, raised eyebrows, mouth slightly open, pale skin"},
+	"nervoso": {"pt": "nervoso", "en": "nervous and anxious, biting the lip, light sweat, eyes darting"},
+	"sarcastico": {"pt": "sarcástico", "en": "sarcastic smirk, one eyebrow raised, mocking look"},
+	"ameacador": {"pt": "ameaçador", "en": "menacing, cold dead stare, faint sinister smile, head slightly tilted down"},
+	"carinhoso": {"pt": "carinhoso", "en": "tender and affectionate, soft eyes, gentle smile"},
+	"surpreso": {"pt": "surpreso", "en": "shocked and surprised, eyebrows raised high, mouth open"},
+	"envergonhado": {"pt": "envergonhado", "en": "embarrassed, blushing cheeks, looking away, awkward smile"},
+	"entediado": {"pt": "entediado", "en": "bored, half-closed eyes, unimpressed, slouching"}
+}

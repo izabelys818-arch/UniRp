@@ -71,12 +71,40 @@ func _ready() -> void:
 	check(SaveManager.load_game(), "carregou o save")
 	check(GameState.money() == saved_money and TimeManager.total_minutes == saved_time, "save restaurou dinheiro e hora")
 
+	PortraitService.dir = "user://test_portraits"
+	check(World.emotions.has("chorando"), "emoção chorando existe")
+	check(PortraitService.best_texture("marina", "chorando") == null, "sem rosto antes de gerar")
+	PortraitService.request("marina", "chorando")
+	check(PortraitService.queue.is_empty(), "sem modelo de imagem, não gera nada")
+	var img := Image.create(800, 1000, false, Image.FORMAT_RGB8)
+	img.fill(Color.DARK_SLATE_GRAY)
+	PortraitService.store("marina", "neutro", img)
+	PortraitService.cache.clear()
+	var tex := PortraitService.best_texture("marina", "chorando")
+	check(tex != null, "expressão faltando usa o rosto neutro (lido do disco)")
+	check(tex != null and tex.get_width() == 640, "rosto redimensionado para 640px")
+	var png := FileAccess.get_file_as_bytes(PortraitService.file_path("marina", "neutro"))
+	check(AIService.decode_image(png) != null, "decodifica PNG")
+
+	World.move_player_to("lanchonete")
+	TimeManager.total_minutes = (TimeManager.day() * 1440) + 9 * 60
+	NPCManager.start_conversation("marina")
+	NPCManager._apply_reply("marina", {"fala": "...", "emocao": "CHORANDO"})
+	check(NPCManager.state["marina"]["emocao"] == "chorando", "emoção normalizada")
+	NPCManager._apply_reply("marina", {"fala": "...", "emocao": "inventada"})
+	check(NPCManager.state["marina"]["emocao"] == "neutro", "emoção desconhecida vira neutro")
+	NPCManager._apply_reply("marina", {"fala": "...", "emocao": "chorando"})
+
 	var screen = preload("res://ui/game_screen.gd").new()
 	screen.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(screen)
 	await get_tree().process_frame
 	await get_tree().process_frame
 	check(screen.side_box.get_child_count() > 5, "tela do jogo montou painel lateral")
+	check(screen.portrait.front.texture != null, "retrato aparece na conversa")
+	check(screen.emotion_label.text == "CHORANDO", "rótulo de emoção mostrado")
+	await get_tree().create_timer(0.5).timeout
+	PortraitService.clear_all()
 	screen.queue_free()
 	await get_tree().process_frame
 	TimeManager.advance(10)
