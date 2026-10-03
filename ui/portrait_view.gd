@@ -5,6 +5,7 @@ const JOLT := ["furioso", "irritado", "ameacador", "surpreso", "assustado"]
 const TREMBLE := {"assustado": 1.6, "nervoso": 0.8, "chorando": 1.0, "furioso": 0.9}
 const CROSSFADE := 0.35
 
+var min_size: Vector2 = Vector2(300, 400)
 var npc_id: String = ""
 var emotion: String = "neutro"
 var back: TextureRect
@@ -18,13 +19,13 @@ var jolt: float = 0.0
 
 func _ready() -> void:
 	clip_contents = true
-	custom_minimum_size = Vector2(300, 400)
+	custom_minimum_size = min_size
 
 	fallback = ColorRect.new()
 	fallback.color = UI.PANEL_LIGHT
 	fallback.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(fallback)
-	initials = UI.title("?", 96)
+	initials = UI.title("?", int(min_size.y * 0.24))
 	initials.add_theme_color_override("font_color", Color(1, 1, 1, 0.85))
 	initials.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	initials.vertical_alignment = VERTICAL_ALIGNMENT_CENTER

@@ -103,9 +103,39 @@ func _ready() -> void:
 	check(screen.side_box.get_child_count() > 5, "tela do jogo montou painel lateral")
 	check(screen.portrait.front.texture != null, "retrato aparece na conversa")
 	check(screen.emotion_label.text == "CHORANDO", "rótulo de emoção mostrado")
+	check(screen.player_portrait != null, "retrato do jogador existe")
 	await get_tree().create_timer(0.5).timeout
-	PortraitService.clear_all()
 	screen.queue_free()
+	await get_tree().process_frame
+
+	var creator = preload("res://ui/character_creation.gd").new()
+	add_child(creator)
+	await get_tree().process_frame
+	creator.name_edit.text = "Joana"
+	creator.gender_opt.select(1)
+	creator._randomize_look()
+	creator.look_opts["cabelo"].select(1)
+	creator.extra_edit.text = "sorriso torto"
+	var en: String = creator.describe(1)
+	var pt: String = creator.describe(0)
+	print("EN: ", en)
+	print("PT: ", pt)
+	check(en.begins_with("a 28-year-old woman with"), "descrição em inglês para a IA de imagem")
+	check("careca" in pt and "sorriso torto" in pt, "descrição em português com careca e detalhes extras")
+	var photo := Image.create(1200, 800, false, Image.FORMAT_RGB8)
+	photo.fill(Color.BROWN)
+	var photo_path := OS.get_user_data_dir() + "/test_photo.png"
+	photo.save_png(photo_path)
+	creator._on_photo_selected(photo_path)
+	var draft := PortraitService.get_texture("player_draft", "neutro")
+	check(draft != null and absf(float(draft.get_width()) / draft.get_height() - 0.75) < 0.01, "foto importada recortada em 3:4")
+	creator._start()
+	check(GameState.player["name"] == "Joana" and GameState.player["appearance_en"] == en, "personagem criado com aparência")
+	check(PortraitService.get_texture("player", "neutro") != null, "rosto do rascunho virou o rosto do jogador")
+	check(PortraitService.get_texture("player_draft", "neutro") == null, "rascunho limpo")
+	creator.queue_free()
+	DirAccess.remove_absolute(photo_path)
+	PortraitService.clear_all()
 	await get_tree().process_frame
 	TimeManager.advance(10)
 

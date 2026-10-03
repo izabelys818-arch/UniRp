@@ -10,10 +10,12 @@ var items: Dictionary = {}
 var origins: Array = []
 var traits: Array = []
 var emotions: Dictionary = {}
+var appearance: Dictionary = {}
 
 
 func _ready() -> void:
 	emotions = _load_json("res://data/emotions.json")
+	appearance = _load_json("res://data/appearance.json")
 	locations = _load_json("res://data/locations.json")
 	items = _load_json("res://data/items.json")
 	origins = _load_json("res://data/origins.json")

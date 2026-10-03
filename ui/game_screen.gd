@@ -19,6 +19,9 @@ var send_btn: Button
 var money_spin: SpinBox
 var give_btn: Button
 var portrait: PortraitView
+var player_portrait: PortraitView
+var player_name_label: Label
+var player_state_label: Label
 var emotion_label: Label
 var portrait_status: Label
 var npc_name_label: Label
@@ -83,17 +86,24 @@ func _build() -> void:
 	var left_panel := UI.panel(left)
 	left_panel.custom_minimum_size = Vector2(210, 0)
 	cols.add_child(left_panel)
-	left.add_child(UI.title("Estado", 18))
+	player_name_label = UI.title(GameState.player.get("name", ""), 17)
+	left.add_child(player_name_label)
+	player_portrait = PortraitView.new()
+	player_portrait.min_size = Vector2(190, 220)
+	left.add_child(player_portrait)
+	player_state_label = UI.label("", 12, UI.MUTED)
+	player_state_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	left.add_child(player_state_label)
 	for k in NeedsSystem.KEYS:
-		left.add_child(UI.label(NeedsSystem.LABELS[k], 13, UI.MUTED))
+		left.add_child(UI.label(NeedsSystem.LABELS[k], 12, UI.MUTED))
 		var bar := ProgressBar.new()
 		bar.max_value = 100
-		bar.custom_minimum_size = Vector2(0, 16)
+		bar.custom_minimum_size = Vector2(0, 12)
 		bar.show_percentage = false
 		left.add_child(bar)
 		bars[k] = bar
 	left.add_child(HSeparator.new())
-	left.add_child(UI.title("Inventário", 18))
+	left.add_child(UI.title("Inventário", 16))
 	inventory_box = UI.vbox(4)
 	left.add_child(UI.scroll(inventory_box))
 
@@ -186,6 +196,11 @@ func _refresh() -> void:
 			c = UI.DANGER
 		bars[k].add_theme_stylebox_override("fill", UI._box(c, 3, 0))
 
+	var pemo := player_emotion()
+	PortraitService.request(PortraitService.PLAYER, pemo)
+	player_portrait.show_npc(PortraitService.PLAYER, pemo, UI.PANEL_LIGHT, str(p.get("name", "?")).substr(0, 1).to_upper())
+	player_state_label.text = "" if pemo == "neutro" else World.emotions[pemo]["pt"].to_upper()
+
 	for c in inventory_box.get_children():
 		c.queue_free()
 	var inv: Dictionary = p.get("inventory", {})
@@ -201,6 +216,18 @@ func _refresh() -> void:
 
 	_refresh_conversation()
 	_refresh_side()
+
+
+static func player_emotion() -> String:
+	if NeedsSystem.get_value("saude") < 40.0:
+		return "machucado"
+	if NeedsSystem.get_value("energia") < 20.0:
+		return "exausto"
+	if NeedsSystem.get_value("sanidade") < 25.0:
+		return "nervoso"
+	if NeedsSystem.get_value("sanidade") < 45.0 or NeedsSystem.get_value("saciedade") < 15.0:
+		return "triste"
+	return "neutro"
 
 
 func _refresh_conversation() -> void:

@@ -14,5 +14,7 @@
 	"carinhoso": {"pt": "carinhoso", "en": "tender and affectionate, soft eyes, gentle smile"},
 	"surpreso": {"pt": "surpreso", "en": "shocked and surprised, eyebrows raised high, mouth open"},
 	"envergonhado": {"pt": "envergonhado", "en": "embarrassed, blushing cheeks, looking away, awkward smile"},
-	"entediado": {"pt": "entediado", "en": "bored, half-closed eyes, unimpressed, slouching"}
+	"entediado": {"pt": "entediado", "en": "bored, half-closed eyes, unimpressed, slouching"},
+	"exausto": {"pt": "exausto", "en": "completely exhausted, heavy drooping eyelids, deep dark circles under the eyes, pale tired skin"},
+	"machucado": {"pt": "machucado", "en": "badly hurt, fresh bruises and cuts on the face, a swollen black eye, dried blood, in pain"}
 }

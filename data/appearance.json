@@ -1,0 +1,125 @@
+{
+	"categorias": [
+		{"id": "pele", "nome": "Tom de pele", "opcoes": [
+			["pele muito clara", "very fair pale skin"],
+			["pele clara", "fair skin"],
+			["pele morena clara", "light olive-brown skin"],
+			["pele morena", "medium brown skin"],
+			["pele negra", "dark brown skin"],
+			["pele negra retinta", "very dark deep brown skin"]
+		]},
+		{"id": "tracos", "nome": "Traços / ascendência", "opcoes": [
+			["traços brasileiros miscigenados", "mixed Brazilian features"],
+			["traços europeus", "European features"],
+			["traços africanos", "African features"],
+			["traços asiáticos", "East Asian features"],
+			["traços indígenas", "Indigenous South American features"],
+			["traços árabes", "Middle Eastern features"],
+			["traços nordestinos", "Northeastern Brazilian features"]
+		]},
+		{"id": "corpo", "nome": "Corpo", "opcoes": [
+			["corpo magro", "slim thin build"],
+			["corpo médio", "average build"],
+			["corpo atlético", "athletic fit build"],
+			["corpo musculoso", "very muscular bodybuilder build"],
+			["acima do peso", "overweight chubby build"],
+			["obeso", "obese heavy build"],
+			["esquelético", "gaunt skeletal build, sunken cheeks"]
+		]},
+		{"id": "altura", "nome": "Altura", "opcoes": [
+			["estatura média", "average height"],
+			["baixo", "short"],
+			["alto", "tall"],
+			["muito alto", "very tall"]
+		]},
+		{"id": "rosto", "nome": "Formato do rosto", "opcoes": [
+			["rosto oval", "oval face"],
+			["rosto quadrado e mandíbula forte", "square face with a strong jaw"],
+			["rosto redondo", "round face"],
+			["rosto fino e anguloso", "narrow angular face with sharp cheekbones"],
+			["rosto marcado e envelhecido", "weathered, deeply lined face"]
+		]},
+		{"id": "cabelo", "nome": "Cabelo", "opcoes": [
+			["cabelo curto", "short hair"],
+			["careca", "completely bald head"],
+			["cabelo raspado", "buzz cut shaved hair"],
+			["cabelo médio", "medium-length hair"],
+			["cabelo longo", "long hair"],
+			["cabelo cacheado", "curly hair"],
+			["cabelo crespo black power", "big afro hair"],
+			["tranças", "braided hair, box braids"],
+			["dreadlocks", "dreadlocks"],
+			["moicano", "mohawk haircut"],
+			["coque", "hair in a bun"],
+			["rabo de cavalo", "hair in a ponytail"],
+			["franja", "hair with bangs"],
+			["cabelo desgrenhado", "messy unkempt hair"]
+		]},
+		{"id": "cor_cabelo", "nome": "Cor do cabelo", "opcoes": [
+			["preto", "black"],
+			["castanho escuro", "dark brown"],
+			["castanho claro", "light brown"],
+			["loiro", "blonde"],
+			["ruivo", "red ginger"],
+			["grisalho", "salt-and-pepper grey"],
+			["branco", "white"],
+			["pintado de azul", "dyed blue"],
+			["pintado de rosa", "dyed pink"],
+			["pintado de verde", "dyed green"],
+			["descolorido platinado", "bleached platinum"]
+		]},
+		{"id": "olhos", "nome": "Olhos", "opcoes": [
+			["olhos castanhos", "brown eyes"],
+			["olhos pretos", "dark black eyes"],
+			["olhos verdes", "green eyes"],
+			["olhos azuis", "blue eyes"],
+			["olhos cor de mel", "hazel amber eyes"],
+			["olhos cinza", "grey eyes"],
+			["olhos de cores diferentes", "heterochromia, one eye of each color"]
+		]},
+		{"id": "barba", "nome": "Barba / pelos faciais", "opcoes": [
+			["sem barba", "clean-shaven"],
+			["barba por fazer", "stubble"],
+			["cavanhaque", "goatee"],
+			["bigode", "thick mustache"],
+			["barba cheia", "full beard"],
+			["barba longa", "long untamed beard"]
+		]},
+		{"id": "roupa", "nome": "Roupa", "opcoes": [
+			["camiseta simples", "wearing a plain t-shirt"],
+			["moletom com capuz", "wearing a hoodie"],
+			["jaqueta de couro", "wearing a black leather jacket"],
+			["jaqueta jeans", "wearing a denim jacket"],
+			["camisa social", "wearing a button-up dress shirt"],
+			["terno", "wearing a suit and tie"],
+			["regata", "wearing a tank top"],
+			["vestido", "wearing a dress"],
+			["blusa elegante", "wearing an elegant blouse"],
+			["camisa de time de futebol", "wearing a football club jersey"],
+			["uniforme de trabalho", "wearing a work uniform"],
+			["roupa de academia", "wearing gym clothes"],
+			["roupas velhas e rasgadas", "wearing old torn dirty clothes"],
+			["sobretudo escuro", "wearing a dark long coat"]
+		]}
+	],
+	"marcas": [
+		["cicatriz no rosto", "a visible scar on the face"],
+		["tatuagem no pescoço", "a tattoo on the neck"],
+		["tatuagem no rosto", "a small tattoo on the face"],
+		["piercing no nariz", "a nose piercing"],
+		["piercings na orelha", "several ear piercings"],
+		["piercing na sobrancelha", "an eyebrow piercing"],
+		["sardas", "freckles"],
+		["óculos de grau", "wearing prescription glasses"],
+		["óculos escuros", "wearing dark sunglasses"],
+		["olheiras profundas", "deep dark circles under the eyes"],
+		["dente de ouro", "a gold tooth"],
+		["boné", "wearing a cap"],
+		["corrente de ouro", "wearing a gold chain"],
+		["maquiagem marcante", "bold makeup"],
+		["brincos grandes", "big earrings"],
+		["pintas no rosto", "beauty marks on the face"],
+		["nariz quebrado", "a crooked previously broken nose"],
+		["queimadura antiga", "an old burn scar"]
+	]
+}

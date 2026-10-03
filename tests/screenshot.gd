@@ -40,5 +40,18 @@ func _ready() -> void:
 	await RenderingServer.frame_post_draw
 	get_viewport().get_texture().get_image().save_png(OS.get_user_data_dir() + "/screenshot.png")
 	print("SHOT: ", OS.get_user_data_dir() + "/screenshot.png")
+	screen.queue_free()
+	var creator = preload("res://ui/character_creation.gd").new()
+	creator.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.add_child(creator)
+	creator.name_edit.text = "Rafa"
+	var img2 := Image.create(600, 800, false, Image.FORMAT_RGB8)
+	img2.fill(Color("#3d4a5a"))
+	PortraitService.store("player_draft", "neutro", img2)
+	creator._update_face_buttons()
+	for i in 20:
+		await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png(OS.get_user_data_dir() + "/screenshot_creator.png")
 	PortraitService.clear_all()
 	get_tree().quit()
