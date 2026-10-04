@@ -6,6 +6,7 @@ extends RefCounted
 # a frente fica em +z. O nó raiz é girado em 180° quando a casa olha para o norte.
 
 const Kit = preload("res://world3d/mesh_kit.gd")
+const Furn = preload("res://world3d/furn_lib.gd")
 
 const Y0 := 0.17
 const H := 2.9
@@ -496,9 +497,12 @@ func build_interior(s: Dictionary) -> Node3D:
 		_wall_z(kk, body, x0 + gar_w, zdiv, z1 - 0.01, it, wall_h, inner, [[zdiv + (z1 - zdiv) * 0.45 - 0.5, zdiv + (z1 - zdiv) * 0.45 + 0.5]])
 	_wall_z(kk, body, xs, zdiv, z1 - 0.01, it, wall_h, inner, [[zdiv + 0.15, zdiv + 1.85]])
 	# --- móveis ---
+	var use_models := Furn.available()
+	if use_models:
+		_furnish_models(node, rooms, st, w, d, zdiv, xs, ab)
 	var sofa_c := _c(SOFAS[rng.randi() % SOFAS.size()])
 	var wood := Color("#7a5a3a") if not ab else Color("#4a3a2a")
-	for r in rooms:
+	for r in (rooms if not use_models else []):
 		var rr: Rect2 = r[1]
 		var tipo: String = r[0]
 		match tipo:
@@ -565,6 +569,67 @@ func build_interior(s: Dictionary) -> Node3D:
 	node.add_child(light)
 	s["light"] = light
 	return node
+
+
+
+const KM := "res://assets/furniture_k/Models/%s.fbx"
+
+
+func _m(parent: Node3D, name: String, x: float, z: float, yaw: float, up: float = 0.0, scale_k: float = 0.2) -> Node3D:
+	return Furn.place(parent, KM % name, Vector3(x, Y0 + 0.075 + up, z), yaw, scale_k)
+
+
+func _furnish_models(node: Node3D, rooms: Array, st: Dictionary, w: float, d: float, zdiv: float, xs: float, ab: bool) -> void:
+	var tilt := 0.0
+	for r in rooms:
+		var rr: Rect2 = r[1]
+		var tipo: String = r[0]
+		var cx := rr.get_center().x
+		var cz := rr.get_center().y
+		match tipo:
+			"quarto", "quarto2":
+				var wide_room: bool = rr.size.x > 2.9
+				var bedn := "bedDouble" if wide_room else "bedSingle"
+				var bx: float = rr.position.x + (1.2 if wide_room else rr.size.x / 2.0)
+				_m(node, bedn, bx, rr.position.y + 1.25, tilt)
+				_m(node, "cabinetBed", bx + (1.3 if wide_room else 0.9), rr.position.y + 0.4, tilt)
+				_m(node, "bookcaseClosed", rr.end.x - 0.35, rr.position.y + 1.4, -PI / 2.0)
+				_m(node, "lampRoundFloor", rr.position.x + 0.3, rr.end.y - 0.3, 0.0)
+				if wide_room:
+					_m(node, "rugRectangle", cx + 0.3, cz + 0.5, 0.0)
+			"banheiro":
+				_m(node, "toilet", rr.position.x + 0.5, rr.position.y + 0.55, 0.0)
+				_m(node, "bathroomSink", rr.position.x + 0.4, rr.position.y + 1.7, PI / 2.0)
+				_m(node, "bathtub", rr.end.x - 0.6, rr.position.y + 1.45, -PI / 2.0)
+			"sala":
+				_m(node, "rugRectangle", cx, cz + 0.2, 0.0)
+				_m(node, "loungeSofaLong" if rr.size.y > 3.4 else "loungeSofa", rr.position.x + 0.55, cz + 0.1, PI / 2.0)
+				_m(node, "tableCoffee", cx - 0.2, cz + 0.1, PI / 2.0)
+				_m(node, "cabinetTelevision", rr.end.x - 0.35, cz + 0.1, -PI / 2.0)
+				_m(node, "bookcaseOpen", rr.position.x + 1.3, rr.position.y + 0.3, 0.0)
+				_m(node, "lampRoundFloor", rr.end.x - 0.35, rr.position.y + 0.4, 0.0)
+				_m(node, "plantSmall1", rr.position.x + 0.45, rr.end.y - 0.4, 0.0, 0.0, 0.5)
+			"cozinha":
+				var ex := rr.end.x - 0.5
+				_m(node, "kitchenFridge", ex, rr.position.y + 0.4, 0.0)
+				var items := ["kitchenStove", "kitchenSink", "kitchenCabinet", "kitchenCabinet"]
+				var px := ex - 0.95
+				for i in items.size():
+					if px - 0.43 < rr.position.x + 0.05:
+						break
+					_m(node, items[i], px, rr.position.y + 0.47, 0.0)
+					if i < 2:
+						_m(node, "kitchenCabinetUpper", px, rr.position.y + 0.25, 0.0, 1.3)
+					px -= 0.9
+				_m(node, "table", cx - 0.1, rr.end.y - 1.3, 0.0)
+				for ci in 4:
+					var ang := ci * PI / 2.0
+					_m(node, "chair", cx - 0.1 + cos(ang) * 0.85, rr.end.y - 1.3 + sin(ang) * 0.6, ang + PI / 2.0)
+			"garagem":
+				_m(node, "washer", rr.position.x + 0.5, rr.position.y + 0.5, 0.0)
+				_m(node, "desk", rr.position.x + 0.5, cz + 0.4, PI / 2.0)
+				for bi in 3:
+					_m(node, "cardboardBoxClosed", rr.position.x + 1.4 + (bi % 2) * 0.5, rr.end.y - 0.5 - int(bi / 2) * 0.5, rng.randf() * 0.5)
 
 
 func _mk(k: Kit) -> MeshInstance3D:

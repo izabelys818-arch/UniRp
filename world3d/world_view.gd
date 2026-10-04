@@ -7,7 +7,7 @@ extends SubViewportContainer
 
 const Layout = preload("res://world3d/city_layout.gd")
 const CityBuilder = preload("res://world3d/city_builder.gd")
-const Humanoid = preload("res://world3d/humanoid.gd")
+const Humanoid = preload("res://world3d/person.gd")
 const Kit = preload("res://world3d/mesh_kit.gd")
 const Life = preload("res://world3d/life.gd")
 const LookBuilder = preload("res://ui/face/look_builder.gd")
@@ -18,9 +18,9 @@ signal toast(text: String)
 
 static var realtime: bool = true
 
-const WALK_SPEED := 3.6
-const RUN_SPEED := 6.6
-const NPC_SPEED := 2.3
+const WALK_SPEED := 2.2
+const RUN_SPEED := 5.0
+const NPC_SPEED := 1.55
 const MINUTES_PER_SECOND := 1.0
 const CAM_DIR := Vector3(1.0, 1.15, 1.0)
 

@@ -5,7 +5,8 @@ extends Node3D
 # simulação do jogo.
 
 const Layout = preload("res://world3d/city_layout.gd")
-const Humanoid = preload("res://world3d/humanoid.gd")
+const Humanoid = preload("res://world3d/person.gd")
+const Toon = preload("res://world3d/humanoid.gd")
 const Kit = preload("res://world3d/mesh_kit.gd")
 const LookBuilder = preload("res://ui/face/look_builder.gd")
 
@@ -224,10 +225,10 @@ func _make_peds() -> void:
 		var p := Layout._node_pos(node) + Vector2(5.9 * side, 5.9 * side)
 		fig.position = Vector3(p.x, 0.17, p.y)
 		var kind := "walk"
-		var spd := rng.randf_range(1.15, 1.7)
+		var spd := rng.randf_range(1.05, 1.5)
 		if i % 9 == 0:
 			kind = "jog"
-			spd = rng.randf_range(3.2, 4.2)
+			spd = rng.randf_range(3.0, 3.6)
 		peds.append({"fig": fig, "node": node, "side": side, "target": p, "speed": spd, "kind": kind, "night": rng.randf() < 0.3, "wait": 0.0, "cur": spd})
 
 
@@ -290,8 +291,8 @@ func _update_peds(delta: float, night: bool, raining: bool) -> void:
 func _dog() -> Node3D:
 	var root := Node3D.new()
 	var col := Color(["#8a6a45", "#2b2420", "#d8cdb8", "#a8794a", "#5a5a5e"][rng.randi() % 5])
-	var m := Humanoid.mat(col)
-	var m2 := Humanoid.mat(col.darkened(0.25))
+	var m := Toon.mat(col)
+	var m2 := Toon.mat(col.darkened(0.25))
 	var body := Node3D.new()
 	body.name = "body"
 	root.add_child(body)
@@ -303,10 +304,10 @@ func _dog() -> Node3D:
 	body.add_child(head)
 	_part(head, "sphere", Vector3(0, 0, 0), Vector3(0.24, 0.22, 0.26), m)
 	_part(head, "sphere", Vector3(0, -0.04, 0.16), Vector3(0.14, 0.11, 0.18), m2)
-	_part(head, "sphere", Vector3(0, -0.02, 0.25), Vector3(0.05, 0.04, 0.04), Humanoid.mat(Color("#111111")))
+	_part(head, "sphere", Vector3(0, -0.02, 0.25), Vector3(0.05, 0.04, 0.04), Toon.mat(Color("#111111")))
 	for sx in [-1, 1]:
 		_part(head, "sphere", Vector3(sx * 0.1, 0.1, -0.03), Vector3(0.07, 0.14, 0.1), m2, Vector3(0, 0, sx * 0.4))
-		_part(head, "sphere", Vector3(sx * 0.06, 0.04, 0.11), Vector3(0.035, 0.035, 0.02), Humanoid.mat_plain(Color("#111111")))
+		_part(head, "sphere", Vector3(sx * 0.06, 0.04, 0.11), Vector3(0.035, 0.035, 0.02), Toon.mat_plain(Color("#111111")))
 	var tail := Node3D.new()
 	tail.name = "tail"
 	tail.position = Vector3(0, 0.5, -0.38)
@@ -326,7 +327,7 @@ func _part(parent: Node3D, kind: String, pos: Vector3, scale3: Vector3, material
 	var mi := MeshInstance3D.new()
 	match kind:
 		"sphere":
-			mi.mesh = Humanoid._sphere_mesh()
+			mi.mesh = Toon._sphere_mesh()
 		"cyl":
 			var c := CylinderMesh.new()
 			c.top_radius = 0.5
@@ -335,7 +336,7 @@ func _part(parent: Node3D, kind: String, pos: Vector3, scale3: Vector3, material
 			c.radial_segments = 8
 			mi.mesh = c
 		_:
-			mi.mesh = Humanoid._box_mesh()
+			mi.mesh = Toon._box_mesh()
 	mi.material_override = material
 	mi.position = pos
 	mi.scale = scale3
