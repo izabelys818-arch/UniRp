@@ -33,6 +33,11 @@ func _refresh() -> void:
 		top.add_child(UI.chip("Chave do carro: " + car, UI.MUTED, 15))
 	if str(GameState.player.get("home", "")) != "":
 		top.add_child(UI.chip("Chave de casa", UI.MUTED, 15))
+	for sub in AddictionSystem.SUBS:
+		var lvl := AddictionSystem.level(sub)
+		if lvl >= 10.0:
+			var warn := AddictionSystem.severity(sub) > 0.0
+			top.add_child(UI.chip("%s %d%%%s" % [AddictionSystem.SUBS[sub]["nome"], int(lvl), " (abstinência)" if warn else ""], UI.DANGER if warn else UI.MUTED, 14))
 	for key in World.keys():
 		if World.has_key(key):
 			var left_min: int = World.key_expires(key) - TimeManager.total_minutes

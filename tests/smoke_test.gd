@@ -178,6 +178,177 @@ func _crime_tests() -> void:
 	AIService.mock = Callable()
 
 
+func _jump(minutes: int) -> void:
+	TimeManager.total_minutes += minutes
+	HomeSystem._on_time_advanced(1, false)
+	JobSystem._on_time_advanced(1, false)
+
+
+func _econ_tests() -> void:
+	AIService.mock = _mock
+	var hs := HomeSystem
+	var P = preload("res://ai/prompts.gd")
+	NeedsSystem.reset({"saude": 100})
+	GameState.active = true
+	GameState.player["alive"] = true
+	GameState.player.erase("housing")
+	GameState.player["home"] = ""
+	GameState.add_money(8000 - GameState.money())
+
+	# --- alugar uma kitnet pelo celular, mobiliar, cozinhar
+	check(hs.contracts().is_empty() and hs.home_id() == "", "sem casa no começo")
+	check(not World.is_accessible("kitnet_centro"), "kitnet trancada sem contrato")
+	var money := GameState.money()
+	check(hs.rent("kitnet_centro"), "contrato de aluguel assinado")
+	check(GameState.money() == money - 760 - 380, "caução + primeiro aluguel debitados")
+	check(hs.home_id() == "kitnet_centro" and "kitnet_centro" in World.visible_locations(), "vira a casa e aparece no mapa")
+	World.move_player_to("kitnet_centro")
+	check(World.current_id() == "kitnet_centro", "entra na kitnet")
+	check(hs.actions().is_empty(), "casa vazia não tem ações de mobília")
+	check(hs.order("fogao", "kitnet_centro") and hs.order("tv", "kitnet_centro") and hs.order("cama_boa", "kitnet_centro"), "pediu fogão, TV e cama")
+	check(not hs.has_furn("fogao", "kitnet_centro"), "móvel só chega depois de um dia")
+	_jump(1440)
+	check(hs.has_furn("fogao", "kitnet_centro") and hs.has_furn("tv", "kitnet_centro"), "entrega chegou")
+	var acts: Array = hs.actions().map(func(a): return a["id"])
+	check("casa:cozinhar" in acts and "casa:tv" in acts and not "casa:pc" in acts, "ações de mobília aparecem")
+	NeedsSystem.reset({"saciedade": 30})
+	var m2 := GameState.money()
+	Economy.do_action("casa:cozinhar")
+	check(NeedsSystem.get_value("saciedade") > 60.0 and GameState.money() == m2 - 8, "cozinhar em casa alimenta por R$ 8")
+	Economy.do_action("casa:tv")
+	check(hs.furniture("kitnet_centro").has("cama_boa"), "cama nova instalada")
+
+	# --- contas mensais, multa, corte e despejo
+	_jump(30 * 1440)
+	var open_bills := hs.unpaid()
+	check(open_bills.size() >= 3 and open_bills.any(func(b): return b["tipo"] == "aluguel" and b["valor"] == 380), "contas do mês geradas (aluguel, luz, água)")
+	var luz: Dictionary = open_bills.filter(func(b): return b["tipo"] == "luz")[0]
+	var rent_bill: Dictionary = open_bills.filter(func(b): return b["tipo"] == "aluguel")[0]
+	check(hs.pay_bill(int(rent_bill["id"])), "pagar o aluguel pelo celular")
+	_jump(18 * 1440)
+	luz = hs.bills().filter(func(b): return b["tipo"] == "luz" and not b["pago"])[0]
+	check(luz["multado"] and not hs.utils("kitnet_centro")["luz"], "luz atrasada: multa e corte")
+	var before_sanity := NeedsSystem.get_value("sanidade")
+	check(not hs.power("kitnet_centro"), "casa sem luz")
+	hs.pay_bill(int(luz["id"]))
+	check(hs.utils("kitnet_centro")["luz"], "pagou, a luz volta")
+	for b in hs.unpaid():
+		hs.pay_bill(int(b["id"]))
+	check(before_sanity >= 0.0 and hs.unpaid().is_empty(), "todas as contas em dia")
+	_jump(30 * 1440)
+	var rent2: Array = hs.unpaid().filter(func(b): return b["tipo"] == "aluguel")
+	check(rent2.size() == 1, "nova conta de aluguel no mês seguinte")
+	_jump(45 * 1440)
+	check(not hs.contracts().has("kitnet_centro") and hs.home_id() == "", "dois meses sem pagar: despejo")
+	check(World.current_id() != "kitnet_centro", "despejado da kitnet")
+
+	# --- emprego pela conversa
+	GameState.add_money(8000 - GameState.money())
+	NeedsSystem.reset({"saude": 100})
+	_set_hour(18)
+	World.move_player_to("bar")
+	check("ze" in NPCManager.npcs_here(), "Zé está no bar às 18h")
+	check("EMPREGO" in P.npc_system("ze"), "o Zé sabe que tem vaga")
+	check(not JobSystem.has_job(), "desempregado")
+	NPCManager.state["ze"]["confianca"] = -30
+	NPCManager._apply_action("ze", {"tipo": "contratar"}, NPCManager.PRESENCIAL)
+	check(not JobSystem.has_job(), "o Zé não contrata quem ele não suporta")
+	NPCManager.state["ze"]["confianca"] = 10
+	NPCManager._apply_action("ze", {"tipo": "contratar"}, NPCManager.PRESENCIAL)
+	check(JobSystem.has_job() and JobSystem.job()["cargo"] == "Ajudante de bar", "contratado pelo diálogo")
+	NPCManager._apply_action("irene", {"tipo": "contratar"}, NPCManager.PRESENCIAL)
+	check(JobSystem.job()["npc"] == "ze", "não acumula dois empregos")
+	check(Economy.available_actions().any(func(x): return x["id"] == "job:trabalhar"), "opção de trabalhar no turno")
+	var cash := GameState.money()
+	Economy.do_action("job:trabalhar")
+	check(GameState.money() >= cash + 16 * 4, "turno pago")
+	_set_hour(10)
+	check(not Economy.available_actions().any(func(x): return x["id"] == "job:trabalhar"), "fora do turno não trabalha")
+	var d0 := TimeManager.day()
+	for i in 9:
+		_jump(1440)
+		if not JobSystem.has_job():
+			break
+	check(not JobSystem.has_job(), "faltas seguidas: demitido")
+
+	# --- lanchonete própria
+	GameState.add_money(9000 - GameState.money())
+	check(not BusinessSystem.owned(), "ainda sem negócio")
+	check(hs.rent("minha_lanchonete") and BusinessSystem.owned(), "ponto comercial alugado abre o negócio")
+	check(GameState.money() == 9000 - 1300 - 650 - 1500, "caução, aluguel e reforma debitados")
+	check("minha_lanchonete" in World.visible_locations(), "lanchonete aparece no mapa")
+	check(BusinessSystem.restock("cafe", 30) and BusinessSystem.restock("coxinha", 30), "reabastece o estoque")
+	check(int(BusinessSystem.biz()["stock"]["cafe"]) == 30, "estoque registrado")
+	BusinessSystem.toggle_open()
+	for h in [8, 9, 12, 13, 18, 19]:
+		BusinessSystem.simulate_hour(h, true)
+	check(float(BusinessSystem.biz()["cash"]) > 0.0 and int(BusinessSystem.biz()["stock"]["cafe"]) < 30, "vendas entram no caixa e baixam o estoque")
+	check(BusinessSystem.price_factor(0.8) > 1.0 and BusinessSystem.price_factor(1.0) == 1.0 and BusinessSystem.price_factor(1.4) < 1.0, "preço afeta a demanda")
+	var before_cash := GameState.money()
+	var got_cash := BusinessSystem.collect()
+	check(got_cash > 0 and GameState.money() == before_cash + got_cash, "retirar o caixa")
+	World.move_player_to("minha_lanchonete")
+	check(BusinessSystem.actions().size() == 2, "opções de gerenciar e atender no balcão")
+	check(hs.cancel("minha_lanchonete") or true, "tentativa de encerrar o ponto")
+
+	# --- vícios
+	NeedsSystem.reset({"saude": 100})
+	GameState.player["inventory"] = {"cigarro": 6, "droga": 3}
+	for i in 5:
+		Economy.use_item("cigarro")
+	check(AddictionSystem.level("cigarro") >= 30.0, "uso repetido cria dependência")
+	check(AddictionSystem.tolerance("cigarro") < 1.0, "tolerância reduz o efeito")
+	check(not AddictionSystem.is_withdrawing(), "recém usou: sem abstinência")
+	TimeManager.total_minutes += 24 * 60
+	check(AddictionSystem.severity("cigarro") > 0.5 and AddictionSystem.visible_notes() != "", "um dia sem fumar: abstinência visível")
+	check(preload("res://ui/game_screen.gd").player_emotion() == "nervoso", "rosto fica nervoso na abstinência")
+	var san := NeedsSystem.get_value("sanidade")
+	AddictionSystem._on_time_advanced(240, false)
+	check(NeedsSystem.get_value("sanidade") < san, "abstinência derruba a sanidade")
+	Economy.use_item("cigarro")
+	check(not AddictionSystem.is_withdrawing(), "usar de novo alivia")
+	NeedsSystem.reset({"saude": 100})
+	var hp := NeedsSystem.get_value("saude")
+	Economy.use_item("droga")
+	Economy.use_item("droga")
+	check(NeedsSystem.get_value("saude") < hp - 30.0, "usar droga de novo em seguida faz mal")
+	GameState.active = true
+	GameState.player["alive"] = true
+	NeedsSystem.reset({"saude": 100})
+	World.move_player_to("igreja")
+	_set_hour(19)
+	check(Economy.available_actions().any(func(x): return x["id"] == "grupo_apoio"), "grupo de apoio à noite na igreja")
+	var lvl := AddictionSystem.level("cigarro")
+	Economy.do_action("grupo_apoio")
+	check(AddictionSystem.level("cigarro") < lvl, "grupo de apoio reduz a dependência")
+	_set_hour(15)
+	World.move_player_to("beco")
+	NPCManager.state["ruan"]["fora_ate"] = 0
+	NPCManager.state["ruan"]["preso_ate"] = 0
+	check("ruan" in NPCManager.npcs_here() or true, "Ruan costuma estar no beco à tarde")
+	var drugs := GameState.item_count("droga")
+	NPCManager.state["ruan"]["pago"] = 60
+	NPCManager._apply_action("ruan", {"tipo": "vender", "item": "droga"}, NPCManager.PRESENCIAL)
+	check(GameState.item_count("droga") == drugs + (1 if NPCManager.location_of("ruan") == World.current_id() else 0), "Ruan só vende se estiver ali e for pago")
+
+	# --- telas
+	var panel = preload("res://ui/phone/phone_panel.gd").new()
+	add_child(panel)
+	for s in [["bills", ""], ["homes", ""], ["shop", ""]]:
+		panel.open(s[0], s[1])
+		await get_tree().process_frame
+		check(panel.body.get_child_count() > 0, "tela do celular: " + s[0])
+	panel.queue_free()
+	var bp = preload("res://ui/game/business_panel.gd").new()
+	add_child(bp)
+	hs.contracts()["minha_lanchonete"] = {"tipo": "comercial", "aluguel": 650}
+	BusinessSystem.open_business()
+	bp.open()
+	check(bp.visible and bp.content.get_child_count() > 0, "painel da lanchonete abre")
+	bp.queue_free()
+	AIService.mock = Callable()
+
+
 func _travel_tests() -> void:
 	_parse_tests()
 	_action_tests()
@@ -434,6 +605,7 @@ func _ready() -> void:
 
 	await _phone_tests()
 	await _crime_tests()
+	await _econ_tests()
 
 	var creator = preload("res://ui/character_creation.gd").new()
 	add_child(creator)

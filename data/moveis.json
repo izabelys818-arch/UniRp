@@ -1,0 +1,44 @@
+{
+	"cama_boa": {
+		"nome": "Cama de casal",
+		"preco": 650,
+		"slot": "cama",
+		"desc": "Sono de verdade: acorda com mais sanidade e saúde."
+	},
+	"geladeira": {
+		"nome": "Geladeira",
+		"preco": 900,
+		"slot": "geladeira",
+		"desc": "Mantém comida e deixa cozinhar em casa."
+	},
+	"fogao": {
+		"nome": "Fogão de 4 bocas",
+		"preco": 450,
+		"slot": "fogao",
+		"desc": "Permite preparar refeições em casa por R$ 8."
+	},
+	"tv": {
+		"nome": "TV 32 polegadas",
+		"preco": 700,
+		"slot": "tv",
+		"desc": "Relaxar na frente da TV recupera sanidade."
+	},
+	"sofa": {
+		"nome": "Sofá de dois lugares",
+		"preco": 600,
+		"slot": "sofa",
+		"desc": "Descansar no sofá recupera energia."
+	},
+	"computador": {
+		"nome": "Computador",
+		"preco": 1500,
+		"slot": "computador",
+		"desc": "Trabalho online em casa (precisa de internet)."
+	},
+	"chuveiro": {
+		"nome": "Chuveiro elétrico",
+		"preco": 120,
+		"slot": "chuveiro",
+		"desc": "Banho quente: mais higiene e sanidade."
+	}
+}

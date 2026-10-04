@@ -337,6 +337,11 @@ func _apply_action(id: String, a: Dictionary, chan: String) -> void:
 			if World.items.has(item) and chan == PRESENCIAL:
 				GameState.add_item(item)
 				GameState.add_log("%s te deu: %s." % [who, World.item_name(item)], "event")
+		"contratar":
+			if chan == PRESENCIAL:
+				JobSystem.hire(id)
+		"demitir":
+			JobSystem.dismiss(id, "%s dispensa você do trabalho." % who)
 		"alugar_quarto":
 			if chan == PRESENCIAL:
 				_rent_room(id)
@@ -407,8 +412,12 @@ func _rent_room(id: String) -> void:
 
 func _sell(id: String, item_id: String) -> void:
 	var st: Dictionary = state[id]
+	if location_of(id) != World.current_id():
+		return
 	var here: Dictionary = World.locations.get(location_of(id), {})
-	if not npcs[id].get("vende", false) or not World.items.has(item_id) or not item_id in here.get("loja", []):
+	var own_goods: Array = npcs[id].get("vende_itens", [])
+	var shop_ok: bool = npcs[id].get("vende", false) and item_id in here.get("loja", [])
+	if not World.items.has(item_id) or not (shop_ok or item_id in own_goods):
 		return
 	var price := int(World.items[item_id]["preco"])
 	if int(st.get("pago", 0)) < price:

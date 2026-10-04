@@ -20,6 +20,9 @@ static func player_visible_description(p: Dictionary) -> String:
 	var notes := NeedsSystem.appearance_notes()
 	if notes != "":
 		parts.append(notes)
+	var crave := AddictionSystem.visible_notes()
+	if crave != "":
+		parts.append(crave)
 	return "; ".join(parts)
 
 
@@ -69,6 +72,18 @@ static func npc_system(npc_id: String, chan: String = "presencial") -> String:
 				menu.append("%s (id %s) R$ %d" % [World.items[item_id]["nome"], item_id, int(World.items[item_id]["preco"])])
 			services += "
 - VENDA: você trabalha aqui e vende: " + "; ".join(menu) + "."
+		if svc.has("emprego"):
+			var jb: Dictionary = svc["emprego"]
+			var mine := JobSystem.job()
+			if not mine.is_empty() and str(mine["npc"]) == npc_id:
+				services += "\n- EMPREGO: o jogador JÁ trabalha para você como %s (faltas %d/3). Você pode dispensá-lo com a ação demitir se fizer sentido, ou aceitar se ele pedir demissão." % [mine["cargo"], int(mine["faltas"])]
+			else:
+				services += "\n- EMPREGO: " + str(jb["desc"]) + " Se decidir contratar, use a ação contratar (vaga: " + str(jb["cargo"]) + ")."
+		if n.has("vende_itens"):
+			var secret: Array = []
+			for item_id in n["vende_itens"]:
+				secret.append("%s (id %s) R$ %d" % [World.items[item_id]["nome"], item_id, int(World.items[item_id]["preco"])])
+			services += "\n- VENDA PARTICULAR (às escondidas, só para quem você confia): " + "; ".join(secret) + "."
 		if services != "":
 			services += "
 - REGRA: você só entrega algo (chave, item) DEPOIS de receber o pagamento. Dinheiro que o jogador já te entregou e ainda não foi usado: R$ %d. Quando entregar, use a ação correspondente NO MESMO MOMENTO (o sistema confere o valor pago). Se faltar dinheiro, diga quanto falta e não entregue." % paid
@@ -136,6 +151,8 @@ FORMATO DE RESPOSTA: responda SOMENTE com um objeto JSON válido, nada fora dele
 - "acoes" (opcional, só quando fizer sentido):
   {"tipo":"dar_dinheiro","valor":N} (em pessoa entrega; por celular é PIX)
   {"tipo":"dar_item","item":"id"} (só em pessoa; ids: %s)
+  {"tipo":"contratar"} (só se você tem vaga e quer contratar o jogador; o sistema confere)
+  {"tipo":"demitir"} (demitir o jogador ou aceitar o pedido de demissão dele)
   {"tipo":"alugar_quarto"} (só se você aluga quartos e o jogador já pagou: entrega a chave de verdade)
   {"tipo":"vender","item":"id"} (só se você vende e o jogador já pagou: entrega o item de verdade)
   {"tipo":"dar_numero"} (passar seu número de celular, se quiser manter contato)

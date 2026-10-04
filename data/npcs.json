@@ -22,7 +22,19 @@
 				"local": "bar"
 			}
 		],
-		"vende": true
+		"vende": true,
+		"servicos": {
+			"emprego": {
+				"cargo": "Ajudante de bar",
+				"salario_hora": 16,
+				"turno": [
+					17,
+					23
+				],
+				"local": "bar",
+				"desc": "Você precisa de alguém para o balcão do bar das 17h às 23h, R$ 16 por hora, pago no fim de cada turno. Só contrata quem parecer firme e confiável (decida conforme sua desconfiança). Faltou três dias seguidos, está na rua."
+			}
+		}
 	},
 	"marina": {
 		"nome": "Marina Lopes",
@@ -80,6 +92,9 @@
 				"ate": 3,
 				"local": "bar"
 			}
+		],
+		"vende_itens": [
+			"droga"
 		]
 	},
 	"helena": {
@@ -195,7 +210,19 @@
 				"ate": 20,
 				"local": "igreja"
 			}
-		]
+		],
+		"servicos": {
+			"emprego": {
+				"cargo": "Zelador da igreja",
+				"salario_hora": 10,
+				"turno": [
+					8,
+					12
+				],
+				"local": "igreja",
+				"desc": "A igreja precisa de um zelador das 8h às 12h, R$ 10 por hora. Você contrata com gosto quem precisa de uma chance, mesmo sem muita referência."
+			}
+		}
 	},
 	"dona_cida": {
 		"nome": "Dona Aparecida",
@@ -224,6 +251,16 @@
 				"chave": "quarto_pensao",
 				"noites_max": 7,
 				"desc": "Você aluga quartinhos na sua pensão: R$ 40 por noite, pagos adiantado. Só depois de receber o dinheiro você entrega a chave. Explique as regras da casa (silêncio depois das 22h, sem visitas, banheiro coletivo no fim do corredor)."
+			},
+			"emprego": {
+				"cargo": "Faxineiro(a) da pensão",
+				"salario_hora": 12,
+				"turno": [
+					9,
+					13
+				],
+				"local": "pensao",
+				"desc": "A pensão precisa de faxina das 9h às 13h, R$ 12 por hora. Você só contrata gente educada e que pague o quarto em dia."
 			}
 		}
 	},
@@ -367,7 +404,19 @@
 				"local": "mercado"
 			}
 		],
-		"vende": true
+		"vende": true,
+		"servicos": {
+			"emprego": {
+				"cargo": "Repositor(a)",
+				"salario_hora": 14,
+				"turno": [
+					8,
+					14
+				],
+				"local": "mercado",
+				"desc": "O mercado precisa de repositor das 8h às 14h, R$ 14 por hora. Você é exigente e fria: só contrata quem passar uma boa impressão, e deixa claro que não tolera atraso nem falta."
+			}
+		}
 	},
 	"gabriel": {
 		"nome": "Gabriel Nunes",

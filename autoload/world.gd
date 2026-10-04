@@ -80,7 +80,7 @@ func is_accessible(loc_id: String) -> bool:
 	if loc.get("interior", false):
 		return has_key(str(loc.get("chave", "")))
 	if loc.get("privado", false):
-		return GameState.player.get("home", "") == loc_id
+		return HomeSystem.has_access(loc_id)
 	return true
 
 

@@ -129,6 +129,9 @@ func _go(to_screen: String, arg: String = "") -> void:
 		"bank": _bank()
 		"calling": _calling(arg)
 		"emergency": _emergency()
+		"bills": _bills()
+		"homes": _homes()
+		"shop": _shop()
 
 
 func _app_button(label: String, color: Color, badge: int, target: String) -> Control:
@@ -168,6 +171,9 @@ func _home() -> void:
 	grid.add_child(_app_button("Mensagens", Color("#2e8b57"), PhoneSystem.unread(), "threads"))
 	grid.add_child(_app_button("Contatos", Color("#3b6ea8"), 0, "contacts"))
 	grid.add_child(_app_button("Banco", Color("#7a4fb0"), 0, "bank"))
+	grid.add_child(_app_button("Contas", Color("#c98a1e"), HomeSystem.unpaid().size(), "bills"))
+	grid.add_child(_app_button("Imóveis", Color("#2a8a9a"), 0, "homes"))
+	grid.add_child(_app_button("Compras", Color("#a84a8a"), 0, "shop"))
 	grid.add_child(_app_button("Emergência", Color("#b83a3a"), 0, "emergency"))
 
 
@@ -348,6 +354,143 @@ func _calling(id: String) -> void:
 			st.text = "Chamada não completada."
 		_:
 			st.text = "Não atendeu."
+
+
+func _card(list: VBoxContainer, tint: Color = Color(1, 1, 1, 0.05)) -> VBoxContainer:
+	var pc := PanelContainer.new()
+	pc.add_theme_stylebox_override("panel", UI._box(tint, 12, 10))
+	var v := UI.vbox(5)
+	pc.add_child(v)
+	list.add_child(pc)
+	return v
+
+
+func _bills() -> void:
+	title_label.text = "Contas e trabalho"
+	var list := UI.vbox(8)
+	body.add_child(UI.scroll(list))
+	list.add_child(UI.label("SEU EMPREGO", 12, UI.MUTED))
+	var j := JobSystem.job()
+	if j.is_empty():
+		list.add_child(UI.label("Desempregado. Converse com quem tem vaga: Zé (bar), Irene (mercado), Padre (igreja) ou Dona Cida (pensão).", 13, UI.MUTED))
+	else:
+		var jc := _card(list)
+		jc.add_child(UI.title(str(j["cargo"]), 18))
+		jc.add_child(UI.label("%s • %02dh às %02dh • R$ %d/h" % [World.locations[j["local"]]["nome"], int(j["turno"][0]), int(j["turno"][1]), int(j["salario_hora"])], 13))
+		jc.add_child(UI.label("Faltas: %d/3  •  Ganho total: R$ %d" % [int(j["faltas"]), int(j["ganho_total"])], 13, UI.DANGER if int(j["faltas"]) > 0 else UI.MUTED))
+	list.add_child(UI.label("MORADIA", 12, UI.MUTED))
+	var home := HomeSystem.home_id()
+	if home == "":
+		list.add_child(UI.label("Sem casa. Veja o app Imóveis ou alugue um quarto na pensão.", 13, UI.MUTED))
+	else:
+		var hc := _card(list)
+		hc.add_child(UI.title(World.locations[home]["nome"], 16))
+		var kind: String = {"propria": "Casa própria", "alugada": "Alugada"}.get(HomeSystem.status_of(home), "")
+		hc.add_child(UI.label("%s  •  luz %s  •  água %s  •  internet %s" % [kind, "ok" if HomeSystem.utils(home)["luz"] else "CORTADA", "ok" if HomeSystem.utils(home)["agua"] else "CORTADA", "ok" if HomeSystem.utils(home)["internet"] else "não"], 12, UI.MUTED))
+	list.add_child(UI.label("CONTAS EM ABERTO", 12, UI.MUTED))
+	var open_bills := HomeSystem.unpaid()
+	if open_bills.is_empty():
+		list.add_child(UI.label("Nenhuma conta em aberto.", 13, UI.MUTED))
+	for b in open_bills:
+		var late := (TimeManager.total_minutes - int(b["venc"])) / 1440.0
+		var when := ("ATRASADA há %d dia(s)" % int(ceil(late))) if late > 0.0 else "vence em %d dia(s)" % int(ceil(-late))
+		var bc := _card(list, Color(UI.DANGER, 0.12) if late > 0.0 else Color(1, 1, 1, 0.05))
+		bc.add_child(UI.label(HomeSystem.bill_label(b), 14))
+		bc.add_child(UI.label("R$ %d  •  %s" % [int(b["valor"]), when], 13, UI.DANGER if late > 0.0 else UI.MUTED))
+		var pay := UI.accent_button("Pagar R$ %d" % int(b["valor"]), _pay_bill.bind(int(b["id"])))
+		pay.disabled = GameState.money() < int(b["valor"])
+		bc.add_child(pay)
+
+
+func _pay_bill(bill_id: int) -> void:
+	HomeSystem.pay_bill(bill_id)
+	_go("bills")
+
+
+func _homes() -> void:
+	title_label.text = "Imóveis"
+	var list := UI.vbox(8)
+	body.add_child(UI.scroll(list))
+	for loc_id in HomeSystem.imoveis:
+		var p: Dictionary = HomeSystem.imoveis[loc_id]
+		var c := _card(list)
+		c.add_child(UI.title(World.locations[loc_id]["nome"], 16))
+		c.add_child(UI.label(str(p["resumo"]), 12, UI.MUTED))
+		var price_parts: Array = []
+		if p.has("aluguel"):
+			price_parts.append("Aluguel R$ %d/mês" % int(p["aluguel"]))
+		if p.has("deposito"):
+			price_parts.append("caução R$ %d" % int(p["deposito"]))
+		if p.has("compra"):
+			price_parts.append("Compra R$ %d" % int(p["compra"]))
+		c.add_child(UI.label("  •  ".join(price_parts), 13, UI.ACCENT))
+		var st := HomeSystem.status_of(loc_id)
+		if st != "":
+			var tags := {"propria": "Seu imóvel", "alugada": "Alugado por você", "comercial": "Seu ponto comercial"}
+			c.add_child(UI.chip(str(tags.get(st, st)), UI.TEAL, 12))
+			if st != "comercial" and HomeSystem.home_id() != loc_id:
+				c.add_child(UI.button("Mudar para cá", _home_act.bind("move", loc_id)))
+			if st != "propria":
+				c.add_child(UI.button("Encerrar contrato", _home_act.bind("cancel", loc_id)))
+		else:
+			if p.has("aluguel"):
+				var rb := UI.accent_button("Alugar (R$ %d agora)" % HomeSystem.rent_cost(loc_id), _home_act.bind("rent", loc_id))
+				rb.disabled = not HomeSystem.can_rent(loc_id)
+				c.add_child(rb)
+			if p.has("compra"):
+				var bb := UI.button("Comprar (R$ %d)" % int(p["compra"]), _home_act.bind("buy", loc_id))
+				bb.disabled = not HomeSystem.can_buy(loc_id)
+				c.add_child(bb)
+
+
+func _home_act(what: String, loc_id: String) -> void:
+	match what:
+		"rent": HomeSystem.rent(loc_id)
+		"buy": HomeSystem.buy(loc_id)
+		"cancel": HomeSystem.cancel(loc_id)
+		"move": HomeSystem.move_in(loc_id)
+	_go("homes")
+
+
+func _shop() -> void:
+	title_label.text = "Compras"
+	var places := HomeSystem.residences()
+	if places.is_empty():
+		body.add_child(UI.label("Você precisa de uma casa para receber entregas. Veja o app Imóveis.", 14, UI.MUTED))
+		return
+	var dest := OptionButton.new()
+	for loc_id in places:
+		dest.add_item("Entregar em: " + World.locations[loc_id]["nome"])
+		dest.set_item_metadata(dest.item_count - 1, loc_id)
+	var cur := places.find(HomeSystem.home_id())
+	dest.selected = maxi(cur, 0)
+	body.add_child(dest)
+	var list := UI.vbox(8)
+	body.add_child(UI.scroll(list))
+	for item_id in HomeSystem.moveis:
+		var m: Dictionary = HomeSystem.moveis[item_id]
+		var c := _card(list)
+		c.add_child(UI.title(str(m["nome"]), 15))
+		c.add_child(UI.label(str(m["desc"]), 12, UI.MUTED))
+		var buy := UI.button("Comprar  R$ %d  (entrega em 1 dia)" % int(m["preco"]), _order.bind(item_id, dest))
+		buy.disabled = GameState.money() < int(m["preco"])
+		c.add_child(buy)
+	var ic := _card(list)
+	ic.add_child(UI.title("Internet", 15))
+	ic.add_child(UI.label("Instalação R$ %d + R$ %d por mês. Necessária para trabalhar online." % [HomeSystem.INTERNET_SETUP, HomeSystem.INTERNET_MONTHLY], 12, UI.MUTED))
+	var ib := UI.button("Contratar internet", _order_net.bind(dest))
+	ib.disabled = GameState.money() < HomeSystem.INTERNET_SETUP
+	ic.add_child(ib)
+
+
+func _order(item_id: String, dest: OptionButton) -> void:
+	HomeSystem.order(item_id, str(dest.get_item_metadata(dest.selected)))
+	_go("shop")
+
+
+func _order_net(dest: OptionButton) -> void:
+	HomeSystem.order_internet(str(dest.get_item_metadata(dest.selected)))
+	_go("shop")
 
 
 func _emergency() -> void:

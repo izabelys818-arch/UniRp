@@ -1,22 +1,188 @@
 {
-	"pao": {"nome": "Pão de forma", "preco": 8, "tipo": "comida", "efeitos": {"saciedade": 25}},
-	"pao_queijo": {"nome": "Pão de queijo", "preco": 6, "tipo": "comida", "efeitos": {"saciedade": 15}},
-	"coxinha": {"nome": "Coxinha", "preco": 8, "tipo": "comida", "efeitos": {"saciedade": 20}},
-	"prato_feito": {"nome": "Prato feito", "preco": 25, "tipo": "comida", "efeitos": {"saciedade": 55, "sanidade": 3}},
-	"miojo": {"nome": "Miojo", "preco": 4, "tipo": "comida", "efeitos": {"saciedade": 22}},
-	"frutas": {"nome": "Saco de frutas", "preco": 10, "tipo": "comida", "efeitos": {"saciedade": 18, "hidratacao": 10, "saude": 2}},
-	"pipoca": {"nome": "Pipoca", "preco": 6, "tipo": "comida", "efeitos": {"saciedade": 12}},
-	"agua": {"nome": "Garrafa de água", "preco": 4, "tipo": "bebida", "efeitos": {"hidratacao": 35}},
-	"refrigerante": {"nome": "Refrigerante", "preco": 7, "tipo": "bebida", "efeitos": {"hidratacao": 25, "saciedade": 5}},
-	"cafe": {"nome": "Café", "preco": 5, "tipo": "cafe", "efeitos": {"energia": 10, "hidratacao": 5}},
-	"energetico": {"nome": "Energético", "preco": 9, "tipo": "lata", "efeitos": {"energia": 25, "sanidade": -3}},
-	"cerveja": {"nome": "Cerveja", "preco": 10, "tipo": "garrafa", "efeitos": {"hidratacao": 10, "sanidade": 8, "energia": -5}},
-	"cachaca": {"nome": "Dose de cachaça", "preco": 6, "tipo": "dose", "efeitos": {"sanidade": 12, "saude": -2, "energia": -8}},
-	"cigarro": {"nome": "Maço de cigarro", "preco": 15, "tipo": "cigarro", "efeitos": {"sanidade": 10, "saude": -3}},
-	"lenco_umedecido": {"nome": "Lenço umedecido", "preco": 9, "tipo": "higiene", "efeitos": {"higiene": 25}},
-	"analgesico": {"nome": "Analgésico", "preco": 12, "tipo": "remedio", "efeitos": {"saude": 10}},
-	"faca": {"nome": "Faca de cozinha", "preco": 35, "tipo": "arma", "dano": [22, 40], "efeitos": {}},
-	"pe_de_cabra": {"nome": "Pé de cabra", "preco": 45, "tipo": "ferramenta", "dano": [14, 26], "arrombar": 0.75, "efeitos": {}},
-	"mixa": {"nome": "Kit de mixas", "preco": 60, "tipo": "ferramenta", "arrombar": 0.6, "silencioso": true, "efeitos": {}},
-	"curativo": {"nome": "Kit de curativo", "preco": 18, "tipo": "remedio", "efeitos": {"saude": 22}}
+	"pao": {
+		"nome": "Pão de forma",
+		"preco": 8,
+		"tipo": "comida",
+		"efeitos": {
+			"saciedade": 25
+		}
+	},
+	"pao_queijo": {
+		"nome": "Pão de queijo",
+		"preco": 6,
+		"tipo": "comida",
+		"efeitos": {
+			"saciedade": 15
+		}
+	},
+	"coxinha": {
+		"nome": "Coxinha",
+		"preco": 8,
+		"tipo": "comida",
+		"efeitos": {
+			"saciedade": 20
+		}
+	},
+	"prato_feito": {
+		"nome": "Prato feito",
+		"preco": 25,
+		"tipo": "comida",
+		"efeitos": {
+			"saciedade": 55,
+			"sanidade": 3
+		}
+	},
+	"miojo": {
+		"nome": "Miojo",
+		"preco": 4,
+		"tipo": "comida",
+		"efeitos": {
+			"saciedade": 22
+		}
+	},
+	"frutas": {
+		"nome": "Saco de frutas",
+		"preco": 10,
+		"tipo": "comida",
+		"efeitos": {
+			"saciedade": 18,
+			"hidratacao": 10,
+			"saude": 2
+		}
+	},
+	"pipoca": {
+		"nome": "Pipoca",
+		"preco": 6,
+		"tipo": "comida",
+		"efeitos": {
+			"saciedade": 12
+		}
+	},
+	"agua": {
+		"nome": "Garrafa de água",
+		"preco": 4,
+		"tipo": "bebida",
+		"efeitos": {
+			"hidratacao": 35
+		}
+	},
+	"refrigerante": {
+		"nome": "Refrigerante",
+		"preco": 7,
+		"tipo": "bebida",
+		"efeitos": {
+			"hidratacao": 25,
+			"saciedade": 5
+		}
+	},
+	"cafe": {
+		"nome": "Café",
+		"preco": 5,
+		"tipo": "cafe",
+		"efeitos": {
+			"energia": 10,
+			"hidratacao": 5
+		}
+	},
+	"energetico": {
+		"nome": "Energético",
+		"preco": 9,
+		"tipo": "lata",
+		"efeitos": {
+			"energia": 25,
+			"sanidade": -3
+		}
+	},
+	"cerveja": {
+		"nome": "Cerveja",
+		"preco": 10,
+		"tipo": "garrafa",
+		"efeitos": {
+			"hidratacao": 10,
+			"sanidade": 8,
+			"energia": -5
+		}
+	},
+	"cachaca": {
+		"nome": "Dose de cachaça",
+		"preco": 6,
+		"tipo": "dose",
+		"efeitos": {
+			"sanidade": 12,
+			"saude": -2,
+			"energia": -8
+		}
+	},
+	"cigarro": {
+		"nome": "Maço de cigarro",
+		"preco": 15,
+		"tipo": "cigarro",
+		"efeitos": {
+			"sanidade": 10,
+			"saude": -3
+		}
+	},
+	"lenco_umedecido": {
+		"nome": "Lenço umedecido",
+		"preco": 9,
+		"tipo": "higiene",
+		"efeitos": {
+			"higiene": 25
+		}
+	},
+	"analgesico": {
+		"nome": "Analgésico",
+		"preco": 12,
+		"tipo": "remedio",
+		"efeitos": {
+			"saude": 10
+		}
+	},
+	"faca": {
+		"nome": "Faca de cozinha",
+		"preco": 35,
+		"tipo": "arma",
+		"dano": [
+			22,
+			40
+		],
+		"efeitos": {}
+	},
+	"pe_de_cabra": {
+		"nome": "Pé de cabra",
+		"preco": 45,
+		"tipo": "ferramenta",
+		"dano": [
+			14,
+			26
+		],
+		"arrombar": 0.75,
+		"efeitos": {}
+	},
+	"mixa": {
+		"nome": "Kit de mixas",
+		"preco": 60,
+		"tipo": "ferramenta",
+		"arrombar": 0.6,
+		"silencioso": true,
+		"efeitos": {}
+	},
+	"curativo": {
+		"nome": "Kit de curativo",
+		"preco": 18,
+		"tipo": "remedio",
+		"efeitos": {
+			"saude": 22
+		}
+	},
+	"droga": {
+		"nome": "Pacote do Ruan",
+		"preco": 60,
+		"tipo": "droga",
+		"efeitos": {
+			"energia": 35,
+			"sanidade": 18,
+			"saude": -6
+		}
+	}
 }

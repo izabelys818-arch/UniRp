@@ -1,0 +1,27 @@
+{
+	"kitnet_centro": {
+		"tipo": "aluguel",
+		"aluguel": 380,
+		"deposito": 760,
+		"resumo": "Kitnet de 18 m² no centro, sem móveis além de um colchão. Contrato de aluguel com caução de dois meses."
+	},
+	"apto_vila": {
+		"tipo": "aluguel_compra",
+		"aluguel": 720,
+		"deposito": 1440,
+		"compra": 26000,
+		"resumo": "Dois quartos na Vila Nova, prédio com porteiro. Pode alugar ou comprar à vista."
+	},
+	"sobrado_acacias": {
+		"tipo": "compra",
+		"compra": 58000,
+		"resumo": "Sobrado de três quartos na rua dos ricos. Só à vista."
+	},
+	"minha_lanchonete": {
+		"tipo": "comercial",
+		"aluguel": 650,
+		"deposito": 1300,
+		"abertura": 1500,
+		"resumo": "Ponto comercial com balcão, estufa e mesas, ideal para uma lanchonete. Aluguel mensal e R$ 1.500 de reforma e licença."
+	}
+}

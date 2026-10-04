@@ -23,6 +23,7 @@ const ITEM_WORDS := {
 	"faca": ["faca", "facao", "canivete"],
 	"pe_de_cabra": ["pe de cabra"],
 	"mixa": ["mixa", "mixas", "gazua"],
+	"droga": ["droga", "drogas", "cocaina", "pacote do ruan"],
 }
 const NEVER_HAVE := ["arma de fogo", "pistola", "revolver", "espingarda", "granada", "bomba", "fuzil"]
 const PASS_VERBS := [" pergunto ", " pedir ", " peco ", " comprar ", " compro ", " quero ", " procuro ", " vejo ", " olho ", " aponto ", " cheiro ", " sinto ", " noto ", " reparo "]
@@ -32,8 +33,9 @@ const USE_VERBS := {
 	"bebida": [" beb", " tom", " golej", " engol", " viro "],
 	"comida": [" comer ", " como ", " comendo ", " mord", " devor", " mastig"],
 	"remedio": [" tom", " engol"],
+	"droga": [" cheir", " us", " injet", " fum", " consum", " aspir"],
 }
-const TYPE_TO_USE := {"cigarro": "cigarro", "bebida": "bebida", "cafe": "bebida", "lata": "bebida", "garrafa": "bebida", "dose": "bebida", "comida": "comida", "remedio": "remedio"}
+const TYPE_TO_USE := {"cigarro": "cigarro", "bebida": "bebida", "cafe": "bebida", "lata": "bebida", "garrafa": "bebida", "dose": "bebida", "comida": "comida", "remedio": "remedio", "droga": "droga"}
 
 
 static func _norm(s: String) -> String:

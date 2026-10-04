@@ -2,6 +2,8 @@ extends Node
 
 const HOSPITAL_CARE := 150
 
+signal ui_request(panel: String)
+
 
 func sus_treatment(ambulance: bool = false) -> void:
 	if ambulance:
@@ -23,6 +25,14 @@ func available_actions() -> Array:
 		out.append({"id": "sair", "label": "Sair do quarto"})
 	for a in CrimeSystem.burglary_actions():
 		out.append(a)
+	for a in JobSystem.actions():
+		out.append(a)
+	for a in HomeSystem.actions():
+		out.append(a)
+	for a in BusinessSystem.actions():
+		out.append(a)
+	if AddictionSystem.group_available():
+		out.append({"id": "grupo_apoio", "label": "Participar do grupo de apoio (2h)"})
 	for s in loc.get("servicos", []):
 		match s:
 			"dormir_casa":
@@ -53,6 +63,21 @@ func do_action(id: String) -> void:
 	if id.begins_with("entrar:"):
 		World.enter_interior(id.substr(7))
 		return
+	if id.begins_with("casa:"):
+		HomeSystem.do(id.substr(5))
+		return
+	if id == "job:trabalhar":
+		JobSystem.work()
+		return
+	if id == "biz:balcao":
+		BusinessSystem.work_counter()
+		return
+	if id == "biz:gerenciar":
+		ui_request.emit("negocio")
+		return
+	if id == "grupo_apoio":
+		AddictionSystem.support_group()
+		return
 	if id.begins_with("invadir:"):
 		CrimeSystem.invade_house(id.substr(8))
 		return
@@ -67,12 +92,9 @@ func do_action(id: String) -> void:
 			TimeManager.advance(60)
 			GameState.add_log("Você espera o tempo passar.", "info")
 		"dormir_casa":
-			_sleep(480, "Você dorme na sua cama.")
-			NeedsSystem.apply({"sanidade": 10})
+			HomeSystem.sleep_home()
 		"banho_casa":
-			TimeManager.advance(20)
-			NeedsSystem.apply({"higiene": 100, "sanidade": 3})
-			GameState.add_log("Você toma um banho. A água é fria, mas ajuda.", "info")
+			HomeSystem.shower()
 		"dormir_quarto":
 			_sleep(480, "Você se deita no colchão fino que range e adormece.")
 			NeedsSystem.apply({"sanidade": 8})
@@ -114,7 +136,12 @@ func use_item(item_id: String) -> void:
 		return
 	TimeManager.advance(10)
 	GameState.add_log("Você usa: %s." % World.item_name(item_id), "info")
-	NeedsSystem.apply(World.items[item_id]["efeitos"], "overdose")
+	var effects: Dictionary = World.items[item_id]["efeitos"].duplicate()
+	var sub := AddictionSystem.sub_for(item_id)
+	if sub != "" and effects.has("sanidade") and float(effects["sanidade"]) > 0.0:
+		effects["sanidade"] = float(effects["sanidade"]) * AddictionSystem.tolerance(sub)
+	NeedsSystem.apply(effects, "overdose")
+	AddictionSystem.on_use(item_id)
 
 
 func _pay(amount: int) -> bool:

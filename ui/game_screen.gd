@@ -17,6 +17,7 @@ const MapPanel = preload("res://ui/game/map_panel.gd")
 const HistoryPanel = preload("res://ui/game/history_panel.gd")
 const MoneyPanel = preload("res://ui/game/money_panel.gd")
 const ChoicePanel = preload("res://ui/game/choice_panel.gd")
+const BusinessPanel = preload("res://ui/game/business_panel.gd")
 const WantedStars = preload("res://ui/game/wanted_stars.gd")
 const PoliceLights = preload("res://ui/game/police_lights.gd")
 
@@ -56,6 +57,8 @@ var context_target: String = ""
 
 var phone: PhonePanel
 var choice_panel: ChoicePanel
+var business_panel: BusinessPanel
+var job_chip: PanelContainer
 var stars_view: WantedStars
 var bag: BagPanel
 var shop: ShopPanel
@@ -86,6 +89,9 @@ func _ready() -> void:
 	PhoneSystem.changed.connect(_queue_refresh)
 	PhoneSystem.notify.connect(_toast)
 	CrimeSystem.choice.connect(choice_panel.show_choice)
+	Economy.ui_request.connect(_on_ui_request)
+	JobSystem.changed.connect(_queue_refresh)
+	HomeSystem.changed.connect(_queue_refresh)
 	CrimeSystem.wanted_changed.connect(_queue_refresh.unbind(1))
 	if not GameState.log_entries.is_empty():
 		_on_log(GameState.log_entries[-1])
@@ -141,6 +147,9 @@ func _build() -> void:
 	stars_view = WantedStars.new()
 	stars_view.hide()
 	pv.add_child(stars_view)
+	job_chip = UI.chip("", UI.MUTED, 13)
+	job_chip.hide()
+	pv.add_child(job_chip)
 
 	# Topo direito: botões
 	var bar := HBoxContainer.new()
@@ -243,6 +252,8 @@ func _build() -> void:
 	add_child(money_panel)
 	phone = PhonePanel.new()
 	add_child(phone)
+	business_panel = BusinessPanel.new()
+	add_child(business_panel)
 	choice_panel = ChoicePanel.new()
 	add_child(choice_panel)
 
@@ -424,6 +435,10 @@ func _refresh() -> void:
 	place_sub.text = "Dia %d • %s • %02d:%02d • %s" % [TimeManager.day(), TimeManager.weekday(), TimeManager.hour(), TimeManager.minute(), TimeManager.period()]
 	(money_chip.get_child(0) as Label).text = "R$ %d" % GameState.money()
 	stars_view.set_stars(CrimeSystem.wanted())
+	var job := JobSystem.job()
+	job_chip.visible = not job.is_empty()
+	if not job.is_empty():
+		(job_chip.get_child(0) as Label).text = "%s • %02dh-%02dh" % [str(job["cargo"]), int(job["turno"][0]), int(job["turno"][1])]
 	for k in meters:
 		meters[k].value = NeedsSystem.get_value(k)
 	var pemo := player_emotion()
@@ -439,9 +454,16 @@ func _refresh() -> void:
 	_refresh_side()
 
 
+func _on_ui_request(panel: String) -> void:
+	if panel == "negocio":
+		business_panel.open()
+
+
 static func player_emotion() -> String:
 	if NeedsSystem.get_value("saude") < 40.0:
 		return "machucado"
+	if AddictionSystem.worst() >= 0.6:
+		return "nervoso"
 	if NeedsSystem.get_value("energia") < 20.0:
 		return "exausto"
 	if NeedsSystem.get_value("sanidade") < 25.0:

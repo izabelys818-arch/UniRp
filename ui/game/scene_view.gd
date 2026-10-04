@@ -353,8 +353,58 @@ func _casa() -> void:
 	_p([Vector2(190, 330), Vector2(330, 330), Vector2(300, 260), Vector2(220, 260)], Color("#e8c890"))
 	_r(0, 680, V.x, 220, Color("#2d241a"))
 	_r(0, 680, V.x, 8, Color("#4a3a28"))
-	_r(420, 520, 460, 170, Color("#4b3a4a"))
-	_r(420, 480, 460, 60, Color("#5a4658"))
+	_furniture()
+
+
+func _furniture() -> void:
+	var furn: Array = HomeSystem.furniture(loc_id) if GameState.active else []
+	var power := HomeSystem.power(loc_id) if GameState.active and HomeSystem.contracts().has(loc_id) else true
+	if "cama_boa" in furn:
+		_r(660, 560, 360, 130, Color("#3a2a1c"))
+		_r(660, 470, 24, 220, Color("#2a1c12"))
+		_r(684, 520, 330, 150, Color("#6b2f3a"))
+		_r(684, 520, 330, 28, Color("#8a4552"))
+		_r(704, 488, 100, 44, Color("#e8dfd0"))
+		_r(824, 488, 100, 44, Color("#e8dfd0"))
+	else:
+		_r(680, 650, 320, 36, Color("#4b3a4a"))
+		_r(680, 640, 320, 12, Color("#6b5a6a"))
+		_r(700, 626, 80, 22, Color("#c9c0b0"))
+	if "geladeira" in furn:
+		_r(250, 380, 110, 310, Color("#cfd3d6"))
+		_r(250, 380, 110, 12, Color("#e8ecee"))
+		_ln(Vector2(250, 520), Vector2(360, 520), Color("#6a6e72"), 4)
+		_r(342, 430, 8, 70, Color("#6a6e72"))
+		_r(342, 560, 8, 70, Color("#6a6e72"))
+		draw_rect(Rect2(250, 380, 110, 310), INK, false, 4.0)
+	if "fogao" in furn:
+		_r(370, 570, 120, 120, Color("#2b2d30"))
+		_r(370, 558, 120, 14, Color("#8a8e92"))
+		for bx in [395, 430, 465]:
+			draw_circle(Vector2(bx, 565), 11, Color("#111"))
+		draw_rect(Rect2(370, 558, 120, 132), INK, false, 4.0)
+	if "computador" in furn:
+		_r(505, 630, 150, 14, Color("#3a2a1c"))
+		_r(512, 644, 10, 46, Color("#2a1c12"))
+		_r(638, 644, 10, 46, Color("#2a1c12"))
+		_r(535, 556, 70, 60, Color("#111"))
+		if power:
+			_r(540, 561, 60, 50, Color(0.5, 0.85, 1.0, 0.7 + 0.2 * sin(t * 3.0)))
+		_r(560, 616, 20, 14, Color("#222"))
+	if "sofa" in furn:
+		_r(1030, 620, 230, 80, Color("#4a5a3a"))
+		_r(1030, 556, 230, 70, Color("#586a46"))
+		_r(1014, 590, 32, 110, Color("#3e4c30"))
+		_r(1246, 590, 32, 110, Color("#3e4c30"))
+		draw_rect(Rect2(1014, 556, 264, 144), INK, false, 4.0)
+	if "tv" in furn:
+		_r(1060, 440, 170, 100, Color("#0b0c0e"))
+		var glow := Color(0.35, 0.6, 1.0, 0.55 + 0.25 * sin(t * 6.0)) if power else Color(0.1, 0.1, 0.12)
+		_r(1068, 448, 154, 84, glow)
+		if power:
+			_glow(Vector2(1145, 490), 240.0, Color(0.4, 0.6, 1.0, 0.35))
+		_r(1130, 540, 30, 14, Color("#1a1a1c"))
+		draw_rect(Rect2(1060, 440, 170, 100), INK, false, 4.0)
 
 
 func _sky_rect(r: Rect2) -> void:

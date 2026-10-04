@@ -103,6 +103,37 @@ func _ready() -> void:
 	CrimeSystem.data()["fire"] = {}
 	game2.phone.open("emergency")
 	await _shot("screenshot_emergency.png")
+	game2.phone.close()
+	GameState.add_money(9000)
+	GameState.player.erase("housing")
+	GameState.player["home"] = ""
+	HomeSystem.rent("kitnet_centro")
+	for item in ["cama_boa", "fogao", "geladeira", "tv", "sofa", "computador"]:
+		HomeSystem.order(item, "kitnet_centro")
+	HomeSystem.order_internet("kitnet_centro")
+	TimeManager.total_minutes += 1500
+	HomeSystem._on_time_advanced(1, false)
+	TimeManager.total_minutes += 30 * 1440
+	HomeSystem._on_time_advanced(1, false)
+	World.move_player_to("kitnet_centro")
+	await _shot("screenshot_casa.png")
+	game2.phone.open("home")
+	await _shot("screenshot_phone_apps.png")
+	game2.phone.open("bills")
+	await _shot("screenshot_bills.png")
+	game2.phone.open("homes")
+	await _shot("screenshot_homes.png")
+	game2.phone.open("shop")
+	await _shot("screenshot_shop.png")
+	game2.phone.close()
+	HomeSystem.rent("minha_lanchonete")
+	BusinessSystem.restock("cafe", 30)
+	BusinessSystem.restock("coxinha", 30)
+	BusinessSystem.toggle_open()
+	for h in [8, 9, 12, 13]:
+		BusinessSystem.simulate_hour(h, true)
+	game2.business_panel.open()
+	await _shot("screenshot_biz.png")
 	get_tree().quit()
 
 

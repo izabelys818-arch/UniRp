@@ -120,6 +120,10 @@ static func draw(ci: CanvasItem, kind: String, r: Rect2, col: Color, w: float = 
 			_fill(ci, r, [5, 8, 19, 8, 19, 20, 5, 20], col)
 			_circle(ci, r, 9, 5, 2, Color(col, 0.6))
 			_circle(ci, r, 14, 4, 1.4, Color(col, 0.6))
+		"droga":
+			_fill(ci, r, [6, 8, 18, 8, 20, 20, 4, 20], col)
+			_line(ci, r, [6, 8, 8, 4, 16, 4, 18, 8], col, w)
+			_circle(ci, r, 12, 14, 2.5, Color(0, 0, 0, 0.55))
 		"remedio":
 			_fill(ci, r, [4, 9, 20, 9, 20, 15, 4, 15], col)
 			_fill(ci, r, [12, 9, 20, 9, 20, 15, 12, 15], Color(1, 1, 1, 0.55))

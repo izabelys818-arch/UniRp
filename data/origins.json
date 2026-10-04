@@ -3,8 +3,13 @@
 		"id": "recem_chegado",
 		"nome": "Recém-chegado",
 		"descricao": "Você desceu do ônibus com uma mala e um pouco de dinheiro. Ninguém te conhece e você não tem onde dormir.",
-		"local": "rodoviaria", "hora": 7, "dinheiro": 600, "casa": "",
-		"itens": {"agua": 1},
+		"local": "rodoviaria",
+		"hora": 7,
+		"dinheiro": 600,
+		"casa": "",
+		"itens": {
+			"agua": 1
+		},
 		"necessidades": {},
 		"aparencia_extra": "carrega uma mala e tem cara de quem acabou de chegar de viagem",
 		"intro": "O ônibus freia com um chiado e as portas se abrem para o ar abafado de Porto Cinza. Você desce com a mala na mão. Taxistas gritam ofertas, um ambulante empurra café na sua cara, e ninguém aqui sabe quem você é. Ainda."
@@ -13,9 +18,15 @@
 		"id": "ex_presidiario",
 		"nome": "Saiu da prisão",
 		"descricao": "Cinco anos atrás das grades. Hoje te soltaram com a roupa do corpo e uns trocados. As pessoas notam.",
-		"local": "praca", "hora": 10, "dinheiro": 80, "casa": "",
+		"local": "praca",
+		"hora": 10,
+		"dinheiro": 80,
+		"casa": "",
 		"itens": {},
-		"necessidades": {"sanidade": 60, "higiene": 50},
+		"necessidades": {
+			"sanidade": 60,
+			"higiene": 50
+		},
 		"aparencia_extra": "tem tatuagens de cadeia nos braços, cabelo raspado e roupas velhas que não servem direito",
 		"intro": "O portão de ferro bateu atrás de você há duas horas. O ônibus te largou na Praça Central de Porto Cinza com oitenta reais, um documento amassado e o olhar desconfiado de todo mundo que passa."
 	},
@@ -23,9 +34,18 @@
 		"id": "sem_memoria",
 		"nome": "Acordou sem memória",
 		"descricao": "Você acorda num beco, ferido, sem lembrar de nada. Nem como chegou, nem o que fez. Seus bolsos estão vazios.",
-		"local": "beco", "hora": 5, "dinheiro": 0, "casa": "",
+		"local": "beco",
+		"hora": 5,
+		"dinheiro": 0,
+		"casa": "",
 		"itens": {},
-		"necessidades": {"saude": 55, "sanidade": 45, "saciedade": 40, "hidratacao": 35, "higiene": 20},
+		"necessidades": {
+			"saude": 55,
+			"sanidade": 45,
+			"saciedade": 40,
+			"hidratacao": 35,
+			"higiene": 20
+		},
 		"aparencia_extra": "está sujo, com sangue seco na testa e roupas rasgadas, parece perdido",
 		"intro": "Água pinga no seu rosto. Você abre os olhos num beco fedorento, deitado entre caçambas. A cabeça lateja, tem sangue seco na sua testa e você não lembra de nada. Nem do próprio passado. Só do seu nome, e às vezes nem disso."
 	},
@@ -33,23 +53,43 @@
 		"id": "herdeiro",
 		"nome": "Herdeiro falido",
 		"descricao": "Sua tia morreu e te deixou um apartamento em Porto Cinza. E as dívidas dela também. Você tem um teto, mas quase nenhum dinheiro.",
-		"local": "apartamento", "hora": 9, "dinheiro": 150, "casa": "apartamento",
+		"local": "apartamento",
+		"hora": 9,
+		"dinheiro": 150,
+		"casa": "apartamento",
 		"carro": "Fusca 1979 da tia",
-		"itens": {"miojo": 2},
+		"itens": {
+			"miojo": 2
+		},
 		"necessidades": {},
 		"aparencia_extra": "veste roupas boas mas gastas, como alguém que já teve dinheiro",
-		"intro": "A chave da tia Odete gira com dificuldade na fechadura. O apartamento cheira a mofo e remédio. Sobre a mesa, uma pilha de contas atrasadas e um bilhete escrito à mão: 'Não confie em ninguém nessa cidade.'"
+		"intro": "A chave da tia Odete gira com dificuldade na fechadura. O apartamento cheira a mofo e remédio. Sobre a mesa, uma pilha de contas atrasadas e um bilhete escrito à mão: 'Não confie em ninguém nessa cidade.'",
+		"moradia": "propria"
 	},
 	{
 		"id": "morador_antigo",
 		"nome": "Morador antigo",
 		"descricao": "Você mora em Porto Cinza há anos. Tem seu apartamento, algumas economias e conhece alguns rostos. Mas conhece mesmo as pessoas?",
-		"local": "apartamento", "hora": 8, "dinheiro": 1200, "casa": "apartamento",
+		"local": "apartamento",
+		"hora": 8,
+		"dinheiro": 1200,
+		"casa": "apartamento",
 		"carro": "Gol 2008 prata",
-		"itens": {"pao": 1, "cafe": 1},
+		"itens": {
+			"pao": 1,
+			"cafe": 1
+		},
 		"necessidades": {},
 		"aparencia_extra": "tem jeito de quem é da região",
-		"conhecidos": ["ze", "marina", "leo", "dona_cida", "padre"],
-		"intro": "Mais um dia em Porto Cinza. O despertador toca, a geladeira ronca e lá fora a cidade já está barulhenta. Você conhece essas ruas como a palma da mão. Pelo menos achava que conhecia."
+		"conhecidos": [
+			"ze",
+			"marina",
+			"leo",
+			"dona_cida",
+			"padre"
+		],
+		"intro": "Mais um dia em Porto Cinza. O despertador toca, a geladeira ronca e lá fora a cidade já está barulhenta. Você conhece essas ruas como a palma da mão. Pelo menos achava que conhecia.",
+		"moradia": "alugada",
+		"aluguel": 450
 	}
 ]

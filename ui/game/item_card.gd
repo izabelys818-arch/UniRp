@@ -5,7 +5,7 @@ const Icons = preload("res://ui/game/icons.gd")
 const TYPE_COLORS := {
 	"comida": Color("#e8a65a"), "bebida": Color("#5aa9e6"), "cafe": Color("#b07a45"), "lata": Color("#4fd1b5"),
 	"garrafa": Color("#4caf6b"), "dose": Color("#e8d8a0"), "cigarro": Color("#dddddd"), "higiene": Color("#9fd3ff"),
-	"remedio": Color("#ff6b78"),
+	"remedio": Color("#ff6b78"), "droga": Color("#b78cff"),
 }
 
 var item_id: String = ""
