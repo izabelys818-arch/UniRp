@@ -14,5 +14,9 @@
 	"cachaca": {"nome": "Dose de cachaça", "preco": 6, "tipo": "dose", "efeitos": {"sanidade": 12, "saude": -2, "energia": -8}},
 	"cigarro": {"nome": "Maço de cigarro", "preco": 15, "tipo": "cigarro", "efeitos": {"sanidade": 10, "saude": -3}},
 	"lenco_umedecido": {"nome": "Lenço umedecido", "preco": 9, "tipo": "higiene", "efeitos": {"higiene": 25}},
-	"analgesico": {"nome": "Analgésico", "preco": 12, "tipo": "remedio", "efeitos": {"saude": 10}}
+	"analgesico": {"nome": "Analgésico", "preco": 12, "tipo": "remedio", "efeitos": {"saude": 10}},
+	"faca": {"nome": "Faca de cozinha", "preco": 35, "tipo": "arma", "dano": [22, 40], "efeitos": {}},
+	"pe_de_cabra": {"nome": "Pé de cabra", "preco": 45, "tipo": "ferramenta", "dano": [14, 26], "arrombar": 0.75, "efeitos": {}},
+	"mixa": {"nome": "Kit de mixas", "preco": 60, "tipo": "ferramenta", "arrombar": 0.6, "silencioso": true, "efeitos": {}},
+	"curativo": {"nome": "Kit de curativo", "preco": 18, "tipo": "remedio", "efeitos": {"saude": 22}}
 }

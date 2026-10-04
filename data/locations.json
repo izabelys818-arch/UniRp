@@ -25,6 +25,7 @@
 		"abre": 16, "fecha": 3, "x": 55, "y": 50,
 		"loja": ["cerveja", "cachaca", "cigarro", "coxinha", "agua"],
 		"vendedor": "Balcão do Zé",
+		"arrombavel": {"alarme": 0.15, "caixa": [80, 260], "itens": ["cerveja", "cachaca", "cigarro"]},
 		"servicos": []
 	},
 	"mercado": {
@@ -32,8 +33,9 @@
 		"tipo": "loja",
 		"descricao": "Corredores estreitos, luz fluorescente piscando e uma caixa só funcionando. Câmeras velhas nos cantos.",
 		"abre": 7, "fecha": 22, "x": 35, "y": 30,
-		"loja": ["pao", "miojo", "frutas", "agua", "refrigerante", "lenco_umedecido", "analgesico", "energetico", "cigarro"],
+		"loja": ["pao", "miojo", "frutas", "agua", "refrigerante", "lenco_umedecido", "analgesico", "curativo", "energetico", "cigarro", "faca", "pe_de_cabra"],
 		"vendedor": "Prateleiras do mercado",
+		"arrombavel": {"alarme": 0.55, "caixa": [120, 380], "itens": ["cigarro", "energetico", "analgesico", "faca"]},
 		"servicos": []
 	},
 	"lanchonete": {
@@ -43,6 +45,7 @@
 		"abre": 6, "fecha": 23, "x": 45, "y": 35,
 		"loja": ["cafe", "pao_queijo", "coxinha", "prato_feito", "refrigerante", "agua"],
 		"vendedor": "Balcão da lanchonete",
+		"arrombavel": {"alarme": 0.3, "caixa": [60, 200], "itens": ["coxinha", "refrigerante"]},
 		"servicos": []
 	},
 	"hospital": {
@@ -52,7 +55,7 @@
 		"abre": 0, "fecha": 24, "x": 70, "y": 25,
 		"loja": ["analgesico", "agua"],
 		"vendedor": "Máquina de lanches do corredor",
-		"servicos": ["atendimento"]
+		"servicos": ["atendimento_sus", "atendimento"]
 	},
 	"delegacia": {
 		"nome": "Delegacia 4ª DP",
@@ -85,8 +88,22 @@
 		"tipo": "publico",
 		"descricao": "Um corredor estreito entre prédios, cheio de caçambas, poças e pichações. Quem passa por aqui geralmente não quer ser visto.",
 		"abre": 0, "fecha": 24, "x": 58, "y": 62,
-		"loja": [],
+		"loja": ["mixa", "faca", "cigarro"],
+		"vendedor": "Muambeiro encapuzado",
+		"vendedor_horario": [21, 3],
 		"servicos": ["dormir_rua"]
+	},
+	"rua_acacias": {
+		"nome": "Rua das Acácias",
+		"tipo": "publico",
+		"descricao": "Rua residencial silenciosa, de casas com muros altos, cercas elétricas e cachorros latindo. Gente de dinheiro mora aqui e não gosta de estranhos.",
+		"abre": 0, "fecha": 24, "x": 82, "y": 22,
+		"loja": [],
+		"servicos": [],
+		"casas": [
+			{"id": "casa_helena", "nome": "Casa de muro alto e jardim impecável", "dono": "helena", "alarme": 0.12, "dinheiro": [150, 500], "itens": ["analgesico", "curativo"], "pista": "Numa gaveta trancada do porão: uma caixa com crachás de hospital, alianças e documentos de pessoas que sumiram da cidade. Alguns ainda têm sangue seco."},
+			{"id": "casa_irene", "nome": "Sobrado com câmeras na fachada", "dono": "irene", "alarme": 0.65, "dinheiro": [400, 1200], "itens": ["cigarro"], "pista": "Fotos da Irene com o Sargento Otávio e um caderno com valores pagos a ele todo mês."}
+		]
 	},
 	"igreja": {
 		"nome": "Igreja de Santa Rita",

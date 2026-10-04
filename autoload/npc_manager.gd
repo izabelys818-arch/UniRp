@@ -48,10 +48,21 @@ func reset_state(origin: Dictionary) -> void:
 			"emocao": "neutro",
 			"namoro": false,
 			"bloqueado": false,
+			"saude": 100,
+			"fora_ate": 0,
+			"hospital_ate": 0,
+			"preso_ate": 0,
 		}
 
 
 func location_of(npc_id: String, h: int = -1) -> String:
+	var st: Dictionary = state.get(npc_id, {})
+	var now := TimeManager.total_minutes
+	if not st.is_empty():
+		if not st.get("vivo", true) or now < int(st.get("preso_ate", 0)) or now < int(st.get("fora_ate", 0)):
+			return ""
+		if now < int(st.get("hospital_ate", 0)):
+			return "hospital"
 	if h < 0:
 		h = TimeManager.hour()
 	for slot in npcs[npc_id]["rotina"]:
@@ -62,7 +73,40 @@ func location_of(npc_id: String, h: int = -1) -> String:
 
 func is_asleep(npc_id: String) -> bool:
 	var h := TimeManager.hour()
+	var st: Dictionary = state[npc_id]
+	if TimeManager.total_minutes < int(st.get("fora_ate", 0)):
+		return false
 	return location_of(npc_id) == "" and (h < 7 or h >= 23)
+
+
+func is_home(npc_id: String) -> bool:
+	var st: Dictionary = state[npc_id]
+	return st.get("vivo", true) and location_of(npc_id) == "" and TimeManager.total_minutes >= int(st.get("preso_ate", 0)) and TimeManager.total_minutes >= int(st.get("fora_ate", 0))
+
+
+# Uma "rodada" provocada pelo jogo (não é fala do jogador): ataques noturnos, reação a agressões etc.
+func event_turn(id: String, narration: String, instruction: String) -> void:
+	if busy or not GameState.active:
+		return
+	if talking_to != id:
+		talking_to = id
+		channel = PRESENCIAL
+		state[id]["conheceu"] = true
+		conversation_changed.emit(id)
+	busy = true
+	if narration != "":
+		GameState.add_log(narration, "narration")
+	var st: Dictionary = state[id]
+	st["historico"].append({"role": "user", "content": "[EVENTO DO JOGO] " + instruction})
+	npc_thinking.emit(id, true)
+	var res := await _request(id, PRESENCIAL)
+	npc_thinking.emit(id, false)
+	busy = false
+	if not res["ok"]:
+		st["historico"].pop_back()
+		GameState.add_log(res["error"], "error")
+		return
+	_apply_reply(id, Prompts.parse_npc_reply(res["text"]), PRESENCIAL)
 
 
 func npcs_here() -> Array:
@@ -302,10 +346,19 @@ func _apply_action(id: String, a: Dictionary, chan: String) -> void:
 				GameState.add_log("%s desligou na sua cara." % who, "event")
 				end_conversation()
 		"atacar":
-			if chan == PRESENCIAL:
+			if chan == PRESENCIAL and location_of(id) == World.current_id():
 				var dmg := clampi(int(a.get("dano", 10)), 5, 40)
 				GameState.add_log("%s te ataca! (-%d de saúde)" % [who, dmg], "danger")
+				CrimeSystem.npc_attacked_player(id)
 				NeedsSystem.apply({"saude": -dmg, "sanidade": -10}, "atacado por %s" % npcs[id]["nome"])
+		"fugir":
+			if chan == PRESENCIAL:
+				st["fora_ate"] = TimeManager.total_minutes + 240
+				GameState.add_log("%s sai correndo e some de vista." % who, "event")
+				end_conversation()
+		"chamar_policia":
+			GameState.add_log("%s chama a polícia." % who, "danger")
+			CrimeSystem.npc_called_police(id)
 
 
 func _on_time_advanced(_minutes: int, _sleeping: bool) -> void:
@@ -325,6 +378,11 @@ func from_dict(d: Dictionary) -> void:
 		for k in ["namoro", "bloqueado"]:
 			if not st.has(k):
 				st[k] = false
+		for k in ["fora_ate", "hospital_ate", "preso_ate"]:
+			if not st.has(k):
+				st[k] = 0
+		if not st.has("saude"):
+			st["saude"] = 100
 		if not st.has("conheceu"):
 			st["conheceu"] = not st["historico"].is_empty()
 	talking_to = ""

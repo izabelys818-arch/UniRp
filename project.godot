@@ -19,6 +19,7 @@ World="*res://autoload/world.gd"
 AIService="*res://autoload/ai_service.gd"
 NPCManager="*res://autoload/npc_manager.gd"
 PhoneSystem="*res://autoload/phone_system.gd"
+CrimeSystem="*res://autoload/crime_system.gd"
 Economy="*res://autoload/economy.gd"
 SaveManager="*res://autoload/save_manager.gd"
 

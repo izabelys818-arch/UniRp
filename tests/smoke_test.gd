@@ -177,7 +177,7 @@ func _ready() -> void:
 	var rst: Dictionary = NPCManager.state["ruan"]
 	check(int(rst["confianca"]) == -15, "variação de relação limitada a -15")
 	check(rst["conhece_nome"], "nome revelado")
-	check(NeedsSystem.get_value("saude") <= 60.0 and GameState.active, "ataque limitado a 40 de dano")
+	check(NeedsSystem.get_value("saude") >= 60.0 and GameState.active, "ataque limitado a 40 de dano e só de quem está no local")
 
 	World.move_player_to("pensao")
 	var t0 := TimeManager.total_minutes

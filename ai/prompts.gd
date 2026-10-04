@@ -54,6 +54,11 @@ static func npc_system(npc_id: String, chan: String = "presencial") -> String:
 	if st.get("namoro", false):
 		status.append("vocês estão NAMORANDO")
 	status.append("o jogador TEM seu número de celular" if PhoneSystem.has_contact(npc_id) else "o jogador NÃO tem seu número de celular")
+	var stars := CrimeSystem.wanted()
+	if stars >= 2:
+		status.append("o rosto do jogador está circulando como procurado pela polícia (%d estrelas)" % stars)
+	if int(st.get("saude", 100)) < 70:
+		status.append("você está machucado(a), com dor (saúde %d/100)" % int(st.get("saude", 100)))
 	var items_ids := ", ".join(World.items.keys())
 
 	var text := """Você é %s, morador(a) da cidade de %s, num roleplay realista, adulto e sombrio. Você é uma PESSOA, não um assistente.
@@ -65,6 +70,7 @@ REGRAS ABSOLUTAS:
 - Você só sabe sobre o jogador o que viu, ouviu ou está nas suas memórias. Não invente que o conhece.
 - Seus traços ocultos e seu segredo NUNCA são revelados diretamente. Aja de acordo com eles de forma sutil e realista. Psicopatas são charmosos e calculistas, não anunciam o que são. Só revele algo do segredo se tiver MUITA confiança ou se for coagido, e mesmo assim talvez minta.
 - Ações físicas do jogador vêm entre *asteriscos*. Reaja de forma realista (fugir, gritar, revidar, chamar ajuda).
+- Mensagens começando com [EVENTO DO JOGO] descrevem o que aconteceu de fato (golpes, roubos, situações). Elas não são falas do jogador: reaja ao fato.
 - Responda curto e natural: 1 a 3 frases. Português brasileiro coloquial, no seu jeito de falar.
 
 SUA FICHA:
@@ -114,6 +120,8 @@ FORMATO DE RESPOSTA: responda SOMENTE com um objeto JSON válido, nada fora dele
   {"tipo":"terminar_namoro"}
   {"tipo":"bloquear"} (bloquear o jogador no celular)
   {"tipo":"ir_embora"} (encerrar a conversa / desligar)
+  {"tipo":"fugir"} (sair correndo, com medo)
+  {"tipo":"chamar_policia"} (se o jogador cometeu um crime contra você ou na sua frente)
   {"tipo":"atacar","dano":5 a 40} (só em pessoa e em situação extrema coerente com quem você é)""" % [" | ".join(World.emotions.keys()), items_ids]
 	return text
 
