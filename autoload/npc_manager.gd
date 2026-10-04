@@ -126,11 +126,16 @@ func event_turn(id: String, narration: String, instruction: String) -> void:
 	_apply_reply(id, Prompts.parse_npc_reply(res["text"]), PRESENCIAL)
 
 
+# Pessoas à vista no mundo aberto (preenchido pela vista 3D): quem está perto de verdade conta como "aqui".
+var nearby: Array = []
+var nearby_loc: String = ""
+
+
 func npcs_here() -> Array:
 	var here := World.current_id()
 	var out: Array = []
 	for id in npcs:
-		if state[id]["vivo"] and location_of(id) == here:
+		if state[id]["vivo"] and (location_of(id) == here or (nearby_loc == here and id in nearby)):
 			out.append(id)
 	return out
 

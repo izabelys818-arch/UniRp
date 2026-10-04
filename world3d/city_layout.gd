@@ -45,7 +45,7 @@ func _assign() -> void:
 	ids.sort()
 	for id in ids:
 		var loc: Dictionary = World.locations[id]
-		var want := Vector2i(clampi(int(float(loc.get("x", 50)) / 12.5), 0, GRID - 1), clampi(int(float(loc.get("y", 50)) / 12.5), 0, GRID - 1))
+		var want := Vector2i(clampi(int(round((float(loc.get("x", 50)) - 10.0) / 80.0 * (GRID - 1))), 0, GRID - 1), clampi(int(round((float(loc.get("y", 50)) - 10.0) / 80.0 * (GRID - 1))), 0, GRID - 1))
 		var c := _free_near(want)
 		blocks[c] = {"loc": id}
 		lots[id] = _make_lot(id, c)

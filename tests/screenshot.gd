@@ -174,6 +174,18 @@ func _ready() -> void:
 		NPCManager.start_conversation(here[0])
 		await _shot("mundo_conversa.png")
 		NPCManager.end_conversation()
+	World.move_player_to("lanchonete", "uber")
+	game2._refresh()
+	for i in 30:
+		await get_tree().process_frame
+	wv.zoom = 5.0
+	wv.player_fig.rotation.y = 2.4
+	await _shot("mundo_zoom.png")
+	wv.player_fig.walking = true
+	wv.player_fig.move_speed = 3.6
+	for i in 8:
+		await get_tree().process_frame
+	await _shot("mundo_zoom_andando.png")
 	get_tree().quit()
 
 

@@ -58,6 +58,7 @@ func build(l: Layout) -> void:
 	add_child(body)
 	var floor_cs := CollisionShape3D.new()
 	floor_cs.shape = WorldBoundaryShape3D.new()
+	floor_cs.position = Vector3(0, 0.17, 0)
 	body.add_child(floor_cs)
 	_ground()
 	for c in layout.blocks:
@@ -151,7 +152,7 @@ func _lamp(k: Kit, p: Vector3) -> void:
 func _ground() -> void:
 	var k := Kit.new()
 	var S := Layout.SIZE
-	k.box_ab(Vector3(-60, -0.2, -60), Vector3(S + 60, 0.0, S + 60), ASPHALT)
+	k.box_ab(Vector3(-60, -0.2, -60), Vector3(S + 60, 0.12, S + 60), ASPHALT)
 	# faixas e faixas de pedestre
 	for i in Layout.GRID + 1:
 		var line := i * Layout.PITCH + Layout.STREET / 2.0
@@ -159,16 +160,16 @@ func _ground() -> void:
 			var a := j * Layout.PITCH + Layout.STREET + 2.0
 			var x := a
 			while x < a + Layout.BLOCK - 4.0:
-				k.box_ab(Vector3(x, 0.0, line - 0.08), Vector3(x + 1.6, 0.02, line + 0.08), LINE)
-				k.box_ab(Vector3(line - 0.08, 0.0, x), Vector3(line + 0.08, 0.02, x + 1.6), LINE)
+				k.box_ab(Vector3(x, 0.12, line - 0.08), Vector3(x + 1.6, 0.14, line + 0.08), LINE)
+				k.box_ab(Vector3(line - 0.08, 0.12, x), Vector3(line + 0.08, 0.14, x + 1.6), LINE)
 				x += 3.2
 	for i in Layout.GRID + 1:
 		for j in Layout.GRID + 1:
 			var c := Vector2(i * Layout.PITCH + Layout.STREET / 2.0, j * Layout.PITCH + Layout.STREET / 2.0)
 			for s in 6:
 				var off := -3.0 + s * 1.2
-				k.box_ab(Vector3(c.x + off, 0.0, c.y + 5.6), Vector3(c.x + off + 0.6, 0.02, c.y + 7.4), LINE)
-				k.box_ab(Vector3(c.x + 5.6, 0.0, c.y + off), Vector3(c.x + 7.4, 0.02, c.y + off + 0.6), LINE)
+				k.box_ab(Vector3(c.x + off, 0.12, c.y + 5.6), Vector3(c.x + off + 0.6, 0.14, c.y + 7.4), LINE)
+				k.box_ab(Vector3(c.x + 5.6, 0.12, c.y + off), Vector3(c.x + 7.4, 0.14, c.y + off + 0.6), LINE)
 			if (i + j) % 2 == 0 and i < Layout.GRID + 1:
 				_lamp(k, Vector3(c.x + 5.8, 0, c.y + 5.8))
 	# calçadas de cada quarteirão
@@ -176,13 +177,12 @@ func _ground() -> void:
 		var r := Layout.block_rect(c)
 		k.box_ab(Vector3(r.position.x - 0.3, 0.0, r.position.y - 0.3), Vector3(r.end.x + 0.3, 0.16, r.end.y + 0.3), CURB)
 		k.box_ab(Vector3(r.position.x, 0.0, r.position.y), Vector3(r.end.x, 0.17, r.end.y), SIDEWALK)
-		_collider(r.grow(0.3), 0.17)
 		# carros estacionados no meio-fio
 		for side in 2:
 			if rng.randf() < 0.55:
 				var cx := rng.randf_range(r.position.x + 4, r.end.x - 4)
 				var z := r.end.y + 1.6 if side == 0 else r.position.y - 1.6
-				_car(k, Vector3(cx, 0, z), PI / 2.0, _car_color())
+				_car(k, Vector3(cx, 0.12, z), PI / 2.0, _car_color())
 	_mesh(k, self)
 
 

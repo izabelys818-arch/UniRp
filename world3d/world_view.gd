@@ -41,7 +41,7 @@ var cars: Array = []
 var path: PackedVector2Array = PackedVector2Array()
 var pending_npc: String = ""
 var hover_id: String = ""
-var zoom: float = 17.0
+var zoom: float = 14.0
 var cam_target: Vector3 = Vector3.ZERO
 var pause_check: Callable
 var rng := RandomNumberGenerator.new()
@@ -58,6 +58,7 @@ var _stuck: float = 0.0
 var _door_locked: Dictionary = {}
 var _built: bool = false
 var _talk_anchor: Vector2 = Vector2.INF
+var hint: Label
 
 
 func _ready() -> void:
@@ -66,7 +67,7 @@ func _ready() -> void:
 	rng.randomize()
 	viewport = SubViewport.new()
 	viewport.own_world_3d = true
-	viewport.msaa_3d = Viewport.MSAA_2X
+	viewport.msaa_3d = Viewport.MSAA_4X
 	viewport.handle_input_locally = false
 	add_child(viewport)
 	_setup_scene()
@@ -76,6 +77,15 @@ func _ready() -> void:
 	NPCManager.npc_replied.connect(func(id: String, _d: Dictionary) -> void:
 		if npcs.has(id):
 			(npcs[id]["fig"] as Humanoid).talk_left = 3.5)
+	hint = Label.new()
+	hint.add_theme_font_size_override("font_size", 15)
+	hint.add_theme_color_override("font_color", Color("#fff3d6"))
+	hint.add_theme_color_override("font_outline_color", Color(0.05, 0.04, 0.04))
+	hint.add_theme_constant_override("outline_size", 8)
+	hint.autowrap_mode = TextServer.AUTOWRAP_OFF
+	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hint.visible = false
+	add_child(hint)
 	_place_player(World.current_id(), true)
 	_last_minutes = TimeManager.total_minutes
 	_update_environment()
@@ -105,8 +115,8 @@ func _setup_scene() -> void:
 	camera = Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
 	camera.size = zoom
-	camera.near = 1.0
-	camera.far = 600.0
+	camera.near = 70.0
+	camera.far = 250.0
 	viewport.add_child(camera)
 	camera.current = true
 	layout = Layout.new()
@@ -354,11 +364,18 @@ func _process(delta: float) -> void:
 	if _t_env <= 0.0:
 		_t_env = 0.5
 		_update_environment()
-	if hover_id != "" and npcs.has(hover_id):
+	if hover_id != "" and npcs.has(hover_id) and not _paused():
+		var hf: Node3D = npcs[hover_id]["fig"]
 		hover_ring.visible = true
-		hover_ring.position = (npcs[hover_id]["fig"] as Node3D).position + Vector3(0, 0.08, 0)
+		hover_ring.position = hf.position + Vector3(0, 0.08, 0)
+		var head_px := camera.unproject_position(hf.global_position + Vector3(0, 2.0, 0))
+		hint.text = "Clique para conversar   •   botão direito: opções" if NPCManager.talking_to == "" else "Em conversa"
+		hint.size = hint.get_combined_minimum_size()
+		hint.position = head_px - Vector2(hint.size.x / 2.0, hint.size.y + 8.0)
+		hint.visible = true
 	else:
 		hover_ring.visible = false
+		hint.visible = false
 
 
 func _typing() -> bool:
@@ -404,20 +421,26 @@ func _move_player(delta: float) -> void:
 		speed *= 0.6
 		running = false
 	var before := player.position
-	player.velocity.x = dir.x * speed
-	player.velocity.z = dir.z * speed
+	# aceleração e frenagem: o corpo tem inércia, não liga e desliga
+	var vel2 := Vector2(player.velocity.x, player.velocity.z)
+	var want := Vector2(dir.x, dir.z) * speed
+	vel2 = vel2.move_toward(want, (16.0 if want != Vector2.ZERO else 24.0) * delta)
+	player.velocity.x = vel2.x
+	player.velocity.z = vel2.y
 	player.velocity.y = 0.0 if player.is_on_floor() else player.velocity.y - 20.0 * delta
 	player.move_and_slide()
 	var moved := Vector2(player.position.x - before.x, player.position.z - before.z).length()
+	var real_speed: float = moved / maxf(delta, 0.0001)
 	if dir != Vector3.ZERO and not path.is_empty() and moved < speed * delta * 0.15:
 		_stuck += delta
 		if _stuck > 0.6:
 			path.remove_at(0)
 			_stuck = 0.0
-	player_fig.walking = moved > 0.002
-	player_fig.running = running
-	if dir != Vector3.ZERO:
-		player_fig.rotation.y = lerp_angle(player_fig.rotation.y, atan2(dir.x, dir.z), minf(delta * 12.0, 1.0))
+	player_fig.move_speed = real_speed
+	player_fig.walking = real_speed > 0.15
+	player_fig.running = real_speed > 5.0
+	if vel2.length() > 0.3:
+		player_fig.rotation.y = lerp_angle(player_fig.rotation.y, atan2(vel2.x, vel2.y), minf(delta * 9.0, 1.0))
 	_walk_acc += moved
 	if _walk_acc > 10.0:
 		_walk_acc -= 10.0
@@ -455,9 +478,6 @@ func _face(fig: Node3D, p: Vector2) -> void:
 
 func _try_talk(id: String) -> void:
 	if NPCManager.busy:
-		return
-	if NPCManager.location_of(id) != World.current_id():
-		toast.emit("Essa pessoa está só de passagem.")
 		return
 	npc_chosen.emit(id)
 
@@ -530,9 +550,28 @@ func _cutaway() -> void:
 
 # ---------- NPCs ----------
 
+func _inside_any(p: Vector2) -> String:
+	var lot := layout.lot_at(p)
+	return lot if lot != "" and layout.in_building(lot, p) else ""
+
+
+func _update_nearby() -> void:
+	var pp := _p2()
+	var mine := _inside_any(pp)
+	var out: Array = []
+	for id in npcs:
+		var fig: Node3D = npcs[id]["fig"]
+		var fp := Vector2(fig.position.x, fig.position.z)
+		if fp.distance_to(pp) < 12.0 and _inside_any(fp) == mine:
+			out.append(id)
+	NPCManager.nearby = out
+	NPCManager.nearby_loc = World.current_id()
+
+
 func _sync_npcs() -> void:
 	if not GameState.active:
 		return
+	_update_nearby()
 	var snap := _snap_npcs
 	_snap_npcs = false
 	for id in NPCManager.npcs:
@@ -548,7 +587,7 @@ func _sync_npcs() -> void:
 			fig.set_look(LookBuilder.build(World.npc_looks.get(id, {}), int(n["idade"]), str(n["genero"])))
 			viewport.add_child(fig)
 			var sp := layout.spot_in(want, rng)
-			fig.position = Vector3(sp.x, 0.23, sp.y)
+			fig.position = Vector3(sp.x, 0.17, sp.y)
 			fig.rotation.y = rng.randf() * TAU
 			npcs[id] = {"fig": fig, "loc": want, "path": PackedVector2Array(), "wait": rng.randf_range(2.0, 8.0)}
 			continue
@@ -558,7 +597,7 @@ func _sync_npcs() -> void:
 			var fig2: Node3D = e["fig"]
 			var dest := layout.spot_in(want, rng)
 			if snap:
-				fig2.position = Vector3(dest.x, 0.23, dest.y)
+				fig2.position = Vector3(dest.x, 0.17, dest.y)
 				e["path"] = PackedVector2Array()
 			else:
 				e["path"] = layout.route(Vector2(fig2.position.x, fig2.position.z), dest)
@@ -582,6 +621,7 @@ func _update_npcs(delta: float) -> void:
 				var st := gap.normalized() * minf(NPC_SPEED * 1.4 * delta, gap.length() - 1.5)
 				fig.position.x += st.x
 				fig.position.z += st.y
+				fig.move_speed = NPC_SPEED * 1.4
 				fig.walking = true
 			else:
 				fig.walking = false
@@ -601,10 +641,12 @@ func _update_npcs(delta: float) -> void:
 				var step := d.normalized() * minf(spd * delta, d.length())
 				fig.position.x += step.x
 				fig.position.z += step.y
-				fig.position.y = 0.23 if Layout.block_rect(Vector2i(int(floor((fig.position.x - Layout.STREET) / Layout.PITCH)), int(floor((fig.position.z - Layout.STREET) / Layout.PITCH)))).has_point(Vector2(fig.position.x, fig.position.z)) else 0.02
-				fig.rotation.y = lerp_angle(fig.rotation.y, atan2(step.x, step.y), minf(delta * 10.0, 1.0))
+				fig.position.y = 0.17
+				fig.rotation.y = lerp_angle(fig.rotation.y, atan2(step.x, step.y), minf(delta * 7.0, 1.0))
+			fig.move_speed = lerpf(fig.move_speed, spd, minf(delta * 5.0, 1.0))
 			fig.walking = true
 			continue
+		fig.move_speed = 0.0
 		fig.walking = false
 		e["wait"] = float(e["wait"]) - delta
 		if float(e["wait"]) <= 0.0:
@@ -635,7 +677,8 @@ func _update_peds(delta: float) -> void:
 		var step := d.normalized() * minf(float(e["speed"]) * delta, d.length())
 		fig.position.x += step.x
 		fig.position.z += step.y
-		fig.rotation.y = lerp_angle(fig.rotation.y, atan2(step.x, step.y), minf(delta * 8.0, 1.0))
+		fig.rotation.y = lerp_angle(fig.rotation.y, atan2(step.x, step.y), minf(delta * 6.0, 1.0))
+		fig.move_speed = float(e["speed"])
 		fig.walking = true
 
 
@@ -651,10 +694,10 @@ func _update_cars(delta: float) -> void:
 		var lane := 1.8 * float(c["dir"])
 		var n: Node3D = c["node"]
 		if bool(c["x"]):
-			n.position = Vector3(pos, 0.02, line_p + lane)
+			n.position = Vector3(pos, 0.14, line_p + lane)
 			n.rotation.y = PI / 2.0 if float(c["dir"]) > 0 else -PI / 2.0
 		else:
-			n.position = Vector3(line_p - lane, 0.02, pos)
+			n.position = Vector3(line_p - lane, 0.14, pos)
 			n.rotation.y = 0.0 if float(c["dir"]) > 0 else PI
 
 
@@ -713,22 +756,39 @@ func _update_environment() -> void:
 
 # ---------- entrada ----------
 
+func _hidden_by_roof(fig: Node3D) -> bool:
+	var fp := Vector2(fig.position.x, fig.position.z)
+	var lot := _inside_any(fp)
+	if lot == "" or not city.loc_info.has(lot):
+		return false
+	return not bool(city.loc_info[lot]["structure"]["cut_now"])
+
+
 func _pick_npc(pos: Vector2) -> String:
 	var ppm := size.y / maxf(camera.size, 1.0)
 	var best := ""
 	var best_d := 1e9
 	for id in npcs:
 		var fig: Node3D = npcs[id]["fig"]
-		if not fig.visible:
+		if not fig.visible or _hidden_by_roof(fig):
 			continue
 		var feet := camera.unproject_position(fig.global_position)
 		var top := camera.unproject_position(fig.global_position + Vector3(0, 1.9, 0))
-		var r := Rect2(feet.x - ppm * 0.45, top.y, ppm * 0.9, feet.y - top.y)
+		var r := Rect2(feet.x - ppm * 0.6, top.y - ppm * 0.15, ppm * 1.2, feet.y - top.y + ppm * 0.3)
 		if r.has_point(pos):
 			var d := absf(pos.x - feet.x)
 			if d < best_d:
 				best_d = d
 				best = id
+	if best == "":
+		for i in peds.size():
+			var pf: Node3D = peds[i]["fig"]
+			if not pf.visible:
+				continue
+			var feet2 := camera.unproject_position(pf.global_position)
+			var top2 := camera.unproject_position(pf.global_position + Vector3(0, 1.9, 0))
+			if Rect2(feet2.x - ppm * 0.6, top2.y - ppm * 0.15, ppm * 1.2, feet2.y - top2.y + ppm * 0.3).has_point(pos):
+				return "ped:%d" % i
 	return best
 
 
@@ -756,6 +816,10 @@ func _gui_input(e: InputEvent) -> void:
 				zoom = clampf(zoom * 1.1, 12.0, 80.0)
 			MOUSE_BUTTON_LEFT:
 				var id := _pick_npc(e.position)
+				if id.begins_with("ped:"):
+					toast.emit("Um desconhecido passando. Só os moradores do bairro dão papo.")
+					accept_event()
+					return
 				if id != "":
 					var fig: Node3D = npcs[id]["fig"]
 					var fp := Vector2(fig.position.x, fig.position.z)
@@ -771,6 +835,6 @@ func _gui_input(e: InputEvent) -> void:
 					_go_to(_ground_at(e.position))
 			MOUSE_BUTTON_RIGHT:
 				var id2 := _pick_npc(e.position)
-				if id2 != "":
+				if id2 != "" and not id2.begins_with("ped:"):
 					npc_menu.emit(id2)
 		accept_event()

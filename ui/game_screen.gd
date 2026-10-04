@@ -46,6 +46,7 @@ var stage: Control
 var world_view: WorldView
 var dim: ColorRect
 var _side_sig: String = ""
+var _ev_sig: String = ""
 var actors: Dictionary = {}
 var place_title: Label
 var place_sub: Label
@@ -102,6 +103,7 @@ func _ready() -> void:
 	if not GameState.log_entries.is_empty():
 		_on_log(GameState.log_entries[-1])
 	_refresh()
+	get_tree().create_timer(1.2).timeout.connect(func() -> void: _toast("WASD anda  •  clique no chão para ir  •  clique numa pessoa para conversar"))
 	if args.has("new_origin"):
 		World.start_story(args["new_origin"])
 
@@ -469,10 +471,13 @@ func _refresh() -> void:
 	place_sub.text = "Dia %d • %s • %02d:%02d • %s" % [TimeManager.day(), TimeManager.weekday(), TimeManager.hour(), TimeManager.minute(), TimeManager.period()]
 	(money_chip.get_child(0) as Label).text = "R$ %d" % GameState.money()
 	stars_view.set_stars(CrimeSystem.wanted())
-	for c in events_box.get_children():
-		c.queue_free()
-	for label_text in WorldEvents.labels():
-		events_box.add_child(UI.chip(str(label_text), Color("#ff9f43"), 13))
+	var ev_sig := ",".join(WorldEvents.labels())
+	if ev_sig != _ev_sig:
+		_ev_sig = ev_sig
+		for c in events_box.get_children():
+			c.queue_free()
+		for label_text in WorldEvents.labels():
+			events_box.add_child(UI.chip(str(label_text), Color("#ff9f43"), 13))
 	var job := JobSystem.job()
 	job_chip.visible = not job.is_empty()
 	if not job.is_empty():
