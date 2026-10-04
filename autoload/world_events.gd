@@ -180,7 +180,7 @@ func _on_time_advanced(minutes: int, _sleeping: bool) -> void:
 	var st := state()
 	var now := TimeManager.total_minutes
 	st["active"] = st["active"].filter(func(e): return now < int(e["ate"]) + 1440)
-	var steps := mini(int(minutes / 60.0), 72)
+	var steps := mini(now / 60 - (now - minutes) / 60, 72)
 	var rate := BASE_RATE * World.mod("eventos") if random_enabled else 0.0
 	for i in steps:
 		if active_list().size() >= 2 or randf() > rate:

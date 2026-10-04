@@ -129,10 +129,12 @@ func _on_time(minutes: int) -> void:
 		return
 	var b := biz()
 	var start := TimeManager.total_minutes - minutes
-	var steps := int(ceil(minutes / 60.0))
+	# simula cada hora cheia que terminou (funciona com saltos grandes ou tempo real)
+	var first_h: int = start / 60
+	var steps: int = TimeManager.total_minutes / 60 - first_h
 	var present := World.current_id() == LOC
 	for i in steps:
-		var minute_i := start + i * 60
+		var minute_i := (first_h + i) * 60
 		simulate_hour((minute_i / 60) % 24, present)
 		if ((minute_i / 60) % 24) in [0, 1, 2, 3, 4] and float(b["cash"]) > 300.0 and randf() < 0.02:
 			var lost := int(float(b["cash"]) * 0.6)

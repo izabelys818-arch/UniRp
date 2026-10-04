@@ -373,5 +373,19 @@
 		"y": 28,
 		"loja": [],
 		"servicos": []
+	},
+	"rua": {
+		"nome": "Rua",
+		"tipo": "publico",
+		"via": true,
+		"abre": 0,
+		"fecha": 24,
+		"x": 50,
+		"y": 50,
+		"loja": [],
+		"servicos": [
+			"dormir_rua"
+		],
+		"descricao": "Asfalto rachado, carros estacionados no meio-fio e postes que zumbem. Gente passa apressada pela calçada."
 	}
 }

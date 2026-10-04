@@ -76,4 +76,4 @@ func _fill_info(id: String) -> void:
 
 func _travel(id: String, mode: String) -> void:
 	close()
-	World.move_player_to(id, mode)
+	World.request_travel(id, mode)

@@ -4,6 +4,7 @@ const UITheme = preload("res://ui/ui_theme.gd")
 
 
 func _ready() -> void:
+	preload("res://world3d/world_view.gd").realtime = false
 	SaveManager.path = "user://test_save.json"
 	var origin := World.get_origin("morador_antigo")
 	GameState.new_game({
@@ -149,17 +150,30 @@ func _ready() -> void:
 	game2.phone.open("news")
 	await _shot("screenshot_jornal.png")
 	game2.phone.close()
-	game2.walk_mode = true
-	World.move_player_to("lanchonete")
-	TimeManager.total_minutes = TimeManager.day() * 1440 + 12 * 60
+	var wv = game2.world_view
+	GameState.player["cenario"] = "porto_cinza"
+	WorldEvents.stop("gripe")
+	WorldEvents.stop("festa")
+	TimeManager.total_minutes = TimeManager.day() * 1440 + 11 * 60
+	World.move_player_to("lanchonete", "uber")
 	game2._refresh()
-	await _shot("screenshot_mundo_a.png")
-	game2.walk_view.player_target = 900.0
-	for i in 40:
-		await get_tree().process_frame
-	await _shot("screenshot_mundo_b.png")
-	var first: String = game2.walk_view.npcs.keys()[0] if not game2.walk_view.npcs.is_empty() else ""
-	print("WALK NPCS: ", game2.walk_view.npcs.size(), " ", first)
+	await _shot("mundo_dia_dentro.png")
+	wv.player.position = Vector3(wv.layout.door_out("lanchonete").x + 6, 0.25, wv.layout.door_out("lanchonete").y + 5)
+	wv.zoom = 24.0
+	await _shot("mundo_dia_rua.png")
+	TimeManager.total_minutes = TimeManager.day() * 1440 + 21 * 60
+	wv._update_environment()
+	await _shot("mundo_noite.png")
+	World.move_player_to("praca", "uber")
+	WorldEvents.start("festa", 6.0)
+	wv.zoom = 20.0
+	wv._snap_npcs = true
+	await _shot("mundo_festa.png")
+	var here: Array = NPCManager.npcs_here()
+	if not here.is_empty():
+		NPCManager.start_conversation(here[0])
+		await _shot("mundo_conversa.png")
+		NPCManager.end_conversation()
 	get_tree().quit()
 
 

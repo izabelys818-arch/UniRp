@@ -7,7 +7,7 @@ const FaceRig = preload("res://ui/face/face_rig.gd")
 const LookBuilder = preload("res://ui/face/look_builder.gd")
 const PhonePanel = preload("res://ui/phone/phone_panel.gd")
 const SceneView = preload("res://ui/game/scene_view.gd")
-const WalkView = preload("res://ui/world2d/walk_view.gd")
+const WorldView = preload("res://world3d/world_view.gd")
 const IconButton = preload("res://ui/game/icon_button.gd")
 const Icons = preload("res://ui/game/icons.gd")
 const DialogueBox = preload("res://ui/game/dialogue_box.gd")
@@ -43,8 +43,9 @@ var args: Dictionary = {}
 
 var scene_view: SceneView
 var stage: Control
-var walk_view: WalkView
-var walk_mode: bool = true
+var world_view: WorldView
+var dim: ColorRect
+var _side_sig: String = ""
 var actors: Dictionary = {}
 var place_title: Label
 var place_sub: Label
@@ -118,16 +119,26 @@ func _build() -> void:
 	scene_view = SceneView.new()
 	scene_view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(scene_view)
+	scene_view.hide()
+	world_view = WorldView.new()
+	world_view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	world_view.npc_chosen.connect(_on_walk_npc)
+	world_view.npc_menu.connect(_open_context)
+	world_view.toast.connect(_toast)
+	world_view.pause_check = func() -> bool:
+		return phone.visible or bag.visible or map_panel.visible or shop.visible or history.visible or money_panel.visible or choice_panel.visible or business_panel.visible
+	add_child(world_view)
+	dim = ColorRect.new()
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.color = Color(0.02, 0.02, 0.04, 0.55)
+	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	dim.hide()
+	add_child(dim)
 	stage = Control.new()
 	stage.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	stage.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(stage)
 	stage.resized.connect(_layout_actors)
-	walk_view = WalkView.new()
-	walk_view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	walk_view.npc_chosen.connect(_on_walk_npc)
-	walk_view.npc_menu.connect(_open_context)
-	add_child(walk_view)
 	var lights := PoliceLights.new()
 	lights.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	lights.hide()
@@ -273,11 +284,8 @@ func _build() -> void:
 # ---------- atores (pessoas no cenário) ----------
 
 func _actor_ids() -> Array:
-	var ids: Array = NPCManager.npcs_here() if GameState.active else []
 	var t := NPCManager.talking_to
-	if t != "" and not t in ids:
-		ids.append(t)
-	return ids
+	return [t] if t != "" and GameState.active else []
 
 
 func _sync_actors() -> void:
@@ -351,12 +359,10 @@ func _layout_actors() -> void:
 
 
 func _update_mode() -> void:
+	# No mundo aberto o rosto grande só aparece durante a conversa, sobre a cidade escurecida.
 	var talking := NPCManager.talking_to != ""
-	var walking := walk_mode and not talking and GameState.active
-	walk_view.visible = walking
-	stage.visible = not walking
-	if walking:
-		walk_view.sync(_actor_ids())
+	stage.visible = talking
+	dim.visible = talking
 
 
 func _on_walk_npc(id: String) -> void:
@@ -524,11 +530,16 @@ func _section(text: String) -> void:
 
 
 func _refresh_side() -> void:
+	# O relógio anda em tempo real; só remonta o painel quando algo nele mudou.
+	var can_act := not NPCManager.busy and not narrating
+	var sig := "%s|%s|%s|%s|%s|%s" % [World.current_id(), can_act, World.shop_open(), Economy.available_actions().map(func(a): return a["label"]), NPCManager.npcs_here().map(func(i): return NPCManager.display_name(i)), NPCManager.talking_to]
+	if sig == _side_sig and side_box.get_child_count() > 0:
+		return
+	_side_sig = sig
 	for c in side_box.get_children():
 		c.queue_free()
 	if not GameState.active:
 		return
-	var can_act := not NPCManager.busy and not narrating
 	var loc := World.current()
 	_section("Neste lugar")
 	if World.shop_open():
@@ -625,10 +636,6 @@ func _unhandled_key_input(e: InputEvent) -> void:
 		KEY_B: _open_bag()
 		KEY_C: _open_phone()
 		KEY_H: _open_history()
-		KEY_V:
-			walk_mode = not walk_mode
-			_update_mode()
-			_toast("Vista do mundo" if walk_mode else "Vista de rostos")
 
 
 func _open_map() -> void:

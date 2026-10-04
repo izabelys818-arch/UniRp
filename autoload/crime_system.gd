@@ -526,7 +526,7 @@ func _on_time_advanced(minutes: int, sleeping: bool) -> void:
 			st["hospital_ate"] = now + 1440
 			st.erase("internar_em")
 		if int(st.get("saude", 100)) < 100 and st.get("vivo", true) and now >= int(st.get("hospital_ate", 0)):
-			st["saude"] = mini(int(st["saude"]) + int(minutes / 30.0), 100)
+			st["saude"] = mini(int(st["saude"]) + (now / 30 - (now - minutes) / 30), 100)
 	for body in d["corpos"]:
 		if not body["achado"] and now - int(body["hora"]) > 360:
 			body["achado"] = true

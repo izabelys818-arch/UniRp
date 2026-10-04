@@ -1,6 +1,10 @@
 extends Node
 
 signal location_changed(loc_id: String)
+signal walk_requested(loc_id: String)
+
+# Verdadeiro quando o mundo aberto 3D está na tela: andar a pé vira caminhada de verdade.
+var open_world: bool = false
 signal narrator_busy(busy: bool)
 
 const Prompts = preload("res://ai/prompts.gd")
@@ -109,7 +113,7 @@ func is_accessible(loc_id: String) -> bool:
 func visible_locations() -> Array:
 	var out: Array = []
 	for id in locations:
-		if not locations[id].get("interior", false) and is_accessible(id):
+		if not locations[id].get("interior", false) and not locations[id].get("via", false) and is_accessible(id):
 			out.append(id)
 	return out
 
@@ -250,6 +254,36 @@ func move_player_to(loc_id: String, mode: String = "ape") -> void:
 	GameState.add_log("Você vai até %s %s. (%d min)" % [locations[loc_id]["nome"], how.get(mode, ""), minutes], "info")
 	GameState.add_log(locations[loc_id]["descricao"], "narration")
 	location_changed.emit(loc_id)
+
+
+# Pedido de viagem vindo do mapa: no mundo aberto, "a pé" faz o personagem andar até lá.
+func request_travel(loc_id: String, mode: String) -> void:
+	if open_world and mode == "ape" and GameState.active and is_accessible(loc_id):
+		NPCManager.end_conversation()
+		walk_requested.emit(loc_id)
+		return
+	move_player_to(loc_id, mode)
+
+
+# Entrada a pé no terreno de um local (o tempo já passou andando). Devolve o local efetivo.
+func arrive_on_foot(loc_id: String) -> String:
+	if not GameState.active:
+		return current_id()
+	if loc_id == "" or not locations.has(loc_id) or not is_accessible(loc_id) or CrimeSystem.fire_at(loc_id):
+		loc_id = "rua"
+	if loc_id == current_id():
+		return loc_id
+	var was_street := current_id() == "rua"
+	GameState.player["location"] = loc_id
+	if loc_id != "rua":
+		if was_street:
+			WorldEvents.travel_stop("ape")
+		if not is_open(loc_id):
+			GameState.add_log("%s está fechado agora." % locations[loc_id]["nome"], "info")
+		else:
+			GameState.add_log(str(locations[loc_id].get("descricao", "")), "narration")
+	location_changed.emit(loc_id)
+	return loc_id
 
 
 func start_story(origin: Dictionary) -> void:
