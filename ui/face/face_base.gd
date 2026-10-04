@@ -65,10 +65,17 @@ var talk_left: float = 0.0
 var dart: Vector2 = Vector2.ZERO
 var next_dart: float = 1.0
 var vignette_tex: GradientTexture2D
+var actor_mode: bool = false
+var show_emote: bool = false
+var emote_t: float = 1.0
+var highlight: float = 0.0
+var dim: float = 0.0
+
+const UI_FONT = preload("res://ui/ui_theme.gd")
 
 
 func _ready() -> void:
-	clip_contents = true
+	clip_contents = not actor_mode
 
 
 func set_look(l: Dictionary) -> void:
@@ -77,7 +84,10 @@ func set_look(l: Dictionary) -> void:
 
 
 func set_emotion(e: String, instant: bool = false) -> void:
-	emotion = e if EXPRESSIONS.has(e) else "neutro"
+	var new_emotion := e if EXPRESSIONS.has(e) else "neutro"
+	if new_emotion != emotion:
+		emote_t = 0.0
+	emotion = new_emotion
 	target = NEUTRAL.duplicate()
 	for k in EXPRESSIONS[emotion]:
 		target[k] = EXPRESSIONS[emotion][k]
@@ -107,6 +117,7 @@ static func scene_for_location(loc_id: String, tipo: String) -> String:
 
 func _process(delta: float) -> void:
 	t += delta
+	emote_t = minf(emote_t + delta, 1.0)
 	var k := 1.0 - exp(-delta * 7.0)
 	for p in cur:
 		cur[p] = lerpf(cur[p], target[p], k)
@@ -205,10 +216,17 @@ func _skin() -> Color:
 func _draw() -> void:
 	var fit := size.x / BASE.x
 	var s := clampf(size.y / BASE.y, fit, fit * 1.35)
+	if actor_mode:
+		s = minf(size.x / BASE.x, size.y / BASE.y)
 	var origin := Vector2((size.x - BASE.x * s) / 2.0, size.y - BASE.y * s)
-	draw_rect(Rect2(Vector2.ZERO, size), Color(0.02, 0.02, 0.02))
-	draw_set_transform(origin, 0.0, Vector2(s, s))
-	_draw_scene()
+	if not actor_mode:
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.02, 0.02, 0.02))
+		draw_set_transform(origin, 0.0, Vector2(s, s))
+		_draw_scene()
+	if actor_mode and highlight > 0.01:
+		draw_set_transform(origin, 0.0, Vector2(s, s))
+		for i in 6:
+			draw_circle(Vector2(150, 230), 150.0 - i * 20, Color(1.0, 0.8, 0.5, 0.025 * highlight))
 	if not look.is_empty():
 		var shake := Vector2.ZERO
 		if cur["tremble"] > 0.05:
@@ -225,8 +243,102 @@ func _draw() -> void:
 		_draw_body()
 		draw_set_transform_matrix(head_xf)
 		_draw_head()
+		if actor_mode and dim > 0.01:
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		if show_emote:
+			draw_set_transform_matrix(Transform2D(0.0, origin + body_off * s).scaled_local(Vector2(s, s)))
+			_draw_emote()
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	_draw_mood()
+	if not actor_mode:
+		_draw_mood()
+
+
+const EMOTES := {
+	"feliz": ["note", Color("#ffe9a8")], "rindo": ["haha", Color("#ffe9a8")], "triste": ["drop", Color("#d6e6ff")],
+	"chorando": ["drops", Color("#cfe2ff")], "irritado": ["vein", Color("#ffd2c8")], "furioso": ["vein", Color("#ff8f80")],
+	"desconfiado": ["q", Color("#f1ece0")], "assustado": ["exx", Color("#fff1f1")], "nervoso": ["sweat", Color("#e2f1ff")],
+	"sarcastico": ["hm", Color("#f1ece0")], "ameacador": ["dark", Color("#1a1416")], "carinhoso": ["heart", Color("#ffe0ea")],
+	"surpreso": ["ex", Color("#fff6d8")], "envergonhado": ["blush", Color("#ffe0ea")], "entediado": ["dots", Color("#e6e6e6")],
+	"exausto": ["zz", Color("#dde3f0")], "machucado": ["pain", Color("#fff1c8")],
+}
+
+
+func _emote_text(c: Vector2, s: String, size_px: int, col: Color) -> void:
+	var f := UI_FONT.font(true)
+	var w := f.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, size_px).x
+	draw_string(f, c + Vector2(-w / 2.0, size_px * 0.36), s, HORIZONTAL_ALIGNMENT_LEFT, -1, size_px, col)
+
+
+func _draw_emote() -> void:
+	if not EMOTES.has(emotion):
+		return
+	var e: Array = EMOTES[emotion]
+	var pop := clampf(emote_t * 4.0, 0.0, 1.0)
+	var sc := 1.0 + 0.25 * sin(pop * PI) - (1.0 - pop) * 0.6
+	var c := Vector2(222, 46 + sin(t * 2.2) * 2.0)
+	var r := 27.0 * sc
+	var bg: Color = e[1]
+	var tail := PackedVector2Array([c + Vector2(-16, 18) * sc, c + Vector2(-4, 24) * sc, c + Vector2(-34, 44) * sc])
+	draw_colored_polygon(tail, bg)
+	draw_polyline(PackedVector2Array([tail[0], tail[2], tail[1]]), INK, 3.0, true)
+	draw_circle(c, r, bg)
+	draw_arc(c, r, 0, TAU, 40, INK, 3.0, true)
+	var k := sc
+	match str(e[0]):
+		"note":
+			draw_circle(c + Vector2(-6, 8) * k, 6 * k, INK)
+			draw_line(c + Vector2(0, 8) * k, c + Vector2(0, -12) * k, INK, 3, true)
+			draw_line(c + Vector2(0, -12) * k, c + Vector2(10, -6) * k, INK, 3, true)
+		"haha":
+			_emote_text(c, "HA!", int(20 * k), Color("#c0392b"))
+		"drop", "drops":
+			var n := 1 if e[0] == "drop" else 2
+			for i in n:
+				var p := c + Vector2((i - (n - 1) * 0.5) * 14, 0) * k
+				draw_colored_polygon(PackedVector2Array([p + Vector2(0, -14) * k, p + Vector2(7, 2) * k, p + Vector2(0, 9) * k, p + Vector2(-7, 2) * k]), Color("#3b82d6"))
+		"vein":
+			var vc := Color("#d62828")
+			for q in 4:
+				var a := q * PI / 2.0 + PI / 4.0
+				var p := c + Vector2(cos(a), sin(a)) * 9 * k
+				draw_arc(p, 7 * k, a + PI * 0.6, a + PI * 1.4, 10, vc, 4.0, true)
+		"q":
+			_emote_text(c, "?", int(30 * k), INK)
+		"ex":
+			_emote_text(c, "!", int(32 * k), Color("#d62828"))
+		"exx":
+			_emote_text(c, "!!", int(30 * k), Color("#d62828"))
+		"sweat":
+			var p2 := c + Vector2(4, -2) * k
+			draw_colored_polygon(PackedVector2Array([p2 + Vector2(0, -14) * k, p2 + Vector2(8, 4) * k, p2 + Vector2(0, 11) * k, p2 + Vector2(-8, 4) * k]), Color("#5aa9e6"))
+			for i in 3:
+				draw_line(c + Vector2(-16, -8 + i * 8) * k, c + Vector2(-9, -6 + i * 8) * k, INK, 2, true)
+		"hm":
+			_emote_text(c, "hm.", int(18 * k), INK)
+		"dark":
+			for i in 3:
+				var a2 := -0.6 + i * 0.6
+				draw_line(c + Vector2(cos(a2), sin(a2) - 0.2) * 4 * k, c + Vector2(cos(a2), sin(a2) - 0.2) * 18 * k, Color("#e03a3a"), 3, true)
+		"heart":
+			var hp := PackedVector2Array()
+			for i in 30:
+				var a3 := TAU * i / 30.0
+				hp.append(c + Vector2(16 * pow(sin(a3), 3), -(13 * cos(a3) - 5 * cos(2 * a3) - 2 * cos(3 * a3) - cos(4 * a3))) * 0.95 * k)
+			draw_colored_polygon(hp, Color("#e63950"))
+		"blush":
+			for i in 4:
+				draw_line(c + Vector2(-14 + i * 8, 6) * k, c + Vector2(-8 + i * 8, -6) * k, Color("#e8607a"), 3, true)
+		"dots":
+			for i in 3:
+				draw_circle(c + Vector2(-10 + i * 10, 2) * k, 3.2 * k, INK)
+		"zz":
+			_emote_text(c, "Zz", int(20 * k), Color("#4a5a8a"))
+		"pain":
+			var star := PackedVector2Array()
+			for i in 16:
+				var a4 := TAU * i / 16.0
+				star.append(c + Vector2(cos(a4), sin(a4)) * (16.0 if i % 2 == 0 else 7.0) * k)
+			draw_colored_polygon(star, Color("#f4b400"))
 
 
 func _draw_mood() -> void:

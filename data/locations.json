@@ -13,7 +13,9 @@
 		"tipo": "publico",
 		"descricao": "Bancos de concreto rachados, pombos, um chafariz seco e um coreto pichado. De dia tem movimento; à noite, só quem não tem pra onde ir.",
 		"abre": 0, "fecha": 24, "x": 40, "y": 45,
-		"loja": [],
+		"loja": ["pipoca", "agua", "refrigerante"],
+		"vendedor": "Carrinho de pipoca do Seu Jorge",
+		"vendedor_horario": [9, 20],
 		"servicos": ["dormir_rua", "bico"]
 	},
 	"bar": {
@@ -22,6 +24,7 @@
 		"descricao": "Balcão de fórmica grudento, TV passando futebol sem som, cheiro de fritura e cerveja choca. Uma porta nos fundos vive fechada.",
 		"abre": 16, "fecha": 3, "x": 55, "y": 50,
 		"loja": ["cerveja", "cachaca", "cigarro", "coxinha", "agua"],
+		"vendedor": "Balcão do Zé",
 		"servicos": []
 	},
 	"mercado": {
@@ -30,6 +33,7 @@
 		"descricao": "Corredores estreitos, luz fluorescente piscando e uma caixa só funcionando. Câmeras velhas nos cantos.",
 		"abre": 7, "fecha": 22, "x": 35, "y": 30,
 		"loja": ["pao", "miojo", "frutas", "agua", "refrigerante", "lenco_umedecido", "analgesico", "energetico", "cigarro"],
+		"vendedor": "Prateleiras do mercado",
 		"servicos": []
 	},
 	"lanchonete": {
@@ -38,6 +42,7 @@
 		"descricao": "Mesas de plástico, um balcão com estufa de salgados e um rádio tocando sertanejo. O café é ralo, mas é barato.",
 		"abre": 6, "fecha": 23, "x": 45, "y": 35,
 		"loja": ["cafe", "pao_queijo", "coxinha", "prato_feito", "refrigerante", "agua"],
+		"vendedor": "Balcão da lanchonete",
 		"servicos": []
 	},
 	"hospital": {
@@ -46,6 +51,7 @@
 		"descricao": "Corredores lotados, cheiro de álcool e desinfetante. A recepção tem uma fila que nunca acaba. Atendimento particular custa caro.",
 		"abre": 0, "fecha": 24, "x": 70, "y": 25,
 		"loja": ["analgesico", "agua"],
+		"vendedor": "Máquina de lanches do corredor",
 		"servicos": ["atendimento"]
 	},
 	"delegacia": {
@@ -70,6 +76,8 @@
 		"descricao": "Ônibus chegando e partindo, ambulantes, taxistas oferecendo corrida e gente dormindo nos bancos de metal.",
 		"abre": 0, "fecha": 24, "x": 15, "y": 60,
 		"loja": ["agua", "cafe", "coxinha", "energetico"],
+		"vendedor": "Ambulantes da rodoviária",
+		"vendedor_horario": [5, 23],
 		"servicos": ["dormir_rua", "bico"]
 	},
 	"beco": {

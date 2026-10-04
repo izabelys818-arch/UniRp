@@ -71,7 +71,7 @@ func do_action(id: String) -> void:
 func buy(item_id: String) -> void:
 	if not GameState.active or NPCManager.busy:
 		return
-	if not item_id in World.current().get("loja", []):
+	if not item_id in World.current().get("loja", []) or not World.shop_open():
 		return
 	var price := int(World.items[item_id]["preco"])
 	if _pay(price):

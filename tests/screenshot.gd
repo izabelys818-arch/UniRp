@@ -52,6 +52,27 @@ func _ready() -> void:
 	creator._show_tab(1)
 	creator.tab_buttons[1].button_pressed = true
 	await _shot("screenshot_creator.png")
+	creator.queue_free()
+	var menu = preload("res://ui/main_menu.gd").new()
+	menu.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.add_child(menu)
+	await get_tree().create_timer(0.8).timeout
+	await _shot("screenshot_menu.png")
+	menu.queue_free()
+	var game2 = preload("res://ui/game_screen.gd").new()
+	game2.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.add_child(game2)
+	await get_tree().process_frame
+	game2.map_panel.open()
+	game2.map_panel._fill_info("parque")
+	await _shot("screenshot_map.png")
+	game2.map_panel.close()
+	game2.bag.open()
+	game2.bag._select("pao")
+	await _shot("screenshot_bag.png")
+	game2.bag.close()
+	game2._open_context("marina")
+	await _shot("screenshot_context.png")
 	get_tree().quit()
 
 

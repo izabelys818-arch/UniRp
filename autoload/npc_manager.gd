@@ -37,11 +37,11 @@ func reset_state(origin: Dictionary) -> void:
 			"afeto": 15 if is_known else 0,
 			"medo": 0,
 			"suspeita": 0 if is_known else 15,
-			"memorias": ["É um vizinho conhecido de longa data, mora no bairro há anos."] if is_known else [],
+			"memorias": ["O jogador é um rosto conhecido do bairro há anos; vocês se cumprimentam, mas nunca foram próximos."] if is_known else [],
 			"historico": [],
 			"vivo": true,
 			"conheceu": is_known,
-			"conhece_nome": is_known,
+			"conhece_nome": false,
 			"sabe_nome_jogador": is_known,
 			"dinheiro": int(npcs[id]["dinheiro"]),
 			"evita_ate": 0,
@@ -201,11 +201,20 @@ func give_money(amount: int) -> void:
 	talk("*entrega R$ %d em dinheiro*" % amount)
 
 
+func give_item(item_id: String) -> void:
+	if talking_to == "" or busy or channel != PRESENCIAL:
+		return
+	if not GameState.remove_item(item_id):
+		return
+	talk("*entrega %s*" % World.item_name(item_id).to_lower())
+
+
 func _apply_reply(id: String, data: Dictionary, chan: String = PRESENCIAL) -> void:
 	var st: Dictionary = state[id]
 
 	if data.get("revela_nome", false) and not st["conhece_nome"]:
 		st["conhece_nome"] = true
+		GameState.add_log("Agora você sabe o nome: %s." % npcs[id]["nome"], "event")
 	if data.get("aprendeu_nome_jogador", false):
 		st["sabe_nome_jogador"] = true
 
@@ -267,7 +276,6 @@ func _apply_action(id: String, a: Dictionary, chan: String) -> void:
 				GameState.add_log("%s te deu: %s." % [who, World.item_name(item)], "event")
 		"dar_numero":
 			if not PhoneSystem.has_contact(id):
-				st["conhece_nome"] = true
 				PhoneSystem.add_contact(id)
 				GameState.add_log("%s te passou o número de celular." % display_name(id), "phone")
 		"comecar_namoro":

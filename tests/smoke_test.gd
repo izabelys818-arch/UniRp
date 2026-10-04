@@ -20,7 +20,27 @@ func _set_hour(h: int) -> void:
 	TimeManager.total_minutes = (TimeManager.day() * 1440) + h * 60
 
 
+func _travel_tests() -> void:
+	World.move_player_to("lanchonete")
+	_set_hour(10)
+	var opts := World.travel_options("praca")
+	var modes: Array = opts.map(func(o): return o["mode"])
+	check("ape" in modes and "uber" in modes, "opções a pé e Uber")
+	check(not "carro" in modes, "sem carro, sem opção de carro")
+	GameState.player["car"] = "Gol 2008 prata"
+	check(World.travel_options("praca").size() == 3, "com carro aparece a opção do carro")
+	var money_before := GameState.money()
+	var uber: Dictionary = World.travel_options("praca").filter(func(o): return o["mode"] == "uber")[0]
+	World.move_player_to("praca", "uber")
+	check(World.current_id() == "praca" and GameState.money() == money_before - int(uber["cost"]), "Uber leva e cobra a corrida")
+	World.move_player_to("lanchonete", "carro")
+	check(World.current_id() == "lanchonete", "carro leva até o lugar")
+	GameState.player["car"] = ""
+	check(not NPCManager.state["ze"]["conhece_nome"], "nomes começam desconhecidos")
+
+
 func _phone_tests() -> void:
+	await _travel_tests()
 	AIService.mock = _mock
 	var ps := PhoneSystem
 	World.move_player_to("lanchonete")
@@ -178,14 +198,33 @@ func _ready() -> void:
 	add_child(screen)
 	await get_tree().process_frame
 	await get_tree().process_frame
-	check(screen.side_box.get_child_count() > 5, "tela do jogo montou painel lateral")
-	check(not screen.portrait.look.is_empty(), "rosto da Marina aparece na conversa")
-	check(screen.portrait.emotion == "chorando", "rosto mostra a emoção da IA")
-	check(screen.portrait.scene == "comida", "cenário da lanchonete atrás do NPC")
-	check(screen.emotion_label.text == "CHORANDO", "rótulo de emoção mostrado")
+	check(screen.side_box.get_child_count() > 4, "tela do jogo montou painel do local")
+	check(screen.actors.has("marina"), "Marina aparece de pé no cenário")
+	var actor = screen.actors.get("marina")
+	check(actor != null and actor.actor_mode and actor.show_emote, "personagem em modo ator com balão de emoção")
+	check(actor != null and actor.emotion == "chorando", "balão/rosto mostram a emoção da IA")
+	check(screen.scene_view.scene == "comida", "cenário da lanchonete em tela cheia")
 	check(not screen.player_portrait.look.is_empty(), "rosto do jogador desenhado")
+	check(World.shop_open(), "lanchonete tem balcão aberto")
 	screen._on_npc_replied("marina", {"fala": "Me deixa em paz, por favor."})
-	check(screen.portrait.talk_left > 0.0, "boca anima quando o NPC fala")
+	check(actor != null and actor.talk_left > 0.0, "boca anima quando o NPC fala")
+	screen._open_context("marina")
+	check(screen.context_menu.item_count >= 10, "menu do botão direito com opções")
+	screen.context_menu.hide()
+	screen._open_bag()
+	check(screen.bag.visible and screen.bag.grid.get_child_count() > 0, "bolsa abre com os itens")
+	screen.bag.close()
+	screen._open_shop()
+	check(screen.shop.visible, "loja abre no balcão")
+	screen.shop.close()
+	screen._open_map()
+	check(screen.map_panel.visible, "mapa abre")
+	screen.map_panel._fill_info("praca")
+	check(screen.map_panel.info.get_child_count() >= 5, "mapa mostra opções de transporte")
+	screen.map_panel.close()
+	screen._open_history()
+	check(screen.history.log_view.get_parsed_text().length() > 10, "histórico mostra a conversa")
+	screen.history.close()
 	await get_tree().create_timer(0.5).timeout
 	screen.queue_free()
 	await get_tree().process_frame

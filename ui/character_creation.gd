@@ -464,6 +464,7 @@ func _start() -> void:
 		"money": int(origin["dinheiro"]),
 		"location": origin["local"],
 		"home": origin["casa"],
+		"car": origin.get("carro", ""),
 		"inventory": inventory,
 		"alive": true,
 	}
