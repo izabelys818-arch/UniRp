@@ -184,6 +184,7 @@ func _close_choice() -> void:
 func arrest() -> void:
 	_close_choice()
 	var stars := maxi(wanted(), 1)
+	NewsSystem.post("Procurado é preso em flagrante", "%s foi detido pela polícia e responderá pelos crimes registrados. A fiança foi paga." % str(GameState.player.get("name", "Um homem")), "crime")
 	var days := stars
 	var fine := mini(GameState.money(), 100 * stars)
 	var lost: Array = []
@@ -377,6 +378,7 @@ func night_intrusion() -> bool:
 
 
 func _psycho_check(hours: float) -> void:
+	hours *= World.mod("crime")
 	if not TimeManager.is_night() or NPCManager.busy:
 		return
 	if TimeManager.total_minutes - _last_psycho < 360:
@@ -408,6 +410,7 @@ func fire_at(loc_id: String) -> bool:
 func start_fire(loc_id: String) -> void:
 	data()["fire"] = {"loc": loc_id, "ate": TimeManager.total_minutes + 300}
 	var place: String = World.locations[loc_id]["nome"]
+	NewsSystem.post("Incêndio atinge %s" % place, "Os bombeiros isolaram a área e investigam as causas do fogo. Ninguém foi encontrado no local.", "evento")
 	if World.current_id() != loc_id:
 		GameState.add_log("Notícia no celular: incêndio atinge %s. Os bombeiros isolaram a área." % place, "phone")
 		return
@@ -465,7 +468,7 @@ func _fire_tick(hours: float) -> void:
 		return
 	if fire().is_empty() or TimeManager.total_minutes >= int(fire().get("ate", 0)):
 		data()["fire"] = {}
-		if randf() < 1.0 - pow(1.0 - 0.004, hours):
+		if randf() < 1.0 - pow(1.0 - 0.004 * World.mod("eventos"), hours):
 			var spots: Array = World.locations.keys().filter(func(k): return not World.locations[k].get("interior", false) and k != "apartamento")
 			start_fire(spots.pick_random())
 
@@ -481,6 +484,7 @@ func emergency(number: int) -> void:
 			var ag: Dictionary = d.get("agressor", {})
 			if not ag.is_empty() and TimeManager.total_minutes - int(ag["hora"]) < 120:
 				var who: String = NPCManager.npcs[ag["id"]]["nome"]
+				NewsSystem.post("Suspeito de agressão é preso", "%s foi levado(a) à delegacia depois de uma denúncia de agressão. A vítima prestou depoimento." % who, "crime")
 				TimeManager.advance(20)
 				NPCManager.state[ag["id"]]["preso_ate"] = TimeManager.total_minutes + 3 * 1440
 				d["agressor"] = {}
@@ -526,6 +530,7 @@ func _on_time_advanced(minutes: int, sleeping: bool) -> void:
 	for body in d["corpos"]:
 		if not body["achado"] and now - int(body["hora"]) > 360:
 			body["achado"] = true
+			NewsSystem.post("Corpo é encontrado em %s" % World.locations[body["local"]]["nome"], "A vítima foi identificada como %s. A polícia investiga o caso como homicídio." % NPCManager.npcs[body["id"]]["nome"], "crime")
 			GameState.add_log("Notícia no celular: corpo de %s é encontrado em %s. A polícia investiga." % [NPCManager.npcs[body["id"]]["nome"], World.locations[body["local"]]["nome"]], "phone")
 			if randf() < 0.4:
 				set_wanted(wanted() + 2)
@@ -536,7 +541,7 @@ func _on_time_advanced(minutes: int, sleeping: bool) -> void:
 		return
 	var hours := minutes / 60.0
 	if wanted() > 0:
-		var p := 0.07 * wanted() + (0.6 if World.current_id() == "delegacia" else 0.0)
+		var p := 0.07 * wanted() * World.mod("policia") + (0.6 if World.current_id() == "delegacia" else 0.0)
 		if randf() < 1.0 - pow(1.0 - minf(p, 0.95), hours):
 			police_event()
 			return

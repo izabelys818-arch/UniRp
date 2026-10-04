@@ -75,7 +75,7 @@ func utils(loc_id: String) -> Dictionary:
 
 
 func power(loc_id: String = "") -> bool:
-	return bool(utils(World.current_id() if loc_id == "" else loc_id)["luz"])
+	return bool(utils(World.current_id() if loc_id == "" else loc_id)["luz"]) and not WorldEvents.power_out()
 
 
 # ---------- contas ----------
@@ -103,10 +103,10 @@ func _cycle() -> void:
 		var c: Dictionary = contracts()[loc_id]
 		var tipo := str(c["tipo"])
 		if tipo == "alugada" or tipo == "comercial":
-			_new_bill("aluguel", int(c["aluguel"]), loc_id)
+			_new_bill("aluguel", int(round(int(c["aluguel"]) * World.mod("preco"))), loc_id)
 			made += 1
 		var eletros := furniture(loc_id).filter(func(m): return m in ELECTRONICS).size()
-		_new_bill("luz", (60 if tipo == "comercial" else 45) + 12 * eletros, loc_id)
+		_new_bill("luz", int(round(((60 if tipo == "comercial" else 45) + 12 * eletros) * World.mod("preco"))), loc_id)
 		_new_bill("agua", 30, loc_id)
 		made += 2
 		if bool(utils(loc_id)["internet"]):

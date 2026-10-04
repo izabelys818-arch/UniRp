@@ -134,6 +134,21 @@ func _ready() -> void:
 		BusinessSystem.simulate_hour(h, true)
 	game2.business_panel.open()
 	await _shot("screenshot_biz.png")
+	game2.business_panel.hide()
+	GameState.player["cenario"] = "colapso"
+	World.move_player_to("praca")
+	TimeManager.total_minutes = TimeManager.day() * 1440 + 20 * 60
+	WorldEvents.start("festa", 6.0)
+	WorldEvents.start("apagao", 6.0)
+	await _shot("screenshot_festa_colapso.png")
+	WorldEvents.stop("apagao")
+	GameState.player["cenario"] = "porto_cinza"
+	await _shot("screenshot_festa.png")
+	WorldEvents.start("gripe", 20.0)
+	NewsSystem.ensure_columns()
+	game2.phone.open("news")
+	await _shot("screenshot_jornal.png")
+	game2.phone.close()
 	get_tree().quit()
 
 

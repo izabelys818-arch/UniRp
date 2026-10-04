@@ -59,6 +59,7 @@ var phone: PhonePanel
 var choice_panel: ChoicePanel
 var business_panel: BusinessPanel
 var job_chip: PanelContainer
+var events_box: VBoxContainer
 var stars_view: WantedStars
 var bag: BagPanel
 var shop: ShopPanel
@@ -91,6 +92,7 @@ func _ready() -> void:
 	CrimeSystem.choice.connect(choice_panel.show_choice)
 	Economy.ui_request.connect(_on_ui_request)
 	JobSystem.changed.connect(_queue_refresh)
+	WorldEvents.changed.connect(_queue_refresh)
 	HomeSystem.changed.connect(_queue_refresh)
 	CrimeSystem.wanted_changed.connect(_queue_refresh.unbind(1))
 	if not GameState.log_entries.is_empty():
@@ -150,6 +152,8 @@ func _build() -> void:
 	job_chip = UI.chip("", UI.MUTED, 13)
 	job_chip.hide()
 	pv.add_child(job_chip)
+	events_box = UI.vbox(4)
+	pv.add_child(events_box)
 
 	# Topo direito: botões
 	var bar := HBoxContainer.new()
@@ -435,6 +439,10 @@ func _refresh() -> void:
 	place_sub.text = "Dia %d • %s • %02d:%02d • %s" % [TimeManager.day(), TimeManager.weekday(), TimeManager.hour(), TimeManager.minute(), TimeManager.period()]
 	(money_chip.get_child(0) as Label).text = "R$ %d" % GameState.money()
 	stars_view.set_stars(CrimeSystem.wanted())
+	for c in events_box.get_children():
+		c.queue_free()
+	for label_text in WorldEvents.labels():
+		events_box.add_child(UI.chip(str(label_text), Color("#ff9f43"), 13))
 	var job := JobSystem.job()
 	job_chip.visible = not job.is_empty()
 	if not job.is_empty():

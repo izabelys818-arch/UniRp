@@ -38,6 +38,8 @@ func load_game() -> bool:
 			var body := str(parsed.get("acao_corporal", ""))
 			e["text"] = (("*" + body + "* ") if body != "" else "") + str(parsed.get("fala", ""))
 	NeedsSystem.from_dict(data["needs"])
+	NPCManager.reload_cast()
+	Population.restore()
 	NPCManager.from_dict(data["npcs"])
 	return GameState.active
 

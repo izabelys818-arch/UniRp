@@ -129,6 +129,7 @@ func _go(to_screen: String, arg: String = "") -> void:
 		"bank": _bank()
 		"calling": _calling(arg)
 		"emergency": _emergency()
+		"news": _news()
 		"bills": _bills()
 		"homes": _homes()
 		"shop": _shop()
@@ -157,7 +158,7 @@ func _home() -> void:
 	var big := UI.title("%02d:%02d" % [TimeManager.hour(), TimeManager.minute()], 56)
 	big.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	body.add_child(big)
-	var date := UI.label("Dia %d • %s • %s" % [TimeManager.day(), TimeManager.weekday(), GameState.CITY], 14, UI.MUTED)
+	var date := UI.label("Dia %d • %s • %s" % [TimeManager.day(), TimeManager.weekday(), GameState.city()], 14, UI.MUTED)
 	date.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	body.add_child(date)
 	body.add_child(Control.new())
@@ -174,6 +175,7 @@ func _home() -> void:
 	grid.add_child(_app_button("Contas", Color("#c98a1e"), HomeSystem.unpaid().size(), "bills"))
 	grid.add_child(_app_button("Imóveis", Color("#2a8a9a"), 0, "homes"))
 	grid.add_child(_app_button("Compras", Color("#a84a8a"), 0, "shop"))
+	grid.add_child(_app_button("Jornal", Color("#6b7280"), 0, "news"))
 	grid.add_child(_app_button("Emergência", Color("#b83a3a"), 0, "emergency"))
 
 
@@ -354,6 +356,32 @@ func _calling(id: String) -> void:
 			st.text = "Chamada não completada."
 		_:
 			st.text = "Não atendeu."
+
+
+func _news() -> void:
+	title_label.text = "Jornal"
+	if TimeManager.hour() >= 6:
+		NewsSystem.ensure_columns()
+	var list := UI.vbox(8)
+	body.add_child(UI.scroll(list))
+	var mast := UI.title("GAZETA DE %s" % GameState.city().to_upper(), 20)
+	mast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	list.add_child(mast)
+	var shown := 0
+	for day in NewsSystem.days_with_news():
+		if shown >= 4:
+			break
+		shown += 1
+		list.add_child(UI.label("DIA %d • %s" % [day, TimeManager.WEEKDAYS[(day - 1) % 7].to_upper()], 12, UI.MUTED))
+		var items := NewsSystem.edition(day)
+		items.reverse()
+		for e in items:
+			var tints := {"crime": Color(UI.DANGER, 0.12), "evento": Color(1.0, 0.62, 0.26, 0.1), "coluna": Color(1, 1, 1, 0.03)}
+			var c := _card(list, tints.get(e["tipo"], Color(1, 1, 1, 0.05)))
+			c.add_child(UI.label(str(e["titulo"]), 15, UI.TEXT))
+			c.add_child(UI.label(str(e["texto"]), 12, UI.MUTED))
+	if shown == 0:
+		list.add_child(UI.label("A primeira edição sai de manhã.", 13, UI.MUTED))
 
 
 func _card(list: VBoxContainer, tint: Color = Color(1, 1, 1, 0.05)) -> VBoxContainer:

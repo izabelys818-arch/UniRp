@@ -69,7 +69,7 @@ static func npc_system(npc_id: String, chan: String = "presencial") -> String:
 		if n.get("vende", false) and not here_loc.get("loja", []).is_empty():
 			var menu: Array = []
 			for item_id in here_loc["loja"]:
-				menu.append("%s (id %s) R$ %d" % [World.items[item_id]["nome"], item_id, int(World.items[item_id]["preco"])])
+				menu.append("%s (id %s) R$ %d" % [World.items[item_id]["nome"], item_id, World.item_price(item_id, NPCManager.location_of(npc_id))])
 			services += "
 - VENDA: você trabalha aqui e vende: " + "; ".join(menu) + "."
 		if svc.has("emprego"):
@@ -82,7 +82,7 @@ static func npc_system(npc_id: String, chan: String = "presencial") -> String:
 		if n.has("vende_itens"):
 			var secret: Array = []
 			for item_id in n["vende_itens"]:
-				secret.append("%s (id %s) R$ %d" % [World.items[item_id]["nome"], item_id, int(World.items[item_id]["preco"])])
+				secret.append("%s (id %s) R$ %d" % [World.items[item_id]["nome"], item_id, World.item_price(item_id, NPCManager.location_of(npc_id))])
 			services += "\n- VENDA PARTICULAR (às escondidas, só para quem você confia): " + "; ".join(secret) + "."
 		if services != "":
 			services += "
@@ -120,7 +120,8 @@ SUA FICHA:
 - Dinheiro: R$ %d
 
 SITUAÇÃO:
-""" % [n["nome"], GameState.CITY, n["nome"], int(n["idade"]), n["profissao"], n["aparencia"], n["personalidade"], n["jeito_de_falar"], hidden, n["segredo"], n["objetivo"], int(st["dinheiro"])]
+""" % [n["nome"], GameState.city(), n["nome"], int(n["idade"]), n["profissao"], n["aparencia"], n["personalidade"], n["jeito_de_falar"], hidden, n["segredo"], n["objetivo"], int(st["dinheiro"])]
+	text += "- Tom do mundo: " + str(World.scenario()["tom"]) + "\n"
 	text += _situation(npc_id, chan)
 	text += """
 - Nome do jogador: %s
@@ -172,9 +173,9 @@ static func spontaneous_instruction() -> String:
 
 static func opening_messages(p: Dictionary, origin: Dictionary) -> Array:
 	var traits := ", ".join(p["traits"].map(func(t): return World.trait_name(t)))
-	var sys := """Você é o narrador de um RPG de texto realista e sombrio ambientado na cidade fictícia de %s, no Brasil.
+	var sys := """Você é o narrador de um RPG de texto realista e sombrio ambientado na cidade fictícia de %s, no Brasil. Tom do mundo: %s.
 Escreva a cena de abertura em segunda pessoa ("você"), em português brasileiro, com 2 parágrafos curtos, tom literário e tenso, detalhes sensoriais.
-Não decida ações pelo jogador além do ponto de partida. Não use títulos nem listas. Termine deixando o jogador livre para agir.""" % GameState.CITY
+Não decida ações pelo jogador além do ponto de partida. Não use títulos nem listas. Termine deixando o jogador livre para agir.""" % [GameState.city(), World.scenario()["tom"]]
 	var user := """Personagem: %s, %d anos, %s.
 Aparência: %s
 Traços: %s

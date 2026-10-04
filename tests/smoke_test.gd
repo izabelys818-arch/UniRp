@@ -370,6 +370,61 @@ func _travel_tests() -> void:
 	check(not NPCManager.state["ze"]["conhece_nome"], "nomes começam desconhecidos")
 
 
+func _world_tests() -> void:
+	# cenários
+	GameState.player["cenario"] = "colapso"
+	check(World.mod("preco") > 1.5, "cenário colapso encarece")
+	var base_price := int(World.items["agua"]["preco"]) if World.items.has("agua") else 4
+	check(World.item_price("agua", "mercado") >= base_price, "preço escala com o cenário")
+	GameState.player["cenario"] = "porto_cinza"
+	check(GameState.city() == "Porto Cinza", "cidade padrão")
+	# eventos
+	WorldEvents.start("promocao")
+	var normal := World.item_price("agua", "bar")
+	check(World.item_price("agua", "mercado") <= normal, "promoção baixa preço no mercado")
+	WorldEvents.stop("promocao")
+	WorldEvents.start("greve")
+	check(WorldEvents.uber_mult() == 2.0, "greve dobra Uber")
+	WorldEvents.stop("greve")
+	WorldEvents.start("apagao")
+	check(WorldEvents.power_out() and WorldEvents.labels().size() == 1, "apagão ativo")
+	WorldEvents.stop("apagao")
+	check(not WorldEvents.power_out(), "apagão termina")
+	var n_before: int = NewsSystem.entries().size()
+	WorldEvents.start("blitz", 1.0)
+	check(NewsSystem.entries().size() == n_before + 1, "evento vira notícia")
+	WorldEvents.stop("blitz")
+	NewsSystem.ensure_columns()
+	check(not NewsSystem.edition(TimeManager.day()).is_empty(), "jornal tem edição do dia")
+	# população
+	var p1: Dictionary = Population.generate_procedural()
+	check(str(p1["npc"]["nome"]) != "" and p1.has("look"), "NPC procedural gerado")
+	var count_before: int = NPCManager.npcs.size()
+	Population.populate(3)
+	check(NPCManager.npcs.size() == count_before + 3, "moradores extras adicionados")
+	check(NPCManager.state.has(NPCManager.npcs.keys().back()), "NPC gerado tem estado")
+	Population.arrive()
+	check(NPCManager.npcs.size() == count_before + 4, "chegada de novo morador")
+	var last: String = NPCManager.npcs.keys().back()
+	TimeManager.total_minutes = TimeManager.day() * 1440 + 10 * 60
+	check(NPCManager.location_of(last) == "rodoviaria", "recém-chegado fica na rodoviária")
+	# persistência
+	var d: Dictionary = NPCManager.to_dict()
+	NPCManager.reload_cast()
+	check(not NPCManager.npcs.has(last), "reload limpa NPCs gerados")
+	Population.restore()
+	check(NPCManager.npcs.has(last), "restore recria NPCs gerados")
+	NPCManager.from_dict(d)
+	check(NPCManager.state.has(last), "estado do NPC gerado persiste")
+	# IA simulada
+	var mock_npc := {"nome": "Teresa Lopes", "idade": 52, "profissao": "costureira", "personalidade": "desconfiada", "segredo": "deve dinheiro", "genero": "mulher"}
+	AIService.mock = func(_m: Array) -> Dictionary:
+		return {"ok": true, "text": JSON.stringify(mock_npc)}
+	var gen: Dictionary = await Population.generate_ai()
+	check(not gen.is_empty() and str(gen["npc"]["nome"]) == "Teresa Lopes", "NPC gerado por IA (simulado)")
+	AIService.mock = _mock
+
+
 func _phone_tests() -> void:
 	await _travel_tests()
 	AIService.mock = _mock
@@ -606,6 +661,7 @@ func _ready() -> void:
 	await _phone_tests()
 	await _crime_tests()
 	await _econ_tests()
+	await _world_tests()
 
 	var creator = preload("res://ui/character_creation.gd").new()
 	add_child(creator)

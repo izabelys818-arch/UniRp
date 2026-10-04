@@ -25,36 +25,45 @@ func _ready() -> void:
 	TimeManager.time_advanced.connect(_on_time_advanced)
 
 
+func reload_cast() -> void:
+	npcs = World._load_json("res://data/npcs.json")
+	World.reload_cast()
+
+
+func make_state(id: String, is_known: bool) -> Dictionary:
+	return {
+		"confianca": 15 if is_known else 0,
+		"afeto": 15 if is_known else 0,
+		"medo": 0,
+		"suspeita": 0 if is_known else 15,
+		"memorias": ["O jogador é um rosto conhecido do bairro há anos; vocês se cumprimentam, mas nunca foram próximos."] if is_known else [],
+		"historico": [],
+		"vivo": true,
+		"conheceu": is_known,
+		"conhece_nome": false,
+		"sabe_nome_jogador": is_known,
+		"dinheiro": int(npcs[id]["dinheiro"]),
+		"evita_ate": 0,
+		"emocao": "neutro",
+		"namoro": false,
+		"bloqueado": false,
+		"saude": 100,
+		"pago": 0,
+		"fora_ate": 0,
+		"hospital_ate": 0,
+		"preso_ate": 0,
+	}
+
+
 func reset_state(origin: Dictionary) -> void:
+	reload_cast()
 	state.clear()
 	talking_to = ""
 	channel = PRESENCIAL
 	busy = false
 	var known: Array = origin.get("conhecidos", [])
 	for id in npcs:
-		var is_known: bool = id in known
-		state[id] = {
-			"confianca": 15 if is_known else 0,
-			"afeto": 15 if is_known else 0,
-			"medo": 0,
-			"suspeita": 0 if is_known else 15,
-			"memorias": ["O jogador é um rosto conhecido do bairro há anos; vocês se cumprimentam, mas nunca foram próximos."] if is_known else [],
-			"historico": [],
-			"vivo": true,
-			"conheceu": is_known,
-			"conhece_nome": false,
-			"sabe_nome_jogador": is_known,
-			"dinheiro": int(npcs[id]["dinheiro"]),
-			"evita_ate": 0,
-			"emocao": "neutro",
-			"namoro": false,
-			"bloqueado": false,
-			"saude": 100,
-			"pago": 0,
-			"fora_ate": 0,
-			"hospital_ate": 0,
-			"preso_ate": 0,
-		}
+		state[id] = make_state(id, id in known)
 
 
 func location_of(npc_id: String, h: int = -1) -> String:
@@ -65,6 +74,12 @@ func location_of(npc_id: String, h: int = -1) -> String:
 			return ""
 		if now < int(st.get("hospital_ate", 0)):
 			return "hospital"
+		var arriving := Population.override_location(npc_id)
+		if arriving != "":
+			return arriving
+		var party := WorldEvents.npc_override(npc_id)
+		if party != "":
+			return party
 	if h < 0:
 		h = TimeManager.hour()
 	for slot in npcs[npc_id]["rotina"]:
@@ -419,7 +434,7 @@ func _sell(id: String, item_id: String) -> void:
 	var shop_ok: bool = npcs[id].get("vende", false) and item_id in here.get("loja", [])
 	if not World.items.has(item_id) or not (shop_ok or item_id in own_goods):
 		return
-	var price := int(World.items[item_id]["preco"])
+	var price := World.item_price(item_id, location_of(id))
 	if int(st.get("pago", 0)) < price:
 		GameState.add_log("%s não entrega: %s custa R$ %d e você ainda não pagou." % [display_name(id), World.item_name(item_id), price], "info")
 		return

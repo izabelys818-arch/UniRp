@@ -4,12 +4,15 @@ signal log_added(entry: Dictionary)
 signal player_changed
 signal game_over(reason: String)
 
-const CITY := "Porto Cinza"
 const MAX_LOG := 300
 
 var player: Dictionary = {}
 var log_entries: Array = []
 var active: bool = false
+
+
+func city() -> String:
+	return str(World.scenario().get("nome", "Porto Cinza"))
 
 
 func new_game(p: Dictionary) -> void:

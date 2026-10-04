@@ -99,7 +99,7 @@ func _sky(y0: float, y1: float) -> void:
 
 
 func _raining() -> bool:
-	return (TimeManager.day() * 7 + 3) % 3 == 0 and (TimeManager.hour() >= 18 or TimeManager.hour() < 6)
+	return WorldEvents.raining()
 
 
 func _buildings(base_y: float, seed_n: int, night: bool) -> void:
@@ -116,7 +116,7 @@ func _buildings(base_y: float, seed_n: int, night: bool) -> void:
 		while wy < base_y - 30:
 			var wx := x + 16
 			while wx < x + w - 24:
-				var lit := rng.randf() < (0.45 if night else 0.08)
+				var lit := rng.randf() < (0.45 if night else 0.08) and not WorldEvents.power_out()
 				var wc := Color("#f2c46b") if lit else Color(0, 0, 0, 0.35)
 				if lit and rng.randf() < 0.2:
 					wc = Color("#9fd3ff")
@@ -130,7 +130,7 @@ func _street_lamp(x: float, base_y: float, h: float) -> void:
 	_r(x - 4, base_y - h, 8, h, Color("#1a1c20"))
 	_ln(Vector2(x, base_y - h), Vector2(x + 40, base_y - h - 10), Color("#1a1c20"), 6)
 	var bulb := Vector2(x + 42, base_y - h - 4)
-	var on := _daylight() < 0.6
+	var on := _daylight() < 0.6 and not WorldEvents.power_out()
 	if on:
 		_cone(bulb, 12, base_y + 20, 140, Color(1.0, 0.82, 0.5, 0.22))
 		_glow(bulb, 70, Color(1.0, 0.8, 0.45, 0.9))
@@ -192,6 +192,7 @@ func _draw() -> void:
 	if CrimeSystem.fire_at(loc_id):
 		_fire()
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	_world_overlays()
 	_grad(0, size.y * 0.55, size.x, size.y * 0.45, Color(0, 0, 0, 0), Color(0, 0, 0, 0.55))
 	_grad(0, 0, size.x, size.y * 0.18, Color(0, 0, 0, 0.5), Color(0, 0, 0, 0))
 
@@ -213,6 +214,51 @@ func _fire() -> void:
 		var ey := V.y - fmod(t * 120.0 * (0.4 + (i % 5) * 0.2) + i * 53.0, V.y)
 		draw_circle(Vector2(ex, ey), 2.5, Color(1.0, 0.7, 0.2, 0.8))
 	_grad(0, 0, V.x, V.y * 0.65, Color(0.04, 0.04, 0.04, 0.8), Color(0.1, 0.1, 0.1, 0.0))
+
+
+func _world_overlays() -> void:
+	var sc: Dictionary = World.scenario()
+	var tint: Array = sc.get("tint", [0, 0, 0, 0])
+	if float(tint[3]) > 0.0:
+		draw_rect(Rect2(Vector2.ZERO, size), Color(float(tint[0]), float(tint[1]), float(tint[2]), float(tint[3])))
+	if WorldEvents.power_out():
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.0, 0.0, 0.05, 0.5))
+		var flick := 0.5 + 0.5 * sin(t * 2.0)
+		draw_circle(Vector2(size.x * 0.82, size.y * 0.7), 12.0, Color(1.0, 0.7, 0.3, 0.5 + 0.2 * flick))
+	if sc.get("cinzas", false):
+		var rng := RandomNumberGenerator.new()
+		rng.seed = 41
+		for i in 70:
+			var x := fmod(rng.randf() * size.x + t * (12.0 + rng.randf() * 20.0), size.x)
+			var y := fmod(rng.randf() * size.y + t * (20.0 + rng.randf() * 30.0), size.y)
+			draw_circle(Vector2(x, y), rng.randf_range(1.0, 2.6), Color(0.75, 0.72, 0.7, 0.35))
+
+
+func _festa() -> void:
+	var cols := [Color("#ff5d6c"), Color("#ffd166"), Color("#4fd1b5"), Color("#5aa9e6"), Color("#c792ea")]
+	for row in 2:
+		var y0 := 120.0 + row * 70.0
+		var prev := Vector2(0, y0)
+		for i in 17:
+			var x := 100.0 * i
+			var sag := 38.0 * sin(PI * float(i % 4) / 3.0)
+			var pt := Vector2(x, y0 + sag)
+			_ln(prev, pt, Color(0.1, 0.1, 0.1), 3.0)
+			if i > 0:
+				_p([pt + Vector2(-14, 0), pt + Vector2(14, 0), pt + Vector2(0, 34)], cols[(i + row) % cols.size()])
+			prev = pt
+	for i in 24:
+		var lx := 60.0 + i * 68.0
+		var ly := 330.0 + 18.0 * sin(i * 1.3)
+		var c: Color = cols[i % cols.size()]
+		_glow(Vector2(lx, ly), 36.0, Color(c, 0.7 * (0.7 + 0.3 * sin(t * 3.0 + i))), 5)
+		draw_circle(Vector2(lx, ly), 6, c.lightened(0.4))
+	_r(120, 560, 280, 90, Color("#3a2418"))
+	_r(120, 520, 280, 46, Color("#c0392b"))
+	_text(Vector2(160, 554), "PASTEL & CALDO", 28, Color("#ffe9a8"))
+	_r(1180, 560, 280, 90, Color("#243a5a"))
+	_r(1180, 520, 280, 46, Color("#2980b9"))
+	_text(Vector2(1220, 554), "QUENTÃO", 28, Color("#ffe9a8"))
 
 
 func _motes_draw() -> void:
@@ -456,6 +502,8 @@ func _rua() -> void:
 			_r(x, 580, 180, 18, Color("#3a2a1e"))
 			_r(x + 10, 598, 10, 42, Color("#222"))
 			_r(x + 160, 598, 10, 42, Color("#222"))
+	if loc_id == "praca" and WorldEvents.festa_on():
+		_festa()
 	_street_lamp(420, 640, 360)
 	_street_lamp(1180, 640, 360)
 	if _raining():

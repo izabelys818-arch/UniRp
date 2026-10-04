@@ -12,6 +12,7 @@ var traits: Array = []
 var emotions: Dictionary = {}
 var appearance: Dictionary = {}
 var npc_looks: Dictionary = {}
+var cenarios: Dictionary = {}
 
 
 func _ready() -> void:
@@ -19,6 +20,7 @@ func _ready() -> void:
 	emotions = _load_json("res://data/emotions.json")
 	appearance = _load_json("res://data/appearance.json")
 	npc_looks = _load_json("res://data/npc_looks.json")
+	cenarios = _load_json("res://data/cenarios.json")
 	locations = _load_json("res://data/locations.json")
 	items = _load_json("res://data/items.json")
 	origins = _load_json("res://data/origins.json")
@@ -30,6 +32,26 @@ func _load_json(path: String) -> Variant:
 	if data == null:
 		push_error("Falha ao ler " + path)
 	return data
+
+
+func scenario() -> Dictionary:
+	var id := str(GameState.player.get("cenario", "porto_cinza"))
+	return cenarios.get(id, cenarios["porto_cinza"])
+
+
+func mod(key: String, default_value: float = 1.0) -> float:
+	return float(scenario().get("mods", {}).get(key, default_value))
+
+
+func item_price(id: String, loc_id: String = "") -> int:
+	if loc_id == "":
+		loc_id = current_id()
+	var m := mod("preco") * WorldEvents.price_mult(loc_id)
+	return maxi(int(round(float(items[id]["preco"]) * m)), 1)
+
+
+func reload_cast() -> void:
+	npc_looks = _load_json("res://data/npc_looks.json")
 
 
 func get_origin(id: String) -> Dictionary:
@@ -168,7 +190,7 @@ func _distance(from_id: String, to_id: String) -> float:
 func travel_options(to_id: String) -> Array:
 	var d := _distance(current_id(), to_id)
 	var car := str(GameState.player.get("car", ""))
-	var uber_price := int(round(7.0 + d * 0.35))
+	var uber_price := int(round((7.0 + d * 0.35) * WorldEvents.uber_mult() * mod("preco")))
 	var opts: Array = [
 		{"mode": "ape", "label": "A pé", "minutes": int(5 + d * 0.6), "cost": 0, "ok": true, "note": "gasta energia"},
 		{"mode": "uber", "label": "Uber", "minutes": int(6 + d * 0.18), "cost": uber_price, "ok": GameState.money() >= uber_price, "note": "" if GameState.money() >= uber_price else "sem dinheiro"},
@@ -207,6 +229,9 @@ func move_player_to(loc_id: String, mode: String = "ape") -> void:
 	TimeManager.advance(minutes)
 	if mode == "ape":
 		NeedsSystem.apply({"energia": -minutes * 0.08})
+	if not GameState.active:
+		return
+	WorldEvents.travel_stop(mode)
 	if not GameState.active:
 		return
 	if not is_open(loc_id):

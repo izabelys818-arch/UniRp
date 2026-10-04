@@ -31,6 +31,8 @@ func available_actions() -> Array:
 		out.append(a)
 	for a in BusinessSystem.actions():
 		out.append(a)
+	for a in WorldEvents.actions():
+		out.append(a)
 	if AddictionSystem.group_available():
 		out.append({"id": "grupo_apoio", "label": "Participar do grupo de apoio (2h)"})
 	for s in loc.get("servicos", []):
@@ -62,6 +64,9 @@ func do_action(id: String) -> void:
 	NPCManager.end_conversation()
 	if id.begins_with("entrar:"):
 		World.enter_interior(id.substr(7))
+		return
+	if id.begins_with("evt:"):
+		WorldEvents.do(id.substr(4))
 		return
 	if id.begins_with("casa:"):
 		HomeSystem.do(id.substr(5))
@@ -122,7 +127,7 @@ func buy(item_id: String) -> void:
 		return
 	if not item_id in World.current().get("loja", []) or not World.shop_open():
 		return
-	var price := int(World.items[item_id]["preco"])
+	var price := World.item_price(item_id)
 	if _pay(price):
 		TimeManager.advance(2)
 		GameState.add_item(item_id)

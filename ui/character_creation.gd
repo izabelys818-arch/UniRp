@@ -24,6 +24,7 @@ var traits: Array = []
 var backstory: String = ""
 var extra: String = ""
 var hair_touched: bool = false
+var scen_idx: int = 0
 
 var portrait: FaceRig
 var content: VBoxContainer
@@ -292,6 +293,13 @@ func _tab_identity() -> void:
 	content.add_child(origin_desc)
 	_fill_origin(origin_desc)
 
+	var scen_ids: Array = World.cenarios.keys()
+	var scen_desc := UI.label(str(World.cenarios[scen_ids[scen_idx]]["resumo"]), 14, UI.MUTED)
+	_selector("Cenário do mundo", scen_ids.map(func(k): return World.cenarios[k]["rotulo"]), func(): return scen_idx, func(v):
+		scen_idx = v
+		scen_desc.text = str(World.cenarios[scen_ids[v]]["resumo"]))
+	content.add_child(scen_desc)
+
 	_section("Traços de personalidade (até %d)" % MAX_TRAITS)
 	var ids: Array = World.traits.map(func(t): return t["id"])
 	_chips(World.traits.map(func(t): return t["nome"]), func(i): return ids[i] in traits, func(i, on):
@@ -461,6 +469,7 @@ func _start() -> void:
 		"backstory": backstory.strip_edges(),
 		"traits": traits.duplicate(),
 		"origin": origin["id"],
+		"cenario": World.cenarios.keys()[scen_idx],
 		"money": int(origin["dinheiro"]),
 		"location": origin["local"],
 		"home": origin["casa"],
@@ -472,4 +481,5 @@ func _start() -> void:
 	TimeManager.total_minutes = int(origin["hora"]) * 60
 	NeedsSystem.reset(origin["necessidades"])
 	NPCManager.reset_state(origin)
+	Population.populate(int(World.mod("extra_npcs", 2.0)))
 	navigate.emit("game", {"new_origin": origin})

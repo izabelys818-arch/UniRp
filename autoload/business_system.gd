@@ -30,7 +30,7 @@ func close_down() -> void:
 
 
 func cost_of(item_id: String) -> int:
-	return int(ceil(float(World.items[item_id]["preco"]) * COST_RATIO))
+	return int(ceil(float(World.items[item_id]["preco"]) * COST_RATIO * World.mod("preco")))
 
 
 func price_of(item_id: String) -> int:

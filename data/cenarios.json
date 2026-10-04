@@ -1,0 +1,38 @@
+{
+	"porto_cinza": {
+		"nome": "Porto Cinza",
+		"rotulo": "Porto Cinza (padrão)",
+		"resumo": "Noir urbano. Uma cidade média, suja e desconfiada, onde todo mundo esconde alguma coisa. O jogo como foi pensado.",
+		"tom": "noir urbano brasileiro: cidade média, suja e desconfiada, onde todo mundo esconde alguma coisa",
+		"mods": {"preco": 1.0, "crime": 1.0, "policia": 1.0, "eventos": 1.0, "extra_npcs": 2},
+		"tint": [0.0, 0.0, 0.0, 0.0],
+		"cinzas": false
+	},
+	"vale_sereno": {
+		"nome": "Vale Sereno",
+		"rotulo": "Vale Sereno (cidadezinha)",
+		"resumo": "Cidadezinha do interior onde todos se conhecem e a fofoca corre rápido. Mais barata e mais segura, mas ninguém esquece um deslize e a calma esconde coisa feia.",
+		"tom": "cidadezinha do interior onde todos se conhecem: fofoca, igreja, cordialidade de fachada e segredos antigos sob a calma",
+		"mods": {"preco": 0.85, "crime": 0.5, "policia": 0.7, "eventos": 0.8, "extra_npcs": 3},
+		"tint": [1.0, 0.78, 0.45, 0.09],
+		"cinzas": false
+	},
+	"nova_aurora": {
+		"nome": "Nova Aurora",
+		"rotulo": "Nova Aurora (metrópole)",
+		"resumo": "Metrópole febril, anônima e cara. Tudo custa mais, a polícia está em todo canto e o crime também. Mais gente nova chegando o tempo todo.",
+		"tom": "metrópole febril, anônima, cara e desigual, cheia de gente de passagem, golpes e oportunidades",
+		"mods": {"preco": 1.3, "crime": 1.5, "policia": 1.25, "eventos": 1.3, "extra_npcs": 5},
+		"tint": [0.55, 0.25, 0.95, 0.1],
+		"cinzas": false
+	},
+	"colapso": {
+		"nome": "Porto Cinza",
+		"rotulo": "Porto Cinza em colapso (apocalipse)",
+		"resumo": "A cidade quebrou: racionamento, toque de recolher e desconfiança total. Preços nas alturas, apagões e violência. Sobreviver é o único plano.",
+		"tom": "cidade em colapso: racionamento, toque de recolher, apagões, escassez, desconfiança total e sobrevivência",
+		"mods": {"preco": 1.8, "crime": 1.6, "policia": 1.5, "eventos": 1.8, "extra_npcs": 2},
+		"tint": [0.55, 0.12, 0.1, 0.15],
+		"cinzas": true
+	}
+}

@@ -8,7 +8,7 @@ var info: VBoxContainer
 
 
 func _ready() -> void:
-	_build_overlay("Mapa de Porto Cinza", Vector2(1240, 680))
+	_build_overlay("Mapa da cidade", Vector2(1240, 680))
 	var row := UI.hbox(16)
 	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	content.add_child(row)

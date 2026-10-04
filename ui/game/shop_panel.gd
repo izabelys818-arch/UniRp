@@ -36,14 +36,14 @@ func _refresh() -> void:
 	for id in loc.get("loja", []):
 		var it: Dictionary = World.items[id]
 		var box := UI.vbox(6)
-		var card_btn := ItemCard.new(id, 0, "R$ %d" % int(it["preco"]))
+		var card_btn := ItemCard.new(id, 0, "R$ %d" % World.item_price(id))
 		var effects: Array = []
 		for k in it["efeitos"]:
 			var v := int(it["efeitos"][k])
 			effects.append("%s%d %s" % ["+" if v > 0 else "", v, NeedsSystem.LABELS.get(k, k)])
 		card_btn.tooltip_text = "\n".join(effects)
 		card_btn.pressed.connect(_buy.bind(id))
-		card_btn.disabled = GameState.money() < int(it["preco"])
+		card_btn.disabled = GameState.money() < World.item_price(id)
 		box.add_child(card_btn)
 		var buy := UI.button("Comprar", _buy.bind(id))
 		buy.disabled = card_btn.disabled
