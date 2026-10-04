@@ -23,7 +23,7 @@ func _ready() -> void:
 func data() -> Dictionary:
 	var p: Dictionary = GameState.player
 	if not p.has("crime"):
-		p["crime"] = {"wanted": 0, "last_crime": -9999, "record": [], "pistas": [], "invadidos": {}, "agressor": {}, "corpos": []}
+		p["crime"] = {"wanted": 0, "last_crime": -9999, "record": [], "pistas": [], "invadidos": {}, "agressor": {}, "corpos": [], "fire": {}}
 	return p["crime"]
 
 
@@ -249,7 +249,7 @@ func burglary_actions() -> Array:
 	var id := World.current_id()
 	var loc := World.current()
 	var invaded: Dictionary = data()["invadidos"]
-	if loc.has("arrombavel") and not World.is_open(id) and int(invaded.get(id, -1)) != TimeManager.day():
+	if loc.has("arrombavel") and not World.is_open(id) and not fire_at(id) and int(invaded.get(id, -1)) != TimeManager.day():
 		out.append({"id": "arrombar", "label": "Arrombar a porta"})
 	for casa in loc.get("casas", []):
 		if int(invaded.get(casa["id"], -1)) != TimeManager.day():
@@ -392,6 +392,123 @@ func _psycho_check(hours: float) -> void:
 		"É tarde da noite e vocês estão sozinhos aqui, sem nenhuma testemunha. Pela sua natureza, este é o momento que você esperava. Aja agora conforme quem você realmente é: aproxime-se, manipule, ameace ou ataque ('atacar').")
 
 
+# ---------- incêndios ----------
+
+func fire() -> Dictionary:
+	return data().get("fire", {})
+
+
+func fire_at(loc_id: String) -> bool:
+	if not GameState.active:
+		return false
+	var f := fire()
+	return not f.is_empty() and str(f["loc"]) == loc_id and TimeManager.total_minutes < int(f["ate"])
+
+
+func start_fire(loc_id: String) -> void:
+	data()["fire"] = {"loc": loc_id, "ate": TimeManager.total_minutes + 300}
+	var place: String = World.locations[loc_id]["nome"]
+	if World.current_id() != loc_id:
+		GameState.add_log("Notícia no celular: incêndio atinge %s. Os bombeiros isolaram a área." % place, "phone")
+		return
+	if _choice_open:
+		return
+	_choice_open = true
+	NPCManager.end_conversation()
+	GameState.add_log("FOGO! Chamas sobem pelas paredes de %s e a fumaça já arde nos seus olhos." % place, "danger")
+	World.location_changed.emit(loc_id)
+	choice.emit({"title": "INCÊNDIO!", "kind": "fire", "text": "O fogo se espalha rápido. Cada minuto aqui dentro custa saúde.", "options": [
+		{"label": "Tentar apagar com o que tem", "callback": fight_fire},
+		{"label": "Ligar para os bombeiros (193)", "callback": call_firefighters},
+		{"label": "Fugir para a rua", "callback": evacuate},
+	]})
+
+
+func fight_fire() -> void:
+	_close_choice()
+	TimeManager.advance(10)
+	if randf() < 0.45 + (0.2 if GameState.has_trait("forte") else 0.0):
+		data()["fire"] = {}
+		NeedsSystem.apply({"saude": -8, "higiene": -30})
+		GameState.add_log("Com um balde, um pano molhado e muita teimosia você abafa as chamas. Está coberto de fuligem, mas o fogo acabou.", "event")
+		World.location_changed.emit(World.current_id())
+	else:
+		NeedsSystem.apply({"saude": -25})
+		GameState.add_log("O fogo é maior que você. Queima seu braço e te força a recuar.", "danger")
+		evacuate()
+
+
+func call_firefighters() -> void:
+	_close_choice()
+	NeedsSystem.apply({"saude": -8})
+	emergency(193)
+	if World.current_id() == str(fire().get("loc", "")):
+		evacuate()
+
+
+func evacuate() -> void:
+	_close_choice()
+	var out: String = World.current().get("pai", "praca")
+	if out == World.current_id() or fire_at(out):
+		out = "praca"
+	NeedsSystem.apply({"saude": -10, "sanidade": -6})
+	GameState.player["location"] = out
+	GameState.add_log("Você sai tossindo para %s. Atrás de você, o fogo cresce." % World.locations[out]["nome"], "event")
+	World.location_changed.emit(out)
+
+
+func _fire_tick(hours: float) -> void:
+	var here := World.current_id()
+	if fire_at(here) and not _choice_open:
+		NeedsSystem.apply({"saude": -8.0 * hours})
+		evacuate()
+		return
+	if fire().is_empty() or TimeManager.total_minutes >= int(fire().get("ate", 0)):
+		data()["fire"] = {}
+		if randf() < 1.0 - pow(1.0 - 0.004, hours):
+			var spots: Array = World.locations.keys().filter(func(k): return not World.locations[k].get("interior", false) and k != "apartamento")
+			start_fire(spots.pick_random())
+
+
+# ---------- emergências ----------
+
+func emergency(number: int) -> void:
+	if not GameState.active:
+		return
+	var d := data()
+	match number:
+		190:
+			var ag: Dictionary = d.get("agressor", {})
+			if not ag.is_empty() and TimeManager.total_minutes - int(ag["hora"]) < 120:
+				var who: String = NPCManager.npcs[ag["id"]]["nome"]
+				TimeManager.advance(20)
+				NPCManager.state[ag["id"]]["preso_ate"] = TimeManager.total_minutes + 3 * 1440
+				d["agressor"] = {}
+				NPCManager.end_conversation()
+				GameState.add_log("Uma viatura chega em vinte minutos e leva %s algemado(a). Você presta depoimento." % who, "event")
+			elif wanted() > 0:
+				GameState.add_log("A atendente pede seu nome e endereço. Você desliga rápido.", "info")
+			else:
+				TimeManager.advance(5)
+				GameState.add_log("A atendente registra sua ocorrência e promete mandar uma viatura. Ninguém aparece.", "info")
+		192:
+			if NeedsSystem.get_value("saude") < 65.0:
+				TimeManager.advance(12)
+				NPCManager.end_conversation()
+				Economy.sus_treatment(true)
+			else:
+				GameState.add_log("O atendente do SAMU pergunta se há risco de vida. Como não há, orienta procurar um posto.", "info")
+		193:
+			var f := fire()
+			if not f.is_empty() and TimeManager.total_minutes < int(f["ate"]):
+				TimeManager.advance(15)
+				d["fire"] = {}
+				GameState.add_log("Os bombeiros chegam em quinze minutos, controlam o fogo e isolam o local.", "event")
+				World.location_changed.emit(World.current_id())
+			else:
+				GameState.add_log("O bombeiro pergunta onde é o incêndio. Não há nenhum registrado.", "info")
+
+
 # ---------- tempo ----------
 
 func _on_time_advanced(minutes: int, sleeping: bool) -> void:
@@ -423,4 +540,5 @@ func _on_time_advanced(minutes: int, sleeping: bool) -> void:
 		if randf() < 1.0 - pow(1.0 - minf(p, 0.95), hours):
 			police_event()
 			return
+	_fire_tick(hours)
 	_psycho_check(hours)

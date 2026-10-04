@@ -82,6 +82,27 @@ func _ready() -> void:
 	Economy.do_action("entrar:quarto_pensao")
 	game2.bag.open()
 	await _shot("screenshot_quarto.png")
+	game2.bag.close()
+	World.move_player_to("lanchonete")
+	CrimeSystem.set_wanted(3)
+	CrimeSystem.police_lights = true
+	CrimeSystem._choice_open = true
+	game2.choice_panel.show_choice({"title": "POLÍCIA!", "kind": "police", "text": "O Sargento Otávio te reconhece. Mão na cabeça! Encosta na parede!\nVocê está sendo procurado (3 estrelas).", "options": [{"label": "Se render", "callback": func(): pass}, {"label": "Fugir", "callback": func(): pass}, {"label": "Oferecer R$ 450 por fora", "callback": func(): pass}]})
+	await _shot("screenshot_police.png")
+	game2.choice_panel.hide()
+	CrimeSystem.police_lights = false
+	CrimeSystem._choice_open = false
+	game2._open_context("marina")
+	await _shot("screenshot_violence.png")
+	game2.context_menu.hide()
+	CrimeSystem.set_wanted(0)
+	CrimeSystem.start_fire("lanchonete")
+	game2.choice_panel.hide()
+	CrimeSystem._choice_open = false
+	await _shot("screenshot_fire.png")
+	CrimeSystem.data()["fire"] = {}
+	game2.phone.open("emergency")
+	await _shot("screenshot_emergency.png")
 	get_tree().quit()
 
 

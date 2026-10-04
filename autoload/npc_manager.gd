@@ -69,7 +69,7 @@ func location_of(npc_id: String, h: int = -1) -> String:
 		h = TimeManager.hour()
 	for slot in npcs[npc_id]["rotina"]:
 		if World.hour_in_range(h, int(slot["de"]), int(slot["ate"])):
-			return slot["local"]
+			return "" if CrimeSystem.fire_at(slot["local"]) else slot["local"]
 	return ""
 
 

@@ -62,6 +62,8 @@ func is_open(loc_id: String, h: int = -1) -> bool:
 	if h < 0:
 		h = TimeManager.hour()
 	var loc: Dictionary = locations[loc_id]
+	if CrimeSystem.fire_at(loc_id):
+		return false
 	return hour_in_range(h, int(loc["abre"]), int(loc["fecha"]))
 
 
@@ -180,7 +182,7 @@ func shop_open(loc_id: String = "") -> bool:
 	if loc_id == "":
 		loc_id = current_id()
 	var loc: Dictionary = locations[loc_id]
-	if loc.get("loja", []).is_empty():
+	if loc.get("loja", []).is_empty() or not is_open(loc_id):
 		return false
 	var hours: Array = loc.get("vendedor_horario", [])
 	return hours.is_empty() or hour_in_range(TimeManager.hour(), int(hours[0]), int(hours[1]))
@@ -208,6 +210,14 @@ func move_player_to(loc_id: String, mode: String = "ape") -> void:
 	if not GameState.active:
 		return
 	if not is_open(loc_id):
+		if CrimeSystem.fire_at(loc_id):
+			GameState.add_log("Os bombeiros isolaram %s: o prédio está em chamas. Não dá para chegar perto." % locations[loc_id]["nome"], "danger")
+			return
+		if locations[loc_id].has("arrombavel"):
+			GameState.player["location"] = loc_id
+			GameState.add_log("Você chega em %s, mas está fechado. Cortina de aço baixada e um cadeado simples na porta." % locations[loc_id]["nome"], "info")
+			location_changed.emit(loc_id)
+			return
 		GameState.add_log("Você chega em %s, mas está fechado." % locations[loc_id]["nome"], "info")
 		return
 	GameState.player["location"] = loc_id

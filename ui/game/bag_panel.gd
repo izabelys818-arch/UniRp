@@ -55,6 +55,14 @@ func _refresh() -> void:
 		card_btn.selected = id == selected
 		card_btn.pressed.connect(_select.bind(id))
 		grid.add_child(card_btn)
+	var clues: Array = CrimeSystem.data().get("pistas", [])
+	if not clues.is_empty():
+		content.add_child(UI.label("ANOTAÇÕES E PISTAS", 12, UI.MUTED))
+		for clue in clues:
+			var cp := PanelContainer.new()
+			cp.add_theme_stylebox_override("panel", UI._box(Color(UI.ACCENT, 0.08), 10, 10))
+			cp.add_child(UI.label(str(clue), 14, UI.TEXT))
+			content.add_child(cp)
 	detail = UI.vbox(10)
 	var dp := PanelContainer.new()
 	dp.add_theme_stylebox_override("panel", UI._box(Color(1, 1, 1, 0.04), 16, 16))

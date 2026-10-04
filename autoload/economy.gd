@@ -3,6 +3,16 @@ extends Node
 const HOSPITAL_CARE := 150
 
 
+func sus_treatment(ambulance: bool = false) -> void:
+	if ambulance:
+		GameState.add_log("A ambulância chega e te leva para o Hospital São Lucas.", "event")
+		GameState.player["location"] = "hospital"
+		World.location_changed.emit("hospital")
+	TimeManager.advance(360)
+	NeedsSystem.apply({"saude": 40, "energia": -10, "saciedade": -15})
+	GameState.add_log("Seis horas numa maca de corredor, até que um médico cansado te examina, medica e libera.", "narration")
+
+
 func available_actions() -> Array:
 	var loc := World.current()
 	var out: Array = [{"id": "esperar", "label": "Esperar 1 hora"}]
@@ -11,6 +21,8 @@ func available_actions() -> Array:
 			out.append({"id": "entrar:" + str(room["id"]), "label": str(room["label"])})
 	if loc.get("interior", false):
 		out.append({"id": "sair", "label": "Sair do quarto"})
+	for a in CrimeSystem.burglary_actions():
+		out.append(a)
 	for s in loc.get("servicos", []):
 		match s:
 			"dormir_casa":
@@ -25,8 +37,10 @@ func available_actions() -> Array:
 				out.append({"id": s, "label": "Dormir aqui mesmo (perigoso)"})
 			"bico":
 				out.append({"id": s, "label": "Procurar bico (3h)"})
+			"atendimento_sus":
+				out.append({"id": s, "label": "Atendimento pelo SUS (grátis, ~6h de fila)"})
 			"atendimento":
-				out.append({"id": s, "label": "Atendimento médico (R$ %d)" % HOSPITAL_CARE})
+				out.append({"id": s, "label": "Atendimento particular (R$ %d)" % HOSPITAL_CARE})
 			"rezar":
 				out.append({"id": s, "label": "Sentar e rezar em silêncio"})
 	return out
@@ -39,7 +53,14 @@ func do_action(id: String) -> void:
 	if id.begins_with("entrar:"):
 		World.enter_interior(id.substr(7))
 		return
+	if id.begins_with("invadir:"):
+		CrimeSystem.invade_house(id.substr(8))
+		return
 	match id:
+		"arrombar":
+			CrimeSystem.break_into_shop()
+		"atendimento_sus":
+			sus_treatment()
 		"sair":
 			World.leave_interior()
 		"esperar":

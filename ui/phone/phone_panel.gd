@@ -128,6 +128,7 @@ func _go(to_screen: String, arg: String = "") -> void:
 		"contacts": _contacts()
 		"bank": _bank()
 		"calling": _calling(arg)
+		"emergency": _emergency()
 
 
 func _app_button(label: String, color: Color, badge: int, target: String) -> Control:
@@ -167,6 +168,7 @@ func _home() -> void:
 	grid.add_child(_app_button("Mensagens", Color("#2e8b57"), PhoneSystem.unread(), "threads"))
 	grid.add_child(_app_button("Contatos", Color("#3b6ea8"), 0, "contacts"))
 	grid.add_child(_app_button("Banco", Color("#7a4fb0"), 0, "bank"))
+	grid.add_child(_app_button("Emergência", Color("#b83a3a"), 0, "emergency"))
 
 
 func _threads() -> void:
@@ -346,6 +348,25 @@ func _calling(id: String) -> void:
 			st.text = "Chamada não completada."
 		_:
 			st.text = "Não atendeu."
+
+
+func _emergency() -> void:
+	title_label.text = "Emergência"
+	body.add_child(UI.label("Ligue só se for de verdade. Trotes e chamadas falsas podem te complicar.", 14, UI.MUTED))
+	for spec in [[190, "Polícia", "Denunciar uma agressão ou crime. Só adianta se tiver acabado de acontecer.", Color("#4f8bff")], [192, "SAMU", "Ambulância para quem está ferido. Te leva ao hospital (SUS).", Color("#e8554e")], [193, "Bombeiros", "Incêndios e resgates.", Color("#ff7a2e")]]:
+		var pc := PanelContainer.new()
+		pc.add_theme_stylebox_override("panel", UI._box(Color(spec[3], 0.16), 14, 12))
+		var v := UI.vbox(6)
+		pc.add_child(v)
+		v.add_child(UI.title("%d  %s" % [spec[0], spec[1]], 22))
+		v.add_child(UI.label(spec[2], 13, UI.MUTED))
+		v.add_child(UI.accent_button("Ligar para o %d" % spec[0], _call_emergency.bind(spec[0])))
+		body.add_child(pc)
+
+
+func _call_emergency(number: int) -> void:
+	close()
+	CrimeSystem.emergency(number)
 
 
 func _on_thread_updated(id: String) -> void:

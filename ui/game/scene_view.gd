@@ -189,9 +189,30 @@ func _draw() -> void:
 		"igreja": _igreja()
 		_: _rua()
 	_motes_draw()
+	if CrimeSystem.fire_at(loc_id):
+		_fire()
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	_grad(0, size.y * 0.55, size.x, size.y * 0.45, Color(0, 0, 0, 0), Color(0, 0, 0, 0.55))
 	_grad(0, 0, size.x, size.y * 0.18, Color(0, 0, 0, 0.5), Color(0, 0, 0, 0))
+
+
+func _fire() -> void:
+	var flick := 0.75 + 0.25 * sin(t * 13.0) * sin(t * 7.3)
+	_grad(0, 0, V.x, V.y, Color(0.12, 0.08, 0.06, 0.5), Color(0.5, 0.15, 0.0, 0.28))
+	for i in 16:
+		var x := V.x * (float(i) + 0.5) / 16.0
+		var sway := sin(t * 3.0 + i * 1.7) * 26.0
+		var hgt := 520.0 + 200.0 * sin(t * 4.0 + i * 2.3) * sin(t * 1.9 + i) + (i % 3) * 80.0
+		var w := 105.0
+		_p([Vector2(x - w, V.y), Vector2(x - w * 0.4 + sway * 0.4, V.y - hgt * 0.55), Vector2(x + sway, V.y - hgt), Vector2(x + w * 0.4 + sway * 0.4, V.y - hgt * 0.55), Vector2(x + w, V.y)], Color(0.95, 0.25, 0.05, 0.85))
+		_p([Vector2(x - w * 0.62, V.y), Vector2(x + sway * 0.8, V.y - hgt * 0.72), Vector2(x + w * 0.62, V.y)], Color(1.0, 0.6, 0.1, 0.9))
+		_p([Vector2(x - w * 0.3, V.y), Vector2(x + sway * 0.5, V.y - hgt * 0.4), Vector2(x + w * 0.3, V.y)], Color(1.0, 0.93, 0.5, 0.95))
+	_glow(Vector2(V.x / 2.0, V.y), 900.0, Color(1.0, 0.45, 0.1, 0.5 * flick))
+	for i in 40:
+		var ex := fmod(float(i) * 97.0 + t * 40.0 * (1 + i % 3), V.x)
+		var ey := V.y - fmod(t * 120.0 * (0.4 + (i % 5) * 0.2) + i * 53.0, V.y)
+		draw_circle(Vector2(ex, ey), 2.5, Color(1.0, 0.7, 0.2, 0.8))
+	_grad(0, 0, V.x, V.y * 0.65, Color(0.04, 0.04, 0.04, 0.8), Color(0.1, 0.1, 0.1, 0.0))
 
 
 func _motes_draw() -> void:

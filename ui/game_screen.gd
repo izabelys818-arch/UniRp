@@ -16,6 +16,9 @@ const ShopPanel = preload("res://ui/game/shop_panel.gd")
 const MapPanel = preload("res://ui/game/map_panel.gd")
 const HistoryPanel = preload("res://ui/game/history_panel.gd")
 const MoneyPanel = preload("res://ui/game/money_panel.gd")
+const ChoicePanel = preload("res://ui/game/choice_panel.gd")
+const WantedStars = preload("res://ui/game/wanted_stars.gd")
+const PoliceLights = preload("res://ui/game/police_lights.gd")
 
 const MENU_TALK := 0
 const MENU_ACTIONS := {
@@ -30,6 +33,9 @@ const MENU_ACTIONS := {
 const MENU_MONEY := 20
 const MENU_ITEM := 21
 const MENU_END := 22
+const MENU_PUNCH := 30
+const MENU_WEAPON := 31
+const MENU_PICKPOCKET := 32
 
 var args: Dictionary = {}
 
@@ -49,6 +55,8 @@ var context_menu: PopupMenu
 var context_target: String = ""
 
 var phone: PhonePanel
+var choice_panel: ChoicePanel
+var stars_view: WantedStars
 var bag: BagPanel
 var shop: ShopPanel
 var map_panel: MapPanel
@@ -77,6 +85,8 @@ func _ready() -> void:
 	NPCManager.npc_replied.connect(_on_npc_replied)
 	PhoneSystem.changed.connect(_queue_refresh)
 	PhoneSystem.notify.connect(_toast)
+	CrimeSystem.choice.connect(choice_panel.show_choice)
+	CrimeSystem.wanted_changed.connect(_queue_refresh.unbind(1))
 	if not GameState.log_entries.is_empty():
 		_on_log(GameState.log_entries[-1])
 	_refresh()
@@ -102,6 +112,10 @@ func _build() -> void:
 	stage.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(stage)
 	stage.resized.connect(_layout_actors)
+	var lights := PoliceLights.new()
+	lights.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	lights.hide()
+	add_child(lights)
 
 	# Topo esquerdo: local, hora, dinheiro
 	var place := PanelContainer.new()
@@ -124,6 +138,9 @@ func _build() -> void:
 	sub_row.add_child(place_sub)
 	money_chip = UI.chip("", UI.TEAL, 15)
 	pv.add_child(money_chip)
+	stars_view = WantedStars.new()
+	stars_view.hide()
+	pv.add_child(stars_view)
 
 	# Topo direito: botões
 	var bar := HBoxContainer.new()
@@ -226,6 +243,8 @@ func _build() -> void:
 	add_child(money_panel)
 	phone = PhonePanel.new()
 	add_child(phone)
+	choice_panel = ChoicePanel.new()
+	add_child(choice_panel)
 
 
 # ---------- atores (pessoas no cenário) ----------
@@ -330,6 +349,12 @@ func _open_context(id: String) -> void:
 	context_menu.add_item("Provocar", 5)
 	context_menu.add_item("Ameaçar", 6)
 	context_menu.add_item("Empurrar", 7)
+	context_menu.add_separator("Violência e crime")
+	context_menu.add_item("Dar um soco", MENU_PUNCH)
+	var weapon := CrimeSystem.best_weapon()
+	if weapon != "":
+		context_menu.add_item("Atacar com %s" % World.item_name(weapon).to_lower(), MENU_WEAPON)
+	context_menu.add_item("Roubar a carteira", MENU_PICKPOCKET)
 	context_menu.add_separator()
 	context_menu.add_item("Dar dinheiro...", MENU_MONEY)
 	context_menu.add_item("Dar um item...", MENU_ITEM)
@@ -354,6 +379,15 @@ func _on_context(menu_id: int) -> void:
 	var id := context_target
 	if menu_id == MENU_END:
 		NPCManager.end_conversation()
+		return
+	if menu_id == MENU_PUNCH:
+		CrimeSystem.player_attack(id)
+		return
+	if menu_id == MENU_WEAPON:
+		CrimeSystem.player_attack(id, CrimeSystem.best_weapon())
+		return
+	if menu_id == MENU_PICKPOCKET:
+		CrimeSystem.pickpocket(id)
 		return
 	if not _ensure_talking(id):
 		return
@@ -389,6 +423,7 @@ func _refresh() -> void:
 	place_title.text = loc.get("nome", "")
 	place_sub.text = "Dia %d • %s • %02d:%02d • %s" % [TimeManager.day(), TimeManager.weekday(), TimeManager.hour(), TimeManager.minute(), TimeManager.period()]
 	(money_chip.get_child(0) as Label).text = "R$ %d" % GameState.money()
+	stars_view.set_stars(CrimeSystem.wanted())
 	for k in meters:
 		meters[k].value = NeedsSystem.get_value(k)
 	var pemo := player_emotion()

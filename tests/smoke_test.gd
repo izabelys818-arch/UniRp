@@ -55,6 +55,129 @@ func _parse_tests() -> void:
 	check(not d.has("fala") or not "{" in str(d.get("fala")), "nunca mostra JSON bruto")
 
 
+func _settle() -> void:
+	for i in 6:
+		await get_tree().process_frame
+
+
+func _crime_tests() -> void:
+	AIService.mock = _mock
+	var cs := CrimeSystem
+	var got: Array = []
+	cs.choice.connect(func(d): got.append(d))
+	cs.set_wanted(0)
+
+	# testemunha que denuncia x testemunha calada
+	_set_hour(10)
+	World.move_player_to("lanchonete")
+	check("marina" in NPCManager.npcs_here(), "Marina está na lanchonete de manhã")
+	cs.commit("agressao", "agredir um desconhecido", 1, "")
+	check(cs.wanted() >= 1, "testemunha denuncia e sobe o procurado")
+	cs.set_wanted(0)
+	_set_hour(17)
+	World.move_player_to("bar")
+	check(NPCManager.npcs_here() == ["ze"], "só o Zé está no bar às 17h")
+	cs.commit("agressao", "agredir um desconhecido", 1, "")
+	check(cs.wanted() == 0, "o Zé não denuncia ninguém")
+
+	# combate: acertar, ferir e matar
+	_set_hour(10)
+	World.move_player_to("lanchonete")
+	NPCManager.state["marina"]["fora_ate"] = 0
+	mock_reply = {"fala": "Ai! Para!", "emocao": "assustado", "acoes": []}
+	var hit := false
+	for i in 40:
+		cs.player_attack("marina")
+		await _settle()
+		if int(NPCManager.state["marina"]["saude"]) < 100:
+			hit = true
+			break
+	check(hit, "soco acerta e tira saúde da Marina")
+	GameState.player["inventory"]["faca"] = 1
+	NPCManager.state["marina"]["saude"] = 5
+	for i in 60:
+		if not NPCManager.state["marina"]["vivo"]:
+			break
+		cs.player_attack("marina", "faca")
+		await _settle()
+	check(not NPCManager.state["marina"]["vivo"], "ataque com faca mata a Marina")
+	check(NPCManager.location_of("marina") == "" and not "marina" in NPCManager.npcs_here(), "morta some do cenário")
+	check(cs.data()["corpos"].size() == 1 and cs.data()["record"].any(func(r): return r["tipo"] == "homicidio"), "corpo e ficha criminal registrados")
+	cs.set_wanted(0)
+	cs._close_choice()
+
+	# polícia: render, subornar
+	got.clear()
+	cs.set_wanted(2)
+	cs.police_event()
+	check(got.size() == 1 and got[0]["options"].size() >= 2 and cs.police_lights, "polícia aborda com opções e luzes")
+	var t_before := TimeManager.total_minutes
+	var money_before := GameState.money()
+	cs.arrest()
+	check(cs.wanted() == 0 and World.current_id() == "delegacia", "preso: procurado zera e vai para a delegacia")
+	check(TimeManager.total_minutes - t_before >= 2 * 1440 and GameState.money() < money_before, "dias na cadeia e fiança paga")
+	check(GameState.item_count("faca") == 0, "armas confiscadas na prisão")
+	check(not cs.police_lights, "luzes apagadas depois")
+	cs.set_wanted(1)
+	GameState.add_money(500)
+	cs.police_event()
+	cs.bribe_police(150, 1.0)
+	check(cs.wanted() == 0, "suborno aceito limpa o procurado")
+
+	# arrombar loja fechada: precisa de ferramenta
+	_set_hour(10)
+	World.move_player_to("bar")
+	check(World.current_id() == "bar" and not World.shop_open(), "chega no bar fechado e fica na porta")
+	check(Economy.available_actions().any(func(x): return x["id"] == "arrombar"), "opção de arrombar aparece")
+	var cash := GameState.money()
+	Economy.do_action("arrombar")
+	check(GameState.money() == cash, "sem ferramenta não arromba")
+	GameState.player["inventory"]["pe_de_cabra"] = 1
+	Economy.do_action("arrombar")
+	check(cs.data()["invadidos"].has("bar"), "tentativa de arrombamento registrada")
+	check(not Economy.available_actions().any(func(x): return x["id"] == "arrombar"), "só uma tentativa por dia")
+	cs.set_wanted(0)
+	cs._close_choice()
+
+	# invadir casa na Rua das Acácias
+	_set_hour(13)
+	World.move_player_to("rua_acacias")
+	check(Economy.available_actions().any(func(x): return x["id"] == "invadir:casa_helena"), "opção de invadir casa")
+	GameState.player["inventory"]["mixa"] = 1
+	Economy.do_action("invadir:casa_helena")
+	check(cs.data()["invadidos"].has("casa_helena"), "invasão registrada")
+	cs.set_wanted(0)
+	cs._close_choice()
+
+	# incêndios e emergências
+	got.clear()
+	cs.start_fire("praca")
+	check(cs.fire_at("praca") and not World.is_open("praca"), "praça pegando fogo fica interditada")
+	World.move_player_to("praca")
+	check(World.current_id() == "rua_acacias", "não dá para ir ao local em chamas")
+	var t0 := TimeManager.total_minutes
+	cs.emergency(193)
+	check(not cs.fire_at("praca") and TimeManager.total_minutes - t0 >= 15, "bombeiros apagam o fogo")
+	NeedsSystem.reset({"saude": 100})
+	cs.start_fire(World.current_id())
+	check(got.size() == 1 and got[0]["kind"] == "fire", "fogo onde você está abre a escolha")
+	var hp := NeedsSystem.get_value("saude")
+	cs.evacuate()
+	check(World.current_id() != "rua_acacias" and NeedsSystem.get_value("saude") < hp, "fugir do fogo custa saúde")
+	cs.data()["fire"] = {}
+	NeedsSystem.reset({"saude": 30})
+	cs.emergency(192)
+	check(World.current_id() == "hospital" and NeedsSystem.get_value("saude") > 55.0, "SAMU leva ao hospital e cura")
+	NeedsSystem.reset({"saude": 40})
+	check(Economy.available_actions().any(func(x): return x["id"] == "atendimento_sus"), "hospital oferece atendimento pelo SUS")
+	Economy.do_action("atendimento_sus")
+	check(NeedsSystem.get_value("saude") > 70.0, "SUS cura de graça")
+	cs.npc_attacked_player("ruan")
+	cs.emergency(190)
+	check(TimeManager.total_minutes < int(NPCManager.state["ruan"]["preso_ate"]) and NPCManager.location_of("ruan") == "", "190 prende quem te agrediu")
+	AIService.mock = Callable()
+
+
 func _travel_tests() -> void:
 	_parse_tests()
 	_action_tests()
@@ -144,7 +267,7 @@ func _phone_tests() -> void:
 
 	var panel = preload("res://ui/phone/phone_panel.gd").new()
 	add_child(panel)
-	for s in [["home", ""], ["threads", ""], ["thread", "marina"], ["contacts", ""], ["bank", ""]]:
+	for s in [["home", ""], ["threads", ""], ["thread", "marina"], ["contacts", ""], ["bank", ""], ["emergency", ""]]:
 		panel.open(s[0], s[1])
 		await get_tree().process_frame
 		check(panel.body.get_child_count() > 0, "tela do celular: " + s[0])
@@ -283,7 +406,13 @@ func _ready() -> void:
 	screen._on_npc_replied("marina", {"fala": "Me deixa em paz, por favor."})
 	check(actor != null and actor.talk_left > 0.0, "boca anima quando o NPC fala")
 	screen._open_context("marina")
-	check(screen.context_menu.item_count >= 10, "menu do botão direito com opções")
+	check(screen.context_menu.item_count >= 14 and screen.context_menu.get_item_index(30) != -1 and screen.context_menu.get_item_index(32) != -1, "menu do botão direito com opções de violência e furto")
+	screen.choice_panel.show_choice({"title": "TESTE", "text": "x", "options": [{"label": "ok", "callback": func(): pass}], "kind": "police"})
+	check(screen.choice_panel.visible and screen.choice_panel.box.get_child_count() >= 4, "janela de escolha abre")
+	screen.choice_panel.hide()
+	screen.stars_view.set_stars(3)
+	check(screen.stars_view.visible, "estrelas de procurado aparecem")
+	screen.stars_view.set_stars(0)
 	screen.context_menu.hide()
 	screen._open_bag()
 	check(screen.bag.visible and screen.bag.grid.get_child_count() > 0, "bolsa abre com os itens")
@@ -304,6 +433,7 @@ func _ready() -> void:
 	await get_tree().process_frame
 
 	await _phone_tests()
+	await _crime_tests()
 
 	var creator = preload("res://ui/character_creation.gd").new()
 	add_child(creator)
