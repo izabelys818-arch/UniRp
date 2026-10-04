@@ -149,6 +149,17 @@ func _ready() -> void:
 	game2.phone.open("news")
 	await _shot("screenshot_jornal.png")
 	game2.phone.close()
+	game2.walk_mode = true
+	World.move_player_to("lanchonete")
+	TimeManager.total_minutes = TimeManager.day() * 1440 + 12 * 60
+	game2._refresh()
+	await _shot("screenshot_mundo_a.png")
+	game2.walk_view.player_target = 900.0
+	for i in 40:
+		await get_tree().process_frame
+	await _shot("screenshot_mundo_b.png")
+	var first: String = game2.walk_view.npcs.keys()[0] if not game2.walk_view.npcs.is_empty() else ""
+	print("WALK NPCS: ", game2.walk_view.npcs.size(), " ", first)
 	get_tree().quit()
 
 

@@ -7,6 +7,7 @@ const FaceRig = preload("res://ui/face/face_rig.gd")
 const LookBuilder = preload("res://ui/face/look_builder.gd")
 const PhonePanel = preload("res://ui/phone/phone_panel.gd")
 const SceneView = preload("res://ui/game/scene_view.gd")
+const WalkView = preload("res://ui/world2d/walk_view.gd")
 const IconButton = preload("res://ui/game/icon_button.gd")
 const Icons = preload("res://ui/game/icons.gd")
 const DialogueBox = preload("res://ui/game/dialogue_box.gd")
@@ -42,6 +43,8 @@ var args: Dictionary = {}
 
 var scene_view: SceneView
 var stage: Control
+var walk_view: WalkView
+var walk_mode: bool = true
 var actors: Dictionary = {}
 var place_title: Label
 var place_sub: Label
@@ -120,6 +123,11 @@ func _build() -> void:
 	stage.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(stage)
 	stage.resized.connect(_layout_actors)
+	walk_view = WalkView.new()
+	walk_view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	walk_view.npc_chosen.connect(_on_walk_npc)
+	walk_view.npc_menu.connect(_open_context)
+	add_child(walk_view)
 	var lights := PoliceLights.new()
 	lights.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	lights.hide()
@@ -341,6 +349,21 @@ func _layout_actors() -> void:
 		stage.move_child(actors[focus], -1)
 
 
+func _update_mode() -> void:
+	var talking := NPCManager.talking_to != ""
+	var walking := walk_mode and not talking and GameState.active
+	walk_view.visible = walking
+	stage.visible = not walking
+	if walking:
+		walk_view.sync(_actor_ids())
+
+
+func _on_walk_npc(id: String) -> void:
+	if NPCManager.talking_to != id and not NPCManager.busy:
+		NPCManager.start_conversation(id)
+		dialogue.input.grab_focus.call_deferred()
+
+
 func _on_actor_input(e: InputEvent, id: String) -> void:
 	if not (e is InputEventMouseButton and e.pressed):
 		return
@@ -458,6 +481,7 @@ func _refresh() -> void:
 		var inv: Dictionary = GameState.player.get("inventory", {})
 		buttons["bag"].set_badge(inv.size())
 	_sync_actors()
+	_update_mode()
 	_refresh_dialogue_state()
 	_refresh_side()
 
@@ -600,6 +624,10 @@ func _unhandled_key_input(e: InputEvent) -> void:
 		KEY_B: _open_bag()
 		KEY_C: _open_phone()
 		KEY_H: _open_history()
+		KEY_V:
+			walk_mode = not walk_mode
+			_update_mode()
+			_toast("Vista do mundo" if walk_mode else "Vista de rostos")
 
 
 func _open_map() -> void:
