@@ -129,6 +129,7 @@ func send_pix(id: String, amount: int) -> bool:
 		return false
 	GameState.add_money(-amount)
 	NPCManager.state[id]["dinheiro"] = int(NPCManager.state[id]["dinheiro"]) + amount
+	NPCManager.state[id]["pago"] = int(NPCManager.state[id].get("pago", 0)) + amount
 	log_bank("PIX enviado para %s" % NPCManager.display_name(id), -amount)
 	GameState.add_log("Você mandou um PIX de R$ %d para %s." % [amount, NPCManager.display_name(id)], "phone")
 	send_message(id, "[PIX de R$ %d enviado para você]" % amount)

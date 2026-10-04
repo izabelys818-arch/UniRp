@@ -49,6 +49,7 @@ func reset_state(origin: Dictionary) -> void:
 			"namoro": false,
 			"bloqueado": false,
 			"saude": 100,
+			"pago": 0,
 			"fora_ate": 0,
 			"hospital_ate": 0,
 			"preso_ate": 0,
@@ -242,6 +243,7 @@ func give_money(amount: int) -> void:
 		return
 	GameState.add_money(-amount)
 	state[talking_to]["dinheiro"] = int(state[talking_to]["dinheiro"]) + amount
+	state[talking_to]["pago"] = int(state[talking_to].get("pago", 0)) + amount
 	talk("*entrega R$ %d em dinheiro*" % amount)
 
 
@@ -318,6 +320,12 @@ func _apply_action(id: String, a: Dictionary, chan: String) -> void:
 			if World.items.has(item) and chan == PRESENCIAL:
 				GameState.add_item(item)
 				GameState.add_log("%s te deu: %s." % [who, World.item_name(item)], "event")
+		"alugar_quarto":
+			if chan == PRESENCIAL:
+				_rent_room(id)
+		"vender":
+			if chan == PRESENCIAL:
+				_sell(id, str(a.get("item", "")))
 		"dar_numero":
 			if not PhoneSystem.has_contact(id):
 				PhoneSystem.add_contact(id)
@@ -361,6 +369,39 @@ func _apply_action(id: String, a: Dictionary, chan: String) -> void:
 			CrimeSystem.npc_called_police(id)
 
 
+# A pessoa entrega a chave pelo diálogo; o jogo confere se o pagamento foi feito de verdade.
+func _rent_room(id: String) -> void:
+	var st: Dictionary = state[id]
+	var svc: Dictionary = npcs[id].get("servicos", {}).get("alugar_quarto", {})
+	if svc.is_empty() or location_of(id) != World.current_id():
+		return
+	var price := int(svc["preco"])
+	var paid := int(st.get("pago", 0))
+	if paid < price:
+		GameState.add_log("%s não entrega a chave: o quarto custa R$ %d por noite e você só pagou R$ %d." % [display_name(id), price, paid], "info")
+		return
+	var nights := mini(paid / price, int(svc.get("noites_max", 7)))
+	st["pago"] = paid - nights * price
+	World.grant_key(str(svc["chave"]), nights)
+	st["memorias"].append("[%s] Aluguei o quarto para o jogador por %d noite(s). Recebi R$ %d." % [TimeManager.clock_str(), nights, nights * price])
+	GameState.add_log("%s te entrega uma chave de ferro enferrujada. Quarto alugado por %d noite(s) (R$ %d)." % [display_name(id), nights, nights * price], "event")
+	GameState.add_log("Agora aparece a opção de entrar no seu quarto aqui na pensão.", "event")
+
+
+func _sell(id: String, item_id: String) -> void:
+	var st: Dictionary = state[id]
+	var here: Dictionary = World.locations.get(location_of(id), {})
+	if not npcs[id].get("vende", false) or not World.items.has(item_id) or not item_id in here.get("loja", []):
+		return
+	var price := int(World.items[item_id]["preco"])
+	if int(st.get("pago", 0)) < price:
+		GameState.add_log("%s não entrega: %s custa R$ %d e você ainda não pagou." % [display_name(id), World.item_name(item_id), price], "info")
+		return
+	st["pago"] = int(st["pago"]) - price
+	GameState.add_item(item_id)
+	GameState.add_log("%s te entrega: %s." % [display_name(id), World.item_name(item_id)], "event")
+
+
 func _on_time_advanced(_minutes: int, _sleeping: bool) -> void:
 	if talking_to != "" and channel == PRESENCIAL and location_of(talking_to) != World.current_id():
 		GameState.add_log("%s vai embora." % display_name(talking_to), "info")
@@ -383,6 +424,8 @@ func from_dict(d: Dictionary) -> void:
 				st[k] = 0
 		if not st.has("saude"):
 			st["saude"] = 100
+		if not st.has("pago"):
+			st["pago"] = 0
 		if not st.has("conheceu"):
 			st["conheceu"] = not st["historico"].is_empty()
 	talking_to = ""

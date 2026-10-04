@@ -179,12 +179,49 @@ func _ready() -> void:
 	check(rst["conhece_nome"], "nome revelado")
 	check(NeedsSystem.get_value("saude") >= 60.0 and GameState.active, "ataque limitado a 40 de dano e só de quem está no local")
 
+	# --- Quarto da pensão pela conversa: pagar -> chave -> entrar -> dormir -> sair
+	GameState.add_money(200)
+	_set_hour(20)
 	World.move_player_to("pensao")
+	check(Economy.available_actions().filter(func(x): return str(x["id"]).begins_with("entrar")).is_empty(), "sem chave não aparece 'entrar no quarto'")
+	check(not World.is_accessible("quarto_pensao"), "quarto trancado sem chave")
+	check(not "quarto_pensao" in World.visible_locations(), "quarto não aparece no mapa")
+	NPCManager.start_conversation("dona_cida")
+	NPCManager._apply_action("dona_cida", {"tipo": "alugar_quarto"}, NPCManager.PRESENCIAL)
+	check(not World.has_key("quarto_pensao"), "sem pagar, a dona não entrega a chave")
+	var before := GameState.money()
+	NPCManager.state["dona_cida"]["pago"] = 0
+	GameState.add_money(-40)
+	NPCManager.state["dona_cida"]["pago"] = 40
+	NPCManager._apply_action("dona_cida", {"tipo": "alugar_quarto"}, NPCManager.PRESENCIAL)
+	check(World.has_key("quarto_pensao") and NPCManager.state["dona_cida"]["pago"] == 0, "pagou, a dona entrega a chave e o pagamento é consumido")
+	var enter: Array = Economy.available_actions().filter(func(x): return str(x["id"]).begins_with("entrar"))
+	check(enter.size() == 1, "aparece a opção 'entrar no quarto'")
+	Economy.do_action(enter[0]["id"])
+	check(World.current_id() == "quarto_pensao", "entrou no quarto")
+	check(Economy.available_actions().any(func(x): return x["id"] == "dormir_quarto") and Economy.available_actions().any(func(x): return x["id"] == "sair"), "dentro do quarto: dormir e sair")
 	var t0 := TimeManager.total_minutes
-	Economy.do_action("dormir_pensao")
+	Economy.do_action("dormir_quarto")
 	check(TimeManager.total_minutes - t0 == 480, "dormiu 8h")
 	check(SaveManager.has_save(), "autosave ao dormir")
+	check(World.current_id() == "quarto_pensao" and World.has_key("quarto_pensao"), "ao acordar de manhã a chave ainda vale (até o meio-dia)")
+	TimeManager.advance(9 * 60)
+	check(World.current_id() == "pensao" and not World.has_key("quarto_pensao"), "passou do meio-dia: a dona põe para fora e a chave vence")
+	GameState.add_money(before - GameState.money())
+	SaveManager.save_game()
 
+	# --- Comprar pelo diálogo (vendedora que trabalha no balcão)
+	World.move_player_to("lanchonete")
+	_set_hour(10)
+	NPCManager.state["marina"]["pago"] = 0
+	var cafes := GameState.item_count("cafe")
+	NPCManager._apply_action("marina", {"tipo": "vender", "item": "cafe"}, NPCManager.PRESENCIAL)
+	check(GameState.item_count("cafe") == cafes, "sem pagar, a vendedora não entrega")
+	NPCManager.state["marina"]["pago"] = 5
+	NPCManager._apply_action("marina", {"tipo": "vender", "item": "cafe"}, NPCManager.PRESENCIAL)
+	check(GameState.item_count("cafe") == cafes + 1 and NPCManager.state["marina"]["pago"] == 0, "pagou, a vendedora entrega o item")
+
+	SaveManager.save_game()
 	var saved_money := GameState.money()
 	var saved_time := TimeManager.total_minutes
 	GameState.add_money(-saved_money)

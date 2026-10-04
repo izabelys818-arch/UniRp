@@ -15,6 +15,7 @@ var npc_looks: Dictionary = {}
 
 
 func _ready() -> void:
+	TimeManager.time_advanced.connect(_check_key_expiry)
 	emotions = _load_json("res://data/emotions.json")
 	appearance = _load_json("res://data/appearance.json")
 	npc_looks = _load_json("res://data/npc_looks.json")
@@ -74,6 +75,8 @@ static func hour_in_range(h: int, from: int, to: int) -> bool:
 
 func is_accessible(loc_id: String) -> bool:
 	var loc: Dictionary = locations[loc_id]
+	if loc.get("interior", false):
+		return has_key(str(loc.get("chave", "")))
 	if loc.get("privado", false):
 		return GameState.player.get("home", "") == loc_id
 	return true
@@ -82,9 +85,69 @@ func is_accessible(loc_id: String) -> bool:
 func visible_locations() -> Array:
 	var out: Array = []
 	for id in locations:
-		if is_accessible(id):
+		if not locations[id].get("interior", false) and is_accessible(id):
 			out.append(id)
 	return out
+
+
+# ---------- chaves e interiores ----------
+
+func keys() -> Dictionary:
+	if not GameState.player.has("keys"):
+		GameState.player["keys"] = {}
+	return GameState.player["keys"]
+
+
+func has_key(key: String) -> bool:
+	return key != "" and GameState.active and int(keys().get(key, 0)) > TimeManager.total_minutes
+
+
+func key_expires(key: String) -> int:
+	return int(keys().get(key, 0))
+
+
+# Valida até o meio-dia do último dia pago (check-out), como numa pensão de verdade.
+func grant_key(key: String, nights: int) -> void:
+	var now := TimeManager.total_minutes
+	var day_start := (now / 1440) * 1440
+	var noon := day_start + 12 * 60
+	if now >= noon:
+		noon += 1440
+	var base := maxi(noon, key_expires(key))
+	keys()[key] = base + (nights - 1) * 1440 if key_expires(key) <= now else key_expires(key) + nights * 1440
+	GameState.player_changed.emit()
+
+
+func enter_interior(interior_id: String) -> void:
+	if not GameState.active or not is_accessible(interior_id):
+		return
+	NPCManager.end_conversation()
+	TimeManager.advance(1)
+	GameState.player["location"] = interior_id
+	GameState.add_log("Você usa a chave e entra: %s." % locations[interior_id]["nome"], "info")
+	GameState.add_log(locations[interior_id]["descricao"], "narration")
+	location_changed.emit(interior_id)
+
+
+func leave_interior() -> void:
+	var loc := current()
+	if not loc.get("interior", false):
+		return
+	NPCManager.end_conversation()
+	TimeManager.advance(1)
+	var parent: String = loc["pai"]
+	GameState.player["location"] = parent
+	GameState.add_log("Você tranca a porta e sai para %s." % locations[parent]["nome"], "info")
+	location_changed.emit(parent)
+
+
+func _check_key_expiry(_minutes: int, _sleeping: bool) -> void:
+	var loc := current()
+	if GameState.active and loc.get("interior", false) and not has_key(str(loc.get("chave", ""))):
+		var parent: String = loc["pai"]
+		GameState.player["location"] = parent
+		GameState.add_log("Batidas na porta. \"Já passou da hora, criatura. O quarto é para quem pagou.\" Suas coisas estão na mão e você é posto para fora.", "danger")
+		location_changed.emit(parent)
 
 
 func travel_minutes(from_id: String, to_id: String) -> int:

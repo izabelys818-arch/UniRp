@@ -73,6 +73,15 @@ func _ready() -> void:
 	game2.bag.close()
 	game2._open_context("marina")
 	await _shot("screenshot_context.png")
+	game2.context_menu.hide()
+	World.move_player_to("pensao")
+	NPCManager.start_conversation("dona_cida")
+	NPCManager.state["dona_cida"]["pago"] = 80
+	NPCManager._apply_action("dona_cida", {"tipo": "alugar_quarto"}, NPCManager.PRESENCIAL)
+	await _shot("screenshot_pensao.png")
+	Economy.do_action("entrar:quarto_pensao")
+	game2.bag.open()
+	await _shot("screenshot_quarto.png")
 	get_tree().quit()
 
 

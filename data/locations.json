@@ -119,6 +119,20 @@
 		"descricao": "Casarão velho dividido em quartinhos. Banheiro coletivo, regras escritas à mão na parede e uma senhora que vê tudo.",
 		"abre": 0, "fecha": 24, "x": 20, "y": 45,
 		"loja": [],
-		"servicos": ["dormir_pensao", "banho_pensao"]
+		"servicos": [],
+		"interiores": [
+			{"id": "quarto_pensao", "label": "Entrar no seu quarto", "chave": "quarto_pensao"}
+		]
+	},
+	"quarto_pensao": {
+		"nome": "Seu quarto na pensão",
+		"tipo": "casa",
+		"interior": true,
+		"pai": "pensao",
+		"chave": "quarto_pensao",
+		"descricao": "Um quartinho apertado com cama de ferro, colchão fino que range, um armário bambo e uma janela que dá para os fundos. A chave pesa no seu bolso.",
+		"abre": 0, "fecha": 24, "x": 20, "y": 45,
+		"loja": [],
+		"servicos": ["dormir_quarto", "banho_quarto"]
 	}
 }

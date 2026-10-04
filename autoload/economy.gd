@@ -1,23 +1,26 @@
 extends Node
 
-const PENSAO_NIGHT := 40
-const PENSAO_SHOWER := 10
 const HOSPITAL_CARE := 150
 
 
 func available_actions() -> Array:
 	var loc := World.current()
 	var out: Array = [{"id": "esperar", "label": "Esperar 1 hora"}]
+	for room in loc.get("interiores", []):
+		if World.has_key(str(room["chave"])):
+			out.append({"id": "entrar:" + str(room["id"]), "label": str(room["label"])})
+	if loc.get("interior", false):
+		out.append({"id": "sair", "label": "Sair do quarto"})
 	for s in loc.get("servicos", []):
 		match s:
 			"dormir_casa":
 				out.append({"id": s, "label": "Dormir (8h)"})
 			"banho_casa":
 				out.append({"id": s, "label": "Tomar banho"})
-			"dormir_pensao":
-				out.append({"id": s, "label": "Alugar quarto e dormir (R$ %d)" % PENSAO_NIGHT})
-			"banho_pensao":
-				out.append({"id": s, "label": "Banho no coletivo (R$ %d)" % PENSAO_SHOWER})
+			"dormir_quarto":
+				out.append({"id": s, "label": "Deitar na cama e dormir (8h)"})
+			"banho_quarto":
+				out.append({"id": s, "label": "Tomar banho no coletivo"})
 			"dormir_rua":
 				out.append({"id": s, "label": "Dormir aqui mesmo (perigoso)"})
 			"bico":
@@ -33,7 +36,12 @@ func do_action(id: String) -> void:
 	if not GameState.active or NPCManager.busy:
 		return
 	NPCManager.end_conversation()
+	if id.begins_with("entrar:"):
+		World.enter_interior(id.substr(7))
+		return
 	match id:
+		"sair":
+			World.leave_interior()
 		"esperar":
 			TimeManager.advance(60)
 			GameState.add_log("Você espera o tempo passar.", "info")
@@ -44,15 +52,13 @@ func do_action(id: String) -> void:
 			TimeManager.advance(20)
 			NeedsSystem.apply({"higiene": 100, "sanidade": 3})
 			GameState.add_log("Você toma um banho. A água é fria, mas ajuda.", "info")
-		"dormir_pensao":
-			if _pay(PENSAO_NIGHT):
-				_sleep(480, "Você aluga um quartinho e dorme num colchão fino que range.")
-				NeedsSystem.apply({"sanidade": 5})
-		"banho_pensao":
-			if _pay(PENSAO_SHOWER):
-				TimeManager.advance(20)
-				NeedsSystem.apply({"higiene": 90})
-				GameState.add_log("Você toma banho no banheiro coletivo, com alguém batendo na porta.", "info")
+		"dormir_quarto":
+			_sleep(480, "Você se deita no colchão fino que range e adormece.")
+			NeedsSystem.apply({"sanidade": 8})
+		"banho_quarto":
+			TimeManager.advance(20)
+			NeedsSystem.apply({"higiene": 90})
+			GameState.add_log("Você toma banho no banheiro coletivo do fim do corredor, com alguém batendo na porta.", "info")
 		"dormir_rua":
 			_sleep_street()
 		"bico":

@@ -33,6 +33,10 @@ func _refresh() -> void:
 		top.add_child(UI.chip("Chave do carro: " + car, UI.MUTED, 15))
 	if str(GameState.player.get("home", "")) != "":
 		top.add_child(UI.chip("Chave de casa", UI.MUTED, 15))
+	for key in World.keys():
+		if World.has_key(key):
+			var left_min: int = World.key_expires(key) - TimeManager.total_minutes
+			top.add_child(UI.chip("Chave: quarto da pensão (vence em %dh)" % int(ceil(left_min / 60.0)), UI.ACCENT, 15))
 	var row := UI.hbox(16)
 	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	content.add_child(row)

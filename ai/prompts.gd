@@ -54,6 +54,27 @@ static func npc_system(npc_id: String, chan: String = "presencial") -> String:
 	if st.get("namoro", false):
 		status.append("vocês estão NAMORANDO")
 	status.append("o jogador TEM seu número de celular" if PhoneSystem.has_contact(npc_id) else "o jogador NÃO tem seu número de celular")
+	var services := ""
+	var paid := int(st.get("pago", 0))
+	if chan == "presencial":
+		var svc: Dictionary = n.get("servicos", {})
+		if svc.has("alugar_quarto"):
+			var has_room := World.has_key(str(svc["alugar_quarto"]["chave"]))
+			services += "
+- SERVIÇO: " + str(svc["alugar_quarto"]["desc"]) + (" O jogador JÁ tem um quarto alugado com você." if has_room else "")
+		var here_loc: Dictionary = World.locations.get(NPCManager.location_of(npc_id), {})
+		if n.get("vende", false) and not here_loc.get("loja", []).is_empty():
+			var menu: Array = []
+			for item_id in here_loc["loja"]:
+				menu.append("%s (id %s) R$ %d" % [World.items[item_id]["nome"], item_id, int(World.items[item_id]["preco"])])
+			services += "
+- VENDA: você trabalha aqui e vende: " + "; ".join(menu) + "."
+		if services != "":
+			services += "
+- REGRA: você só entrega algo (chave, item) DEPOIS de receber o pagamento. Dinheiro que o jogador já te entregou e ainda não foi usado: R$ %d. Quando entregar, use a ação correspondente NO MESMO MOMENTO (o sistema confere o valor pago). Se faltar dinheiro, diga quanto falta e não entregue." % paid
+			services = "
+
+O QUE VOCÊ OFERECE AQUI:" + services
 	var stars := CrimeSystem.wanted()
 	if stars >= 2:
 		status.append("o rosto do jogador está circulando como procurado pela polícia (%d estrelas)" % stars)
@@ -91,11 +112,11 @@ SITUAÇÃO:
 - Status: %s
 
 SUA RELAÇÃO COM O JOGADOR (escala -100 a 100; medo e suspeita de 0 a 100):
-confiança %d, afeto %d, medo %d, suspeita %d
+confiança %d, afeto %d, medo %d, suspeita %d%s
 
 SUAS MEMÓRIAS SOBRE O JOGADOR:
 %s
-""" % [player_name, "; ".join(status), int(st["confianca"]), int(st["afeto"]), int(st["medo"]), int(st["suspeita"]), memories]
+""" % [player_name, "; ".join(status), int(st["confianca"]), int(st["afeto"]), int(st["medo"]), int(st["suspeita"]), services, memories]
 	text += """
 FORMATO DE RESPOSTA: responda SOMENTE com um objeto JSON válido, nada fora dele:
 {
@@ -115,6 +136,8 @@ FORMATO DE RESPOSTA: responda SOMENTE com um objeto JSON válido, nada fora dele
 - "acoes" (opcional, só quando fizer sentido):
   {"tipo":"dar_dinheiro","valor":N} (em pessoa entrega; por celular é PIX)
   {"tipo":"dar_item","item":"id"} (só em pessoa; ids: %s)
+  {"tipo":"alugar_quarto"} (só se você aluga quartos e o jogador já pagou: entrega a chave de verdade)
+  {"tipo":"vender","item":"id"} (só se você vende e o jogador já pagou: entrega o item de verdade)
   {"tipo":"dar_numero"} (passar seu número de celular, se quiser manter contato)
   {"tipo":"comecar_namoro"} (só se vocês DOIS claramente aceitaram namorar)
   {"tipo":"terminar_namoro"}
