@@ -32,6 +32,11 @@ func load_game() -> bool:
 		return false
 	TimeManager.total_minutes = int(data["time"])
 	GameState.from_dict(data["game"])
+	for e in GameState.log_entries:
+		if e.get("kind", "") == "npc" and str(e.get("text", "")).strip_edges().begins_with("{"):
+			var parsed: Dictionary = preload("res://ai/prompts.gd").parse_npc_reply(str(e["text"]))
+			var body := str(parsed.get("acao_corporal", ""))
+			e["text"] = (("*" + body + "* ") if body != "" else "") + str(parsed.get("fala", ""))
 	NeedsSystem.from_dict(data["needs"])
 	NPCManager.from_dict(data["npcs"])
 	return GameState.active

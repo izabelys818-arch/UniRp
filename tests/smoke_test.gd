@@ -20,7 +20,21 @@ func _set_hour(h: int) -> void:
 	TimeManager.total_minutes = (TimeManager.day() * 1440) + h * 60
 
 
+func _parse_tests() -> void:
+	var P = preload("res://ai/prompts.gd")
+	var cut := "{\n  \"responder\": true,\n  \"acao_corporal\": \"tira os óculos espelhados e sorri\",\n  \"fala\": \"Tiago, Tiago Rocha. Pode me chamar de Tião. Vi que tu acabou de"
+	var d: Dictionary = P.parse_npc_reply(cut)
+	check(d.get("fala", "").begins_with("Tiago, Tiago Rocha") and not "{" in d.get("fala", ""), "resposta cortada vira fala limpa")
+	check(d.get("acao_corporal", "") == "tira os óculos espelhados e sorri", "gesto recuperado da resposta cortada")
+	var trailing := "```json\n{\"fala\": \"Oi.\", \"emocao\": \"feliz\", \"acoes\": [],}\n```"
+	d = P.parse_npc_reply(trailing)
+	check(d.get("fala", "") == "Oi." and d.get("emocao", "") == "feliz", "JSON com vírgula sobrando e cercas de código é lido")
+	d = P.parse_npc_reply("{\"emocao\": \"triste\"")
+	check(not d.has("fala") or not "{" in str(d.get("fala")), "nunca mostra JSON bruto")
+
+
 func _travel_tests() -> void:
+	_parse_tests()
 	World.move_player_to("lanchonete")
 	_set_hour(10)
 	var opts := World.travel_options("praca")

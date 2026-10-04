@@ -139,7 +139,7 @@ func _request(id: String, chan: String, extra_user: String = "") -> Dictionary:
 	messages.append_array(st["historico"].slice(-MAX_HISTORY))
 	if extra_user != "":
 		messages.append({"role": "user", "content": extra_user})
-	var res: Dictionary = await AIService.chat(messages, 350)
+	var res: Dictionary = await AIService.chat(messages, 700)
 	if res["ok"]:
 		st["historico"].append({"role": "assistant", "content": res["text"]})
 		if st["historico"].size() > MAX_HISTORY * 2:

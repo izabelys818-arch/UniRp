@@ -143,10 +143,36 @@ Texto-base da origem (pode reescrever e enriquecer): %s""" % [
 
 
 static func parse_npc_reply(text: String) -> Dictionary:
-	var start := text.find("{")
-	var end := text.rfind("}")
-	if start != -1 and end > start:
-		var data = JSON.parse_string(text.substr(start, end - start + 1))
+	var clean := text.replace("```json", "").replace("```", "").strip_edges()
+	var start := clean.find("{")
+	if start == -1:
+		return {"fala": clean, "emocao": "neutro"}
+	var body := clean.substr(start)
+	var end := body.rfind("}")
+	if end != -1:
+		var data = JSON.parse_string(body.substr(0, end + 1))
 		if typeof(data) == TYPE_DICTIONARY:
 			return data
-	return {"fala": text.strip_edges(), "emocao": "neutro"}
+		var no_trailing := RegEx.create_from_string(",\\s*([}\\]])").sub(body.substr(0, end + 1), "$1", true)
+		data = JSON.parse_string(no_trailing)
+		if typeof(data) == TYPE_DICTIONARY:
+			return data
+	return _salvage(body)
+
+
+# Resposta cortada ou malformada: recupera só os campos que importam, sem nunca mostrar o JSON.
+static func _salvage(body: String) -> Dictionary:
+	var out := {"emocao": "neutro"}
+	for key in ["fala", "acao_corporal", "emocao", "memoria"]:
+		var re := RegEx.create_from_string("\"%s\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)" % key)
+		var m := re.search(body)
+		if m:
+			out[key] = m.get_string(1).replace("\\\"", "\"").replace("\\n", " ").strip_edges()
+	for key in ["revela_nome", "aprendeu_nome_jogador", "responder"]:
+		var reb := RegEx.create_from_string("\"%s\"\\s*:\\s*(true|false)" % key)
+		var mb := reb.search(body)
+		if mb:
+			out[key] = mb.get_string(1) == "true"
+	if not out.has("fala") and not out.has("acao_corporal"):
+		out["acao_corporal"] = "fica em silêncio"
+	return out
