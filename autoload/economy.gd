@@ -33,6 +33,8 @@ func available_actions() -> Array:
 		out.append(a)
 	for a in WorldEvents.actions():
 		out.append(a)
+	for a in Houses.actions():
+		out.append(a)
 	if AddictionSystem.group_available():
 		out.append({"id": "grupo_apoio", "label": "Participar do grupo de apoio (2h)"})
 	for s in loc.get("servicos", []):
@@ -82,6 +84,9 @@ func do_action(id: String) -> void:
 		return
 	if id == "grupo_apoio":
 		AddictionSystem.support_group()
+		return
+	if id.begins_with("porta:") or id.begins_with("casa_g:"):
+		Houses.do(id)
 		return
 	if id.begins_with("invadir:"):
 		CrimeSystem.invade_house(id.substr(8))

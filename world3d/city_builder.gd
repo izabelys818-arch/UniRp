@@ -6,6 +6,7 @@ extends Node3D
 
 const Kit = preload("res://world3d/mesh_kit.gd")
 const Layout = preload("res://world3d/city_layout.gd")
+const HouseGen = preload("res://world3d/house_gen.gd")
 
 const WALL_H := 3.2
 const CUT_H := 0.75
@@ -31,6 +32,8 @@ var loc_info: Dictionary = {}       # loc_id -> {"door": CollisionShape3D, "door
 var lamp_spots: Array = []          # Vector3
 var festa_node: Node3D
 var fire_nodes: Dictionary = {}
+var house_gen: HouseGen
+var pole_spots: Array = []
 var rng := RandomNumberGenerator.new()
 
 
@@ -60,6 +63,7 @@ func build(l: Layout) -> void:
 	floor_cs.shape = WorldBoundaryShape3D.new()
 	floor_cs.position = Vector3(0, 0.17, 0)
 	body.add_child(floor_cs)
+	house_gen = HouseGen.new()
 	_ground()
 	for c in layout.blocks:
 		var info: Dictionary = layout.blocks[c]
@@ -108,6 +112,26 @@ func set_cut(s: Dictionary, on: bool) -> void:
 	s["cut_now"] = on
 	(s["full"] as Node3D).visible = not on
 	(s["cut"] as Node3D).visible = on
+	if s.get("interior") != null:
+		(s["interior"] as Node3D).visible = on
+
+
+# Interior das casas: só existe enquanto o jogador está por perto.
+func ensure_interior(s: Dictionary) -> void:
+	if s.get("interior") != null or not s.has("lot"):
+		return
+	var node := house_gen.build_interior(s)
+	(s["root"] as Node3D).add_child(node)
+	node.visible = bool(s["cut_now"])
+	s["interior"] = node
+
+
+func drop_interior(s: Dictionary) -> void:
+	if s.get("interior") == null:
+		return
+	(s["interior"] as Node3D).queue_free()
+	s["interior"] = null
+	s["light"] = null
 
 
 func _tree(k: Kit, p: Vector3, scale: float = 1.0) -> void:
@@ -152,38 +176,145 @@ func _lamp(k: Kit, p: Vector3) -> void:
 func _ground() -> void:
 	var k := Kit.new()
 	var S := Layout.SIZE
+	var P := Layout.PITCH
 	k.box_ab(Vector3(-60, -0.2, -60), Vector3(S + 60, 0.12, S + 60), ASPHALT)
-	# faixas e faixas de pedestre
+	# manchas e remendos no asfalto
+	for i in 420:
+		var vert := rng.randf() < 0.5
+		var line := int(rng.randi_range(0, Layout.GRID)) * P + Layout.STREET / 2.0 + rng.randf_range(-3.2, 3.2)
+		var along := rng.randf_range(0, S)
+		var sz := Vector2(rng.randf_range(0.6, 3.4), rng.randf_range(0.5, 2.4))
+		var tone := ASPHALT.lightened(rng.randf_range(-0.07, 0.09))
+		if vert:
+			k.box_ab(Vector3(line, 0.12, along), Vector3(line + sz.y, 0.123, along + sz.x), tone)
+		else:
+			k.box_ab(Vector3(along, 0.12, line), Vector3(along + sz.x, 0.123, line + sz.y), tone)
+	for i in 70:
+		var vert2 := rng.randf() < 0.5
+		var line2 := int(rng.randi_range(0, Layout.GRID)) * P + Layout.STREET / 2.0 + rng.randf_range(-3.5, 3.5)
+		var a2 := rng.randf_range(0, S)
+		var pts: Array = [Vector2(a2, line2)]
+		for st in 6:
+			var last: Vector2 = pts[pts.size() - 1]
+			pts.append(last + Vector2(rng.randf_range(0.4, 1.0), rng.randf_range(-0.4, 0.4)))
+		for st in pts.size() - 1:
+			var p0: Vector2 = pts[st]
+			var p1: Vector2 = pts[st + 1]
+			if vert2:
+				p0 = Vector2(p0.y, p0.x)
+				p1 = Vector2(p1.y, p1.x)
+			k.box_ab(Vector3(minf(p0.x, p1.x) - 0.03, 0.12, minf(p0.y, p1.y) - 0.03), Vector3(maxf(p0.x, p1.x) + 0.03, 0.124, maxf(p0.y, p1.y) + 0.03), Color("#25272a"))
+	# faixas
 	for i in Layout.GRID + 1:
-		var line := i * Layout.PITCH + Layout.STREET / 2.0
+		var line3 := i * P + Layout.STREET / 2.0
 		for j in Layout.GRID:
-			var a := j * Layout.PITCH + Layout.STREET + 2.0
+			var a := j * P + Layout.STREET + 2.0
 			var x := a
 			while x < a + Layout.BLOCK - 4.0:
-				k.box_ab(Vector3(x, 0.12, line - 0.08), Vector3(x + 1.6, 0.14, line + 0.08), LINE)
-				k.box_ab(Vector3(line - 0.08, 0.12, x), Vector3(line + 0.08, 0.14, x + 1.6), LINE)
+				k.box_ab(Vector3(x, 0.12, line3 - 0.08), Vector3(x + 1.6, 0.14, line3 + 0.08), LINE.darkened(rng.randf() * 0.25))
+				k.box_ab(Vector3(line3 - 0.08, 0.12, x), Vector3(line3 + 0.08, 0.14, x + 1.6), LINE.darkened(rng.randf() * 0.25))
 				x += 3.2
 	for i in Layout.GRID + 1:
 		for j in Layout.GRID + 1:
-			var c := Vector2(i * Layout.PITCH + Layout.STREET / 2.0, j * Layout.PITCH + Layout.STREET / 2.0)
+			var c := Vector2(i * P + Layout.STREET / 2.0, j * P + Layout.STREET / 2.0)
 			for s in 6:
 				var off := -3.0 + s * 1.2
 				k.box_ab(Vector3(c.x + off, 0.12, c.y + 5.6), Vector3(c.x + off + 0.6, 0.14, c.y + 7.4), LINE)
 				k.box_ab(Vector3(c.x + 5.6, 0.12, c.y + off), Vector3(c.x + 7.4, 0.14, c.y + off + 0.6), LINE)
-			if (i + j) % 2 == 0 and i < Layout.GRID + 1:
-				_lamp(k, Vector3(c.x + 5.8, 0, c.y + 5.8))
-	# calçadas de cada quarteirão
+				k.box_ab(Vector3(c.x + off, 0.12, c.y - 7.4), Vector3(c.x + off + 0.6, 0.14, c.y - 5.6), LINE)
+				k.box_ab(Vector3(c.x - 7.4, 0.12, c.y + off), Vector3(c.x - 5.6, 0.14, c.y + off + 0.6), LINE)
+			k.cyl(Vector3(c.x + 1.0, 0.12, c.y - 1.0), 0.45, 0.012, Color("#2c2e30"))
+			if (i + j) % 2 == 0:
+				_lamp(k, Vector3(c.x + 5.8, 0.17, c.y + 5.8))
+			if (i + j) % 3 == 1 and i > 0 and j > 0 and i < Layout.GRID and j < Layout.GRID:
+				var pp := Vector3(c.x - 5.9, 0.17, c.y - 5.9)
+				k.cyl(pp, 0.08, 4.6, Color("#2c2f33"))
+				k.box(pp + Vector3(0.0, 4.5, 0.45), Vector3(0.9, 0.18, 0.14), Color("#2c2f33"))
+				k.box(pp + Vector3(0.0, 4.2, 0.45), Vector3(0.28, 0.75, 0.2), Color("#1c1d20"))
+				k.sphere(pp + Vector3(0.0, 4.43, 0.56), Vector3.ONE * 0.16, Color("#c0392b"))
+				k.sphere(pp + Vector3(0.0, 4.2, 0.56), Vector3.ONE * 0.16, Color("#3a3a2a"))
+				k.sphere(pp + Vector3(0.0, 3.97, 0.56), Vector3.ONE * 0.16, Color("#1f5a2f"))
+	# quarteirões: meio-fio, calçada com juntas, gramado
 	for c in layout.blocks:
 		var r := Layout.block_rect(c)
-		k.box_ab(Vector3(r.position.x - 0.3, 0.0, r.position.y - 0.3), Vector3(r.end.x + 0.3, 0.16, r.end.y + 0.3), CURB)
-		k.box_ab(Vector3(r.position.x, 0.0, r.position.y), Vector3(r.end.x, 0.17, r.end.y), SIDEWALK)
-		# carros estacionados no meio-fio
+		var sw := Layout.SIDEWALK
+		k.box_ab(Vector3(r.position.x - 0.3, 0.0, r.position.y - 0.3), Vector3(r.end.x + 0.3, 0.15, r.end.y + 0.3), CURB)
+		k.box_ab(Vector3(r.position.x, 0.0, r.position.y), Vector3(r.end.x, 0.17, r.end.y), SIDEWALK.lightened(rng.randf_range(-0.03, 0.03)))
+		var jx := r.position.x
+		while jx < r.end.x:
+			k.box_ab(Vector3(jx, 0.17, r.position.y), Vector3(jx + 0.04, 0.175, r.position.y + sw), SIDEWALK.darkened(0.2))
+			k.box_ab(Vector3(jx, 0.17, r.end.y - sw), Vector3(jx + 0.04, 0.175, r.end.y), SIDEWALK.darkened(0.2))
+			jx += 2.2
+		var jz := r.position.y
+		while jz < r.end.y:
+			k.box_ab(Vector3(r.position.x, 0.17, jz), Vector3(r.position.x + sw, 0.175, jz + 0.04), SIDEWALK.darkened(0.2))
+			k.box_ab(Vector3(r.end.x - sw, 0.17, jz), Vector3(r.end.x, 0.175, jz + 0.04), SIDEWALK.darkened(0.2))
+			jz += 2.2
+		var inner := r.grow(-sw)
+		k.box_ab(Vector3(inner.position.x, 0.17, inner.position.y), Vector3(inner.end.x, 0.185, inner.end.y), GRASS.lerp(GRASS2, rng.randf() * 0.6))
 		for side in 2:
-			if rng.randf() < 0.55:
+			if rng.randf() < 0.5:
 				var cx := rng.randf_range(r.position.x + 4, r.end.x - 4)
 				var z := r.end.y + 1.6 if side == 0 else r.position.y - 1.6
-				_car(k, Vector3(cx, 0.12, z), PI / 2.0, _car_color())
+				_car(k, Vector3(cx, 0.12, z), PI / 2.0 + rng.randf_range(-0.03, 0.03), _car_color())
+		# poste de energia com fios, hidrante, placa, banco, lixeira
+		var pole := Vector3(r.position.x + 0.9, 0.17, r.position.y + 0.9)
+		k.cyl(pole, 0.12, 7.4, Color("#6a5a48"))
+		k.box(pole + Vector3(0, 6.9, 0), Vector3(1.8, 0.1, 0.1), Color("#5a4a3a"))
+		for wxo in [-0.8, 0.0, 0.8]:
+			k.sphere(pole + Vector3(wxo, 7.05, 0), Vector3.ONE * 0.12, Color("#cfd2d6"))
+		pole_spots.append(pole + Vector3(0, 7.05, 0))
+		if c.x < Layout.GRID - 1:
+			var nxt := Vector3(Layout.block_rect(c + Vector2i(1, 0)).position.x + 0.9, 7.05, r.position.y + 0.9)
+			for wi in 3:
+				_wire(k, Vector3(pole.x + (wi - 1) * 0.8, 7.05, pole.z), Vector3(nxt.x + (wi - 1) * 0.8, 7.05, nxt.z))
+		if c.y < Layout.GRID - 1:
+			var nxz := Vector3(r.position.x + 0.9, 7.05, Layout.block_rect(c + Vector2i(0, 1)).position.y + 0.9)
+			_wire(k, Vector3(pole.x, 7.0, pole.z), nxz)
+		if rng.randf() < 0.5:
+			var hp := Vector3(r.end.x - 1.0, 0.17, r.position.y + 1.2)
+			k.cyl(hp, 0.17, 0.62, Color("#c0392b"))
+			k.sphere(hp + Vector3(0, 0.68, 0), Vector3(0.4, 0.28, 0.4), Color("#c0392b"))
+			k.box(hp + Vector3(0.0, 0.4, 0.0), Vector3(0.5, 0.1, 0.12), Color("#c0392b"))
+		if rng.randf() < 0.35:
+			_bench(k, Vector3(rng.randf_range(r.position.x + 5, r.end.x - 5), 0.17, r.position.y + 1.1), 0.0)
+		if rng.randf() < 0.45:
+			var gp := Vector3(rng.randf_range(r.position.x + 5, r.end.x - 5), 0.17, r.end.y - 1.0)
+			k.cyl(gp, 0.3, 0.9, Color("#3a4a3a"))
+			k.cyl(gp + Vector3(0, 0.9, 0), 0.32, 0.06, Color("#2a2a2a"))
+		for sx in rng.randi_range(0, 3):
+			k.box(Vector3(rng.randf_range(r.position.x + 2, r.end.x - 2), 0.18, rng.randf_range(r.position.y + 0.3, r.position.y + sw - 0.3)), Vector3(rng.randf_range(0.2, 0.5), 0.02, rng.randf_range(0.15, 0.35)), Color("#cfc9b8") if rng.randf() < 0.5 else Color("#7a8a5a"), rng.randf() * PI)
 	_mesh(k, self)
+	# placas com o nome das ruas
+	for i in range(0, Layout.GRID + 1, 2):
+		for j in range(0, Layout.GRID + 1, 2):
+			var c2 := Vector2(i * P + Layout.STREET / 2.0, j * P + Layout.STREET / 2.0)
+			var pl := Label3D.new()
+			pl.text = "%s\n%s" % [Layout.STREETS_V[i], Layout.STREETS_H[j]]
+			pl.font_size = 40
+			pl.pixel_size = 0.0045
+			pl.outline_size = 6
+			pl.modulate = Color("#e8f0e8")
+			pl.outline_modulate = Color("#1f5a3a")
+			pl.position = Vector3(c2.x + 5.7, 2.9, c2.y + 6.3)
+			pl.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+			add_child(pl)
+
+
+func _wire(k: Kit, a: Vector3, b: Vector3) -> void:
+	var mid := (a + b) / 2.0 + Vector3(0, -0.5, 0)
+	var segs: Array = [[a, mid], [mid, b]]
+	for sg in segs:
+		var p0: Vector3 = sg[0]
+		var p1: Vector3 = sg[1]
+		var d := p1 - p0
+		var len := d.length()
+		if len < 0.1:
+			continue
+		var z := d.normalized()
+		var x := Vector3.UP.cross(z).normalized() if absf(z.dot(Vector3.UP)) < 0.99 else Vector3.RIGHT
+		var y := z.cross(x).normalized()
+		k.add("box", Transform3D(Basis(x, y, z) * Basis.from_scale(Vector3(0.03, 0.03, len)), (p0 + p1) / 2.0), Color("#1c1c1c"))
 
 
 func _car_color() -> Color:
@@ -254,23 +385,10 @@ func _build_filler(c: Vector2i, info: Dictionary) -> void:
 	var k := Kit.new()
 	match str(info["kind"]):
 		"casas":
-			k.box_ab(Vector3(r.position.x + 1, 0.17, r.position.y + 1), Vector3(r.end.x - 1, 0.19, r.end.y - 1), GRASS)
-			for ix in 2:
-				for iz in 2:
-					var cell := Rect2(r.position.x + 1 + ix * 14.0, r.position.y + 1 + iz * 14.0, 14.0, 14.0)
-					var w := rng.randf_range(8.0, 10.0)
-					var d := rng.randf_range(7.0, 8.5)
-					var hr := Rect2(cell.get_center().x - w / 2.0, cell.position.y + 1.5, w, d)
-					var cols := _house_colors()
-					_simple_building(hr, 3.0, cols[0], cols[1], true)
-					# muro baixo na frente
-					k.box_ab(Vector3(cell.position.x + 0.3, 0.17, cell.end.y - 0.4), Vector3(cell.get_center().x - 1.0, 0.95, cell.end.y - 0.2), cols[0].darkened(0.15))
-					k.box_ab(Vector3(cell.get_center().x + 1.0, 0.17, cell.end.y - 0.4), Vector3(cell.end.x - 0.3, 0.95, cell.end.y - 0.2), cols[0].darkened(0.15))
-					k.box_ab(Vector3(cell.get_center().x - 0.9, 0.19, hr.end.y), Vector3(cell.get_center().x + 0.9, 0.21, cell.end.y - 0.3), Color("#9a958a"))
-					if rng.randf() < 0.5:
-						_tree(k, Vector3(cell.position.x + 2.0, 0.17, cell.end.y - 2.2), 0.8)
-					if rng.randf() < 0.3:
-						_car(k, Vector3(cell.end.x - 2.2, 0.19, cell.end.y - 3.4), 0.0, _car_color())
+			for lot_id in info["lots"]:
+				house_gen.build(self, layout.lots[lot_id])
+		"comercio":
+			_comercio(k, r)
 		"predio":
 			var hr := Rect2(r.position.x + 4, r.position.y + 4, r.size.x - 8, r.size.y - 9)
 			var floors := rng.randi_range(3, 6)
@@ -344,8 +462,16 @@ func _build_location(id: String, c: Vector2i) -> void:
 		if id == "igreja":
 			tipo = "igreja"
 		# quintal/frente
-		var yard := GRASS if tipo in ["casa", "hospedagem", "igreja"] else Color("#9f9a8f")
+		var yard := GRASS if tipo in ["casa", "hospedagem", "igreja"] else Color("#8a877f")
 		k.box_ab(Vector3(r.position.x + 1, 0.17, r.position.y + 1), Vector3(r.end.x - 1, 0.19, r.end.y - 1), yard)
+		if tipo not in ["casa", "hospedagem", "igreja"]:
+			for i in 6:
+				var lx := r.position.x + 2.5 + i * 4.4
+				k.box_ab(Vector3(lx, 0.19, b.end.y + 2.2), Vector3(lx + 0.1, 0.2, r.end.y - 0.8), LINE)
+				if rng.randf() < 0.4 and absf(lx + 2.2 - lot["door_x"]) > 3.0:
+					_car(k, Vector3(lx + 2.2, 0.19, b.end.y + 5.0), PI, _car_color())
+			for i in 3:
+				_tree(k, Vector3(r.position.x + 2.0 + i * 13.0, 0.19, r.position.y + 1.8), 0.8)
 		k.box_ab(Vector3(lot["door_x"] - 1.2, 0.19, b.end.y), Vector3(lot["door_x"] + 1.2, 0.21, r.end.y), Color("#a8a397"))
 		if tipo in ["casa", "hospedagem", "igreja"]:
 			for i in 3:
@@ -404,11 +530,18 @@ func _location_building(id: String, tipo: String, b: Rect2) -> void:
 		if absf(x2 - door_x) > 2.0:
 			var shop := tipo in ["loja", "comida", "bar"]
 			var target := kl if (shop or rng.randf() < 0.5) else kw
-			target.box(Vector3(x2, wy, b.end.y + 0.02), Vector3(1.8 if shop else 1.1, 1.4 if shop else 1.1, 0.05), Color.WHITE)
+			var ww: float = 1.8 if shop else 1.1
+			var wh: float = 1.4 if shop else 1.1
+			kf.box(Vector3(x2, wy, b.end.y + 0.0), Vector3(ww + 0.25, wh + 0.25, 0.1), Color("#efe9da") if tipo != "bar" else Color("#3a2a20"))
+			kf.box(Vector3(x2, wy - wh / 2.0 - 0.14, b.end.y + 0.08), Vector3(ww + 0.4, 0.08, 0.22), Color("#c9c1ae"))
+			if shop:
+				kf.box(Vector3(x2, wy, b.end.y + 0.04), Vector3(0.05, wh, 0.05), Color("#efe9da"))
+			target.box(Vector3(x2, wy, b.end.y + 0.04), Vector3(ww, wh, 0.05), Color.WHITE)
 		x2 += 2.8 if tipo in ["loja", "comida", "bar"] else 3.0
 	var z2 := b.position.y + 1.6
 	while z2 < b.end.y - 1.4:
-		kw.box(Vector3(b.end.x + 0.02, wy, z2), Vector3(0.05, 1.1, 1.1), Color.WHITE)
+		kf.box(Vector3(b.end.x + 0.0, wy, z2), Vector3(0.1, 1.35, 1.35), Color("#efe9da"))
+		kw.box(Vector3(b.end.x + 0.04, wy, z2), Vector3(0.05, 1.1, 1.1), Color.WHITE)
 		z2 += 3.0
 	# toldo e letreiro
 	var awning := {"bar": Color("#7d1f1f"), "comida": Color("#c0392b"), "loja": Color("#1f6f4a"), "servico": Color("#2c5d8f"), "hospedagem": Color("#6b4a2b")}
@@ -435,6 +568,7 @@ func _location_building(id: String, tipo: String, b: Rect2) -> void:
 		kf.box(Vector3(b.end.x - 3, y0 + h + 0.9, b.end.y - 3), Vector3(0.8, 0.1, 3.0), Color("#e8e8e8"))
 		kf.box(Vector3(door_x + 3.5, y0 + 2.9, b.end.y + 0.1), Vector3(1.2, 0.35, 0.1), Color("#d03030"))
 		kf.box(Vector3(door_x + 3.5, y0 + 2.9, b.end.y + 0.1), Vector3(0.35, 1.2, 0.1), Color("#d03030"))
+	_facade_extras(kf, always, b, y0, h, tipo, wall, door_x, id)
 	_furnish(always, id, tipo, b, y0)
 	_mesh(always, s["root"])
 	_mesh(kf, s["full"])
@@ -470,6 +604,44 @@ func _location_building(id: String, tipo: String, b: Rect2) -> void:
 	light.light_energy = 0.9
 	s["root"].add_child(light)
 	loc_info[id] = {"door": door, "door_mesh": door_mesh, "light": light, "sign": sign, "structure": s}
+
+
+# Detalhes de fachada dos locais do jogo: cornija, pilastras, degraus, ar-condicionado, cartazes, reservatório.
+func _facade_extras(kf: Kit, ka: Kit, b: Rect2, y0: float, h: float, tipo: String, wall: Color, door_x: float, id: String) -> void:
+	var trim := wall.lightened(0.18)
+	# cornija e platibanda
+	kf.box_ab(Vector3(b.position.x - 0.18, y0 + h - 0.35, b.position.y - 0.18), Vector3(b.end.x + 0.18, y0 + h - 0.1, b.end.y + 0.18), trim)
+	# pilastras nos cantos
+	for cx in [b.position.x, b.end.x]:
+		kf.box_ab(Vector3(cx - 0.15, y0, b.end.y - 0.15), Vector3(cx + 0.15, y0 + h, b.end.y + 0.1), trim.darkened(0.04))
+	# moldura e degraus da porta
+	kf.box_ab(Vector3(door_x - 1.05, y0, b.end.y - 0.05), Vector3(door_x - 0.9, y0 + 2.45, b.end.y + 0.14), trim)
+	kf.box_ab(Vector3(door_x + 0.9, y0, b.end.y - 0.05), Vector3(door_x + 1.05, y0 + 2.45, b.end.y + 0.14), trim)
+	kf.box_ab(Vector3(door_x - 1.05, y0 + 2.3, b.end.y - 0.05), Vector3(door_x + 1.05, y0 + 2.45, b.end.y + 0.14), trim)
+	ka.box_ab(Vector3(door_x - 1.3, y0, b.end.y), Vector3(door_x + 1.3, y0 + 0.1, b.end.y + 0.7), Color("#a8a397"))
+	if tipo in ["bar", "comida", "loja", "servico"]:
+		# faixa de cor na base e cartazes
+		kf.box_ab(Vector3(b.position.x, y0 + 0.4, b.end.y), Vector3(b.end.x, y0 + 0.9, b.end.y + 0.03), wall.darkened(0.2))
+		for i in rng.randi_range(2, 4):
+			var px := rng.randf_range(b.position.x + 1.0, b.end.x - 1.0)
+			if absf(px - door_x) < 2.2:
+				continue
+			kf.box(Vector3(px, y0 + 1.6, b.end.y + 0.05), Vector3(rng.randf_range(0.5, 0.9), rng.randf_range(0.6, 1.1), 0.02), Color.from_hsv(rng.randf(), 0.5, 0.9))
+	# ar-condicionado, reservatório e antena no telhado
+	if tipo not in ["casa", "hospedagem", "igreja"]:
+		for i in 2:
+			var ax := b.position.x + 3.0 + i * 3.2
+			kf.box_ab(Vector3(ax, y0 + h + 0.3, b.end.y - 4.0), Vector3(ax + 1.4, y0 + h + 1.1, b.end.y - 2.8), Color("#cfd2d6"))
+			kf.cyl(Vector3(ax + 0.7, y0 + h + 1.1, b.end.y - 3.4), 0.5, 0.08, Color("#6a6e72"))
+		kf.cyl(Vector3(b.end.x - 2.5, y0 + h + 0.3, b.position.y + 2.5), 1.0, 1.6, Color("#4c6b8a"))
+		kf.cyl(Vector3(b.end.x - 2.5, y0 + h + 1.9, b.position.y + 2.5), 1.05, 0.15, Color("#3a4f68"))
+		kf.cyl(Vector3(b.position.x + 1.5, y0 + h + 0.3, b.position.y + 1.5), 0.04, 2.4, Color("#6a6e72"))
+	# vaso de plantas e lixeira na frente
+	if tipo != "igreja":
+		for sx in [-1, 1]:
+			var vp := Vector3(door_x + sx * 2.1, y0, b.end.y + 0.6)
+			ka.cyl(vp, 0.3, 0.5, Color("#9a5a3a"))
+			ka.sphere(vp + Vector3(0, 0.8, 0), Vector3(0.7, 0.7, 0.7), Color("#4f8a3f"))
 
 
 # ---------- móveis ----------
@@ -703,17 +875,72 @@ func _acacias(k: Kit, r: Rect2) -> void:
 
 # ---------- estado dinâmico ----------
 
+const SHOPS := ["Padaria Pão Quente", "Farmácia Popular", "Barbearia do Léo", "Sapataria Silva", "Armarinho Dona Rita", "Mecânica Bom Torque", "Açougue Central", "Papelaria Estudante", "Loja de Roupas Modas", "Lotérica", "Floricultura Jardim", "Material de Construção"]
+
+
+func _comercio(k: Kit, r: Rect2) -> void:
+	k.box_ab(Vector3(r.position.x + 0.2, 0.17, r.position.y + 0.2), Vector3(r.end.x - 0.2, 0.19, r.end.y - 0.2), Color("#6e6a60"))
+	var n := rng.randi_range(3, 4)
+	var wdt := (r.size.x - 2.0) / n
+	var awn := [Color("#c0392b"), Color("#1f6f4a"), Color("#2c5d8f"), Color("#d68c1c"), Color("#6b2f7a")]
+	var depth := 11.0
+	for i in n:
+		var rect := Rect2(r.position.x + 1.0 + i * wdt, r.end.y - 2.2 - depth, wdt - 0.2, depth)
+		var wallc := _jit_c(Color(["#d9c9a8", "#b8c4b0", "#c9a68a", "#e0d8c4", "#a9b6c4"][rng.randi() % 5]))
+		_simple_building(rect, rng.randf_range(3.6, 6.4), wallc, Color("#55575a"), false, rng.randi_range(1, 2))
+		var cx := rect.get_center().x
+		var front := rect.end.y
+		var ac: Color = awn[rng.randi() % awn.size()]
+		k.box_ab(Vector3(rect.position.x + 0.2, 0.17 + 2.6, front), Vector3(rect.end.x - 0.2, 0.17 + 2.75, front + 1.4), ac)
+		for st in int((wdt - 0.6) / 0.5):
+			k.box_ab(Vector3(rect.position.x + 0.3 + st * 0.5, 0.17 + 2.45, front + 1.3), Vector3(rect.position.x + 0.55 + st * 0.5, 0.17 + 2.6, front + 1.4), ac.lightened(0.15) if st % 2 == 0 else ac)
+		k.box_ab(Vector3(rect.position.x + 0.5, 0.17, front + 0.02), Vector3(rect.end.x - 0.5, 0.17 + 2.2, front + 0.07), Color("#9aa0a4"))
+		for sl in 9:
+			k.box_ab(Vector3(rect.position.x + 0.5, 0.17 + sl * 0.24, front + 0.07), Vector3(rect.end.x - 0.5, 0.17 + sl * 0.24 + 0.04, front + 0.1), Color("#7a8084"))
+		var sign := Label3D.new()
+		sign.text = SHOPS[rng.randi() % SHOPS.size()].to_upper()
+		sign.font_size = 56
+		sign.pixel_size = 0.0055
+		sign.outline_size = 10
+		sign.modulate = Color("#fff3d6")
+		sign.outline_modulate = Color(0.08, 0.06, 0.05)
+		sign.position = Vector3(cx, 0.17 + 3.2, front + 0.12)
+		add_child(sign)
+	for i in 3:
+		_car(k, Vector3(r.position.x + 6 + i * 8.5, 0.17, r.end.y - 0.9), 0.0, _car_color())
+
+
+func _jit_c(c: Color) -> Color:
+	return Color(clampf(c.r + rng.randf_range(-0.04, 0.04), 0, 1), clampf(c.g + rng.randf_range(-0.04, 0.04), 0, 1), clampf(c.b + rng.randf_range(-0.04, 0.04), 0, 1))
+
+
 func set_door(id: String, locked: bool) -> void:
 	if not loc_info.has(id):
 		return
 	var info: Dictionary = loc_info[id]
 	(info["door"] as CollisionShape3D).set_deferred("disabled", not locked)
 	(info["door_mesh"] as Node3D).visible = locked
+	if info.get("door_open") != null:
+		(info["door_open"] as Node3D).visible = not locked
 
 
 func set_interior_light(id: String, on: bool) -> void:
-	if loc_info.has(id):
-		(loc_info[id]["light"] as OmniLight3D).visible = on
+	if not loc_info.has(id):
+		return
+	var info: Dictionary = loc_info[id]
+	var l = info.get("light")
+	if l == null and info.get("structure") != null:
+		l = (info["structure"] as Dictionary).get("light")
+	if l != null:
+		(l as OmniLight3D).visible = on
+
+
+# Janelas acesas de uma casa (alguém em casa à noite).
+func set_house_lit(id: String, on: bool) -> void:
+	if loc_info.has(id) and loc_info[id].get("structure") != null:
+		var s: Dictionary = loc_info[id]["structure"]
+		if s.has("lit"):
+			(s["lit"] as Node3D).visible = on
 
 
 func set_fire(id: String, on: bool) -> void:

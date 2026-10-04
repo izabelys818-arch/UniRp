@@ -258,9 +258,9 @@ func burglary_actions() -> Array:
 	return out
 
 
-func break_into_shop() -> void:
-	var id := World.current_id()
-	var loc := World.current()
+func break_into_shop(shop_id: String = "") -> void:
+	var id := shop_id if shop_id != "" else World.current_id()
+	var loc: Dictionary = World.locations[id]
 	var info: Dictionary = loc.get("arrombavel", {})
 	var tool := tool_for_breaking()
 	if tool == "":
@@ -275,6 +275,7 @@ func break_into_shop() -> void:
 		if randf() < alarm:
 			_alarm(loc["nome"])
 		return
+	Houses.force_open(id, 8.0)
 	var cash: Array = info.get("caixa", [50, 150])
 	var money := randi_range(int(cash[0]), int(cash[1]))
 	GameState.add_money(money)

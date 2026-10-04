@@ -98,6 +98,7 @@ func _ready() -> void:
 	Economy.ui_request.connect(_on_ui_request)
 	JobSystem.changed.connect(_queue_refresh)
 	WorldEvents.changed.connect(_queue_refresh)
+	Houses.changed.connect(_queue_refresh)
 	HomeSystem.changed.connect(_queue_refresh)
 	CrimeSystem.wanted_changed.connect(_queue_refresh.unbind(1))
 	if not GameState.log_entries.is_empty():

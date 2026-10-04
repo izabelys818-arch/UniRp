@@ -102,6 +102,52 @@ func gable(center: Vector3, size: Vector3, color: Color, ridge_x: bool = true) -
 	add("prism", Transform3D(b, center), color)
 
 
+func tri(a: Vector3, b: Vector3, c: Vector3, color: Color) -> void:
+	var n := (b - a).cross(c - a).normalized()
+	st.set_color(color)
+	for v in [a, b, c]:
+		st.set_normal(n)
+		st.add_vertex(v)
+	count += 1
+
+
+func quad(a: Vector3, b: Vector3, c: Vector3, d: Vector3, color: Color) -> void:
+	tri(a, b, c, color)
+	tri(a, c, d, color)
+
+
+# Telhado de quatro águas sobre um retângulo (centro na base). A cumeeira corre ao longo do lado maior.
+func hip(center: Vector3, w: float, h: float, d: float, color: Color) -> void:
+	var x0 := center.x - w / 2.0
+	var x1 := center.x + w / 2.0
+	var z0 := center.z - d / 2.0
+	var z1 := center.z + d / 2.0
+	var y0 := center.y
+	var y1 := center.y + h
+	var a := Vector3(x0, y0, z0)
+	var b := Vector3(x1, y0, z0)
+	var c := Vector3(x1, y0, z1)
+	var e := Vector3(x0, y0, z1)
+	var r0: Vector3
+	var r1: Vector3
+	if w >= d:
+		var inset := d / 2.0
+		r0 = Vector3(x0 + inset, y1, center.z)
+		r1 = Vector3(x1 - inset, y1, center.z)
+		quad(a, r0, r1, b, color.lightened(0.04))
+		quad(c, r1, r0, e, color.darkened(0.06))
+		tri(e, r0, a, color.darkened(0.12))
+		tri(b, r1, c, color.darkened(0.12))
+	else:
+		var inset2 := w / 2.0
+		r0 = Vector3(center.x, y1, z0 + inset2)
+		r1 = Vector3(center.x, y1, z1 - inset2)
+		quad(e, r1, r0, a, color.darkened(0.06))
+		quad(b, r0, r1, c, color.lightened(0.04))
+		tri(a, r0, b, color.darkened(0.12))
+		tri(c, r1, e, color.darkened(0.12))
+
+
 func commit(material: Material) -> ArrayMesh:
 	if count == 0:
 		return null

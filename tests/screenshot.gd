@@ -186,6 +186,58 @@ func _ready() -> void:
 	for i in 8:
 		await get_tree().process_frame
 	await _shot("mundo_zoom_andando.png")
+	TimeManager.total_minutes = TimeManager.day() * 1440 + 11 * 60
+	var hid: String = wv.layout.house_ids[7]
+	var hl: Dictionary = wv.layout.lots[hid]
+	Houses.st(hid)["lock"] = "open"
+	var dout: Vector2 = wv.layout.door_out(hid)
+	wv.player.position = Vector3(dout.x, 0.25, dout.y)
+	wv.zoom = 11.0
+	World.arrive_on_foot(hid)
+	wv._update_environment()
+	for i in 40:
+		await get_tree().process_frame
+	await _shot("casa_fora.png")
+	var din: Vector2 = wv.layout.door_in(hid)
+	wv.player.position = Vector3(din.x, 0.25, din.y)
+	wv._update_environment()
+	for i in 60:
+		await get_tree().process_frame
+	wv.zoom = 9.0
+	await _shot("casa_dentro.png")
+	TimeManager.total_minutes = TimeManager.day() * 1440 + 21 * 60
+	wv._update_environment()
+	wv.player.position = Vector3(dout.x + 3, 0.25, dout.y + 3)
+	wv.zoom = 13.0
+	for i in 40:
+		await get_tree().process_frame
+	await _shot("casa_noite.png")
+	TimeManager.total_minutes = TimeManager.day() * 1440 + 15 * 60
+	wv._update_environment()
+	wv.zoom = 24.0
+	for i in 30:
+		await get_tree().process_frame
+	await _shot("bairro.png")
+	var t_a := Time.get_ticks_msec()
+	for i in 120:
+		await get_tree().process_frame
+	print("FPS medio: ", 120000.0 / float(Time.get_ticks_msec() - t_a))
+	wv.set_process(false)
+	t_a = Time.get_ticks_msec()
+	for i in 120:
+		await get_tree().process_frame
+	print("FPS sem logica: ", 120000.0 / float(Time.get_ticks_msec() - t_a))
+	wv.sun.shadow_enabled = false
+	t_a = Time.get_ticks_msec()
+	for i in 120:
+		await get_tree().process_frame
+	print("FPS sem sombra: ", 120000.0 / float(Time.get_ticks_msec() - t_a))
+	wv.city.visible = false
+	t_a = Time.get_ticks_msec()
+	for i in 120:
+		await get_tree().process_frame
+	print("FPS sem cidade: ", 120000.0 / float(Time.get_ticks_msec() - t_a))
+	wv.city.visible = true
 	get_tree().quit()
 
 

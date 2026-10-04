@@ -9,6 +9,7 @@ const Layout = preload("res://world3d/city_layout.gd")
 const CityBuilder = preload("res://world3d/city_builder.gd")
 const Humanoid = preload("res://world3d/humanoid.gd")
 const Kit = preload("res://world3d/mesh_kit.gd")
+const Life = preload("res://world3d/life.gd")
 const LookBuilder = preload("res://ui/face/look_builder.gd")
 
 signal npc_chosen(id: String)
@@ -36,8 +37,7 @@ var hover_ring: MeshInstance3D
 var rain: CPUParticles3D
 var lamp_pool: Array = []
 var npcs: Dictionary = {}           # id -> {"fig", "loc", "path", "wait"}
-var peds: Array = []
-var cars: Array = []
+var life: Life
 var path: PackedVector2Array = PackedVector2Array()
 var pending_npc: String = ""
 var hover_id: String = ""
@@ -119,10 +119,12 @@ func _setup_scene() -> void:
 	camera.far = 250.0
 	viewport.add_child(camera)
 	camera.current = true
+	var t0 := Time.get_ticks_msec()
 	layout = Layout.new()
 	city = CityBuilder.new()
 	viewport.add_child(city)
 	city.build(layout)
+	print("CIDADE montada em %d ms (%d casas)" % [Time.get_ticks_msec() - t0, layout.house_ids.size()])
 	# jogador
 	player = CharacterBody3D.new()
 	player.floor_snap_length = 0.4
@@ -152,8 +154,9 @@ func _setup_scene() -> void:
 		viewport.add_child(l)
 		lamp_pool.append(l)
 	_setup_rain()
-	_setup_traffic()
-	_setup_pedestrians()
+	life = Life.new()
+	viewport.add_child(life)
+	life.setup(layout, city)
 
 
 func _ring(c: Color, r: float) -> MeshInstance3D:
@@ -198,56 +201,6 @@ func _setup_rain() -> void:
 	rain.mesh = qm
 	rain.emitting = false
 	viewport.add_child(rain)
-
-
-func _setup_traffic() -> void:
-	var mat := Kit.vertex_material(0.5)
-	for i in 9:
-		var k := Kit.new()
-		var col: Color = [Color("#b9bcc0"), Color("#8b1e1e"), Color("#1f3d6b"), Color("#e8e6df"), Color("#2b2d31"), Color("#d4a21c"), Color("#3b6b3a")][i % 7]
-		if i == 0:
-			col = Color("#e8c21c")
-		k.box(Vector3(0, 0.65, 0), Vector3(1.8, 0.7, 4.2), col)
-		k.box(Vector3(0, 1.25, -0.2), Vector3(1.6, 0.6, 2.2), col.lightened(0.1))
-		k.box(Vector3(0, 1.25, -0.2), Vector3(1.64, 0.45, 2.0), Color("#1d2630"))
-		for wx in [-0.85, 0.85]:
-			for wz in [-1.35, 1.35]:
-				k.add("cyl", Transform3D(Basis(Vector3.FORWARD, PI / 2.0).scaled(Vector3(0.7, 0.3, 0.7)), Vector3(wx, 0.35, wz)), Color("#141414"))
-		var car := Node3D.new()
-		var mi := MeshInstance3D.new()
-		mi.mesh = k.commit(mat)
-		car.add_child(mi)
-		var lights := Kit.new()
-		lights.box(Vector3(-0.55, 0.75, 2.11), Vector3(0.4, 0.18, 0.05), Color.WHITE)
-		lights.box(Vector3(0.55, 0.75, 2.11), Vector3(0.4, 0.18, 0.05), Color.WHITE)
-		var li := MeshInstance3D.new()
-		li.mesh = lights.commit(city.lit_mat)
-		car.add_child(li)
-		var tail := Kit.new()
-		tail.box(Vector3(0, 0.8, -2.11), Vector3(1.5, 0.16, 0.05), Color("#c01c1c"))
-		var ti := MeshInstance3D.new()
-		ti.mesh = tail.commit(Kit.vertex_material())
-		car.add_child(ti)
-		viewport.add_child(car)
-		var along_x := i % 2 == 0
-		var line := rng.randi_range(0, Layout.GRID)
-		var dir := 1.0 if rng.randf() < 0.5 else -1.0
-		cars.append({"node": car, "x": along_x, "line": line, "dir": dir, "pos": rng.randf_range(0, Layout.SIZE), "speed": rng.randf_range(8.0, 12.0)})
-
-
-func _setup_pedestrians() -> void:
-	var outfits := ["camiseta", "jeans", "moletom", "social", "blusa", "regata", "couro", "vestido", "academia", "time"]
-	for i in 16:
-		var female := rng.randf() < 0.5
-		var spec: Dictionary = Population.random_look(female, [outfits[rng.randi() % outfits.size()]])
-		var fig := Humanoid.new()
-		fig.set_look(LookBuilder.build(spec, rng.randi_range(17, 75), "mulher" if female else "homem"))
-		viewport.add_child(fig)
-		var node := Vector2i(rng.randi_range(0, Layout.GRID), rng.randi_range(0, Layout.GRID))
-		var side := 1.0 if rng.randf() < 0.5 else -1.0
-		var p := Layout._node_pos(node) + Vector2(5.6 * side, 5.6)
-		fig.position = Vector3(p.x, 0.17, p.y)
-		peds.append({"fig": fig, "node": node, "side": side, "target": p, "speed": rng.randf_range(1.2, 1.8), "night": rng.randf() < 0.35})
 
 
 func refresh_player_look() -> void:
@@ -358,8 +311,7 @@ func _process(delta: float) -> void:
 		_t_sync = 0.5
 		_sync_npcs()
 	_update_npcs(delta)
-	_update_peds(delta)
-	_update_cars(delta)
+	life.update(delta, _p2(), TimeManager.hour() >= 22 or TimeManager.hour() < 5, WorldEvents.raining())
 	_t_env -= delta
 	if _t_env <= 0.0:
 		_t_env = 0.5
@@ -437,6 +389,12 @@ func _move_player(delta: float) -> void:
 			path.remove_at(0)
 			_stuck = 0.0
 	player_fig.move_speed = real_speed
+	var tf: Node3D = null
+	if hover_id != "" and npcs.has(hover_id):
+		tf = npcs[hover_id]["fig"]
+	elif NPCManager.talking_to != "" and npcs.has(NPCManager.talking_to):
+		tf = npcs[NPCManager.talking_to]["fig"]
+	player_fig.look_target = Vector3(tf.position.x, 1.55, tf.position.z) if tf != null else Vector3.INF
 	player_fig.walking = real_speed > 0.15
 	player_fig.running = real_speed > 5.0
 	if vel2.length() > 0.3:
@@ -505,7 +463,22 @@ func _update_location() -> void:
 				path = PackedVector2Array()
 				toast.emit("A porta do quarto está trancada.")
 			return
+	_find_near_door(p)
 	World.arrive_on_foot(lot if lot != "" else "rua")
+
+
+func _find_near_door(p: Vector2) -> void:
+	var best := ""
+	var best_d := 3.6
+	for id in city.loc_info:
+		var lot: Dictionary = layout.lots[id]
+		var d := (lot["door"] as Vector2).distance_to(p)
+		if d < best_d and not layout.in_building(id, p) and bool(_door_locked.get(id, false)):
+			best_d = d
+			best = id
+	if Houses.near_door != best:
+		Houses.near_door = best
+		Houses.changed.emit()
 
 
 func _time_flow(delta: float) -> void:
@@ -533,9 +506,17 @@ func _cutaway() -> void:
 	var probes: Array = []
 	for tt in [0.6, 2.0, 3.5, 5.0, 7.0, 9.5, 12.0, 15.0, 19.0]:
 		probes.append(p + toward * float(tt))
+	var built := 0
 	for s in city.structures:
 		var r: Rect2 = s["rect"]
-		if r.get_center().distance_to(p) > 45.0:
+		var dist := r.get_center().distance_to(p)
+		if s.has("lot"):
+			if dist < 36.0 and s.get("interior") == null and built < 1:
+				city.ensure_interior(s)
+				built += 1
+			elif dist > 70.0 and s.get("interior") != null:
+				city.drop_interior(s)
+		if dist > 45.0:
 			city.set_cut(s, false)
 			continue
 		var cut := r.has_point(p)
@@ -614,6 +595,9 @@ func _update_npcs(delta: float) -> void:
 		var emo := str(NPCManager.state[id].get("emocao", "neutro")) if near else "neutro"
 		if emo != fig.emotion:
 			fig.set_emotion(emo)
+		fig.set_active(fp.distance_to(pp) < 60.0)
+		fig.set_lod(fp.distance_to(pp) < 24.0)
+		fig.look_target = Vector3(pp.x, 1.55, pp.y) if (fp.distance_to(pp) < 6.5 and _inside_any(fp) == _inside_any(pp)) else Vector3.INF
 		if talking:
 			# a pessoa vem até o jogador para conversar
 			var gap := pp - fp
@@ -656,51 +640,6 @@ func _update_npcs(delta: float) -> void:
 				e["path"] = PackedVector2Array([dest])
 
 
-func _update_peds(delta: float) -> void:
-	var night := TimeManager.hour() < 5 or TimeManager.hour() >= 23
-	for e in peds:
-		var fig: Humanoid = e["fig"]
-		fig.visible = not night or bool(e["night"])
-		var fp := Vector2(fig.position.x, fig.position.z)
-		var tgt: Vector2 = e["target"]
-		var d := tgt - fp
-		if d.length() < 0.3:
-			var node: Vector2i = e["node"]
-			var dirs: Array = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
-			var nb: Vector2i = node + dirs[rng.randi() % 4]
-			nb = Vector2i(clampi(nb.x, 0, Layout.GRID), clampi(nb.y, 0, Layout.GRID))
-			e["node"] = nb
-			var side: float = e["side"]
-			e["target"] = Layout._node_pos(nb) + Vector2(5.6 * side, 5.6 * side)
-			fig.walking = true
-			continue
-		var step := d.normalized() * minf(float(e["speed"]) * delta, d.length())
-		fig.position.x += step.x
-		fig.position.z += step.y
-		fig.rotation.y = lerp_angle(fig.rotation.y, atan2(step.x, step.y), minf(delta * 6.0, 1.0))
-		fig.move_speed = float(e["speed"])
-		fig.walking = true
-
-
-func _update_cars(delta: float) -> void:
-	for c in cars:
-		var pos: float = float(c["pos"]) + float(c["speed"]) * float(c["dir"]) * delta
-		if pos > Layout.SIZE + 30.0:
-			pos = -30.0
-		elif pos < -30.0:
-			pos = Layout.SIZE + 30.0
-		c["pos"] = pos
-		var line_p := int(c["line"]) * Layout.PITCH + Layout.STREET / 2.0
-		var lane := 1.8 * float(c["dir"])
-		var n: Node3D = c["node"]
-		if bool(c["x"]):
-			n.position = Vector3(pos, 0.14, line_p + lane)
-			n.rotation.y = PI / 2.0 if float(c["dir"]) > 0 else -PI / 2.0
-		else:
-			n.position = Vector3(line_p - lane, 0.14, pos)
-			n.rotation.y = 0.0 if float(c["dir"]) > 0 else PI
-
-
 # ---------- luz, clima e portas ----------
 
 func _update_environment() -> void:
@@ -726,6 +665,10 @@ func _update_environment() -> void:
 	env.ambient_light_energy = lerpf(0.3, 0.32, day)
 	env.background_color = Color("#0a0f1c").lerp(Color("#7fa3c9"), day).lerp(tint_c, tint_a)
 	rain.emitting = storm
+	life.update_slow(day < 0.45)
+	env.fog_enabled = hf < 7.5 or hf > 23.5 or storm
+	env.fog_density = 0.0025 if hf < 7.5 else 0.0015
+	env.fog_light_color = Color("#9fb0c4") if hf < 12.0 else Color("#3a4358")
 	var night := day < 0.45
 	# postes perto do jogador
 	var p := player.position
@@ -740,14 +683,21 @@ func _update_environment() -> void:
 	city.lit_mat.emission_energy_multiplier = (1.6 if night else 0.25) if power else 0.0
 	city.lit_mat.albedo_color = Color("#ffd98a") if power and night else Color("#3b4552")
 	# portas, luzes internas, fogo, festa
+	var pp2 := _p2()
 	for id in city.loc_info:
-		var accessible := World.is_accessible(id)
-		var open := World.is_open(id) and not CrimeSystem.fire_at(id)
-		var inside := layout.in_building(id, _p2())
-		var locked := (not accessible or not open) and not inside
+		var inside := layout.in_building(id, pp2)
+		var locked := World.door_locked(id) and not inside
 		_door_locked[id] = locked
 		city.set_door(id, locked)
-		city.set_interior_light(id, power and (open and accessible or inside) and (night or str(World.locations[id].get("tipo", "")) in ["loja", "servico", "comida", "bar"]))
+		var is_house := Houses.is_house(id)
+		var near := (layout.lots[id]["door"] as Vector2).distance_to(pp2) < 70.0
+		if is_house:
+			var home := near and Houses.resident_home(id)
+			city.set_house_lit(id, power and night and home)
+			city.set_interior_light(id, power and night and (inside or home))
+		else:
+			var open := not World.door_locked(id)
+			city.set_interior_light(id, power and (open or inside) and (night or str(World.locations[id].get("tipo", "")) in ["loja", "servico", "comida", "bar"]))
 	for id in layout.lots:
 		city.set_fire(id, CrimeSystem.fire_at(id))
 	if city.festa_node:
@@ -781,8 +731,8 @@ func _pick_npc(pos: Vector2) -> String:
 				best_d = d
 				best = id
 	if best == "":
-		for i in peds.size():
-			var pf: Node3D = peds[i]["fig"]
+		for i in life.peds.size():
+			var pf: Node3D = life.peds[i]["fig"]
 			if not pf.visible:
 				continue
 			var feet2 := camera.unproject_position(pf.global_position)

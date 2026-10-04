@@ -56,6 +56,68 @@ func _ready() -> void:
 	World.request_travel(lot, "ape")
 	await _walk(wv, 600)
 	check(wv.layout.in_building(lot, wv._p2()), "entrou pelo mapa (%s)" % wv._p2())
+	# ---- casas com fechadura ----
+	var hid: String = wv.layout.house_ids[5]
+	Houses.st(hid)["lock"] = "locked"
+	Houses.st(hid)["tipo"] = "familia"
+	Houses.st(hid)["ocupada"] = false
+	check(World.door_locked(hid) and not World.is_accessible(hid), "casa trancada bloqueia a porta")
+	var dout: Vector2 = wv.layout.door_out(hid)
+	wv.player.position = Vector3(dout.x, 0.25, dout.y)
+	wv.path = PackedVector2Array()
+	wv._update_environment()
+	wv._update_location()
+	check(Houses.near_door == hid, "perto da porta trancada (%s)" % Houses.near_door)
+	var ids: Array = Economy.available_actions().map(func(a): return a["id"])
+	check("porta:arrombar" in ids and "porta:tentar" in ids and "porta:bater" in ids, "ações de porta aparecem")
+	# tenta entrar andando: o colisor da porta segura
+	var din: Vector2 = wv.layout.door_in(hid)
+	wv._go_to(din)
+	await _walk(wv, 300)
+	check(not wv.layout.in_building(hid, wv._p2()), "porta trancada não deixa entrar")
+	# sem ferramenta não arromba
+	var before: String = str(Houses.st(hid)["lock"])
+	Houses.do("porta:arrombar")
+	check(str(Houses.st(hid)["lock"]) == before, "sem ferramenta não arromba")
+	GameState.add_item("pe_de_cabra")
+	var tries := 0
+	while str(Houses.st(hid)["lock"]) == "locked" and tries < 12:
+		Houses.do("porta:arrombar")
+		tries += 1
+	check(str(Houses.st(hid)["lock"]) == "broken", "arrombar abre a porta (%d tentativas)" % tries)
+	CrimeSystem.set_wanted(0)
+	wv._update_environment()
+	check(not World.door_locked(hid), "porta arrombada fica aberta")
+	wv.player.position = Vector3(dout.x, 0.25, dout.y)
+	wv._go_to(din)
+	await _walk(wv, 400)
+	check(wv.layout.in_building(hid, wv._p2()), "entra na casa depois de arrombar (%s)" % wv._p2())
+	wv._update_location()
+	check(World.current_id() == hid, "local atual é a casa")
+	# interior surgiu
+	for i in 40:
+		await get_tree().physics_frame
+	var st: Dictionary = wv.city.loc_info[hid]["structure"]
+	check(st.get("interior") != null, "interior da casa foi construído")
+	var items_before: int = GameState.item_count("pao") + GameState.item_count("agua") + GameState.item_count("miojo") + GameState.item_count("frutas")
+	var money_before: int = GameState.money()
+	Houses.st(hid)["tipo"] = "familia"
+	var got := false
+	for i in 8:
+		Houses.st(hid)["busca"] = -1
+		Houses.do("casa_g:vasculhar")
+		if GameState.money() > money_before or GameState.item_count("pao") + GameState.item_count("agua") + GameState.item_count("miojo") + GameState.item_count("frutas") > items_before:
+			got = true
+			break
+	check(got, "vasculhar rende algo")
+	check(int(Houses.st(hid)["busca"]) == TimeManager.day(), "só uma busca por dia")
+	CrimeSystem.set_wanted(0)
+	# chave abre a porta
+	var h2: String = wv.layout.house_ids[9]
+	Houses.st(h2)["lock"] = "locked"
+	check(Houses.locked(h2), "outra casa trancada")
+	World.grant_key("casa:" + h2, 3)
+	check(not Houses.locked(h2), "com a chave a porta abre")
 	print("RESULTADO WALK: ", "OK" if fails.is_empty() else "%d falha(s)" % fails.size())
 	SaveManager.delete_save()
 	get_tree().quit(0 if fails.is_empty() else 1)

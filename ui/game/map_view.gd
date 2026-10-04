@@ -13,7 +13,7 @@ const TYPE_COLORS := {
 }
 const FILL_COLORS := {
 	"casas": Color("#1c2532"), "predio": Color("#273245"), "verde": Color("#173222"),
-	"terreno": Color("#2c271f"), "estacionamento": Color("#20242b"),
+	"terreno": Color("#2c271f"), "estacionamento": Color("#20242b"), "comercio": Color("#2a2e38"),
 }
 
 var hovered: String = ""

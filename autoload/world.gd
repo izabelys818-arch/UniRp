@@ -101,8 +101,22 @@ static func hour_in_range(h: int, from: int, to: int) -> bool:
 	return h >= from or h < to
 
 
+# A porta do prédio está trancada para quem chega de fora? (usado pelo mundo 3D)
+func door_locked(loc_id: String) -> bool:
+	var loc: Dictionary = locations[loc_id]
+	if loc.get("casa_generica", false):
+		return Houses.locked(loc_id)
+	if CrimeSystem.fire_at(loc_id):
+		return true
+	if loc.get("privado", false):
+		return not HomeSystem.has_access(loc_id)
+	return not is_open(loc_id) and not Houses.forced(loc_id)
+
+
 func is_accessible(loc_id: String) -> bool:
 	var loc: Dictionary = locations[loc_id]
+	if loc.get("casa_generica", false):
+		return not Houses.locked(loc_id)
 	if loc.get("interior", false):
 		return has_key(str(loc.get("chave", "")))
 	if loc.get("privado", false):
@@ -113,7 +127,7 @@ func is_accessible(loc_id: String) -> bool:
 func visible_locations() -> Array:
 	var out: Array = []
 	for id in locations:
-		if not locations[id].get("interior", false) and not locations[id].get("via", false) and is_accessible(id):
+		if not locations[id].get("interior", false) and not locations[id].get("via", false) and not locations[id].get("casa_generica", false) and is_accessible(id):
 			out.append(id)
 	return out
 
