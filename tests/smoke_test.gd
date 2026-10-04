@@ -20,6 +20,28 @@ func _set_hour(h: int) -> void:
 	TimeManager.total_minutes = (TimeManager.day() * 1440) + h * 60
 
 
+func _action_tests() -> void:
+	var AC = preload("res://ai/action_check.gd")
+	GameState.player["inventory"].erase("cigarro")
+	var r: Dictionary = AC.run("*fumar cigarro na frente dela*")
+	check(r["blocked"] and "cigarro" in r["logs"][0], "sem cigarro, a ação é bloqueada e o jogo avisa")
+	r = AC.run("*acendo um cigarro* Quer um?")
+	check(not r["blocked"] and "não tem" in r["text"], "a fala continua e a ação inválida vira 'não tem'")
+	r = AC.run("*pergunto se ela vende cigarro*")
+	check(not r["blocked"], "perguntar por um item não exige ter o item")
+	r = AC.run("*saca uma pistola e aponta*")
+	check(r["blocked"], "não tem arma de fogo")
+	GameState.player["inventory"]["cigarro"] = 1
+	r = AC.run("*acendo um cigarro e fumo*")
+	check(not r["blocked"] and "cigarro" in r["consume"], "com cigarro, a ação vale e o item é consumido")
+	var money := GameState.money()
+	r = AC.run("*entrego R$ %d para ela*" % (money + 500))
+	check(r["blocked"] and r["pay"] == 0, "não dá para entregar mais dinheiro do que tem")
+	r = AC.run("*entrego R$ 30 para ela*")
+	check(not r["blocked"] and r["pay"] == 30, "entrega de dinheiro dentro do saldo vale")
+	GameState.player["inventory"].erase("cigarro")
+
+
 func _parse_tests() -> void:
 	var P = preload("res://ai/prompts.gd")
 	var cut := "{\n  \"responder\": true,\n  \"acao_corporal\": \"tira os óculos espelhados e sorri\",\n  \"fala\": \"Tiago, Tiago Rocha. Pode me chamar de Tião. Vi que tu acabou de"
@@ -35,6 +57,7 @@ func _parse_tests() -> void:
 
 func _travel_tests() -> void:
 	_parse_tests()
+	_action_tests()
 	World.move_player_to("lanchonete")
 	_set_hour(10)
 	var opts := World.travel_options("praca")

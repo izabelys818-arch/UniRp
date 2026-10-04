@@ -5,6 +5,7 @@ signal npc_thinking(npc_id: String, thinking: bool)
 signal npc_replied(npc_id: String, data: Dictionary)
 
 const Prompts = preload("res://ai/prompts.gd")
+const ActionCheck = preload("res://ai/action_check.gd")
 const MAX_HISTORY := 24
 const MAX_MEMORIES := 25
 const REL_KEYS := ["confianca", "afeto", "medo", "suspeita"]
@@ -192,14 +193,30 @@ func _request(id: String, chan: String, extra_user: String = "") -> Dictionary:
 	return res
 
 
-func talk(text: String) -> void:
+func talk(text: String, raw: bool = false) -> void:
 	var id := talking_to
 	text = text.strip_edges()
 	if id == "" or busy or text == "" or not GameState.active:
 		return
-	busy = true
 	var chan := channel
 	var st: Dictionary = state[id]
+	if not raw and chan == PRESENCIAL:
+		var chk := ActionCheck.run(text)
+		if chk["blocked"]:
+			GameState.add_log(text, "player", GameState.player["name"])
+			GameState.add_log(" ".join(chk["logs"]), "narration")
+			TimeManager.advance(1)
+			return
+		for line in chk["logs"]:
+			GameState.add_log(line, "info")
+		text = chk["text"]
+		if int(chk["pay"]) > 0:
+			GameState.add_money(-int(chk["pay"]))
+			st["dinheiro"] = int(st["dinheiro"]) + int(chk["pay"])
+			st["pago"] = int(st.get("pago", 0)) + int(chk["pay"])
+		for item_id in chk["consume"]:
+			Economy.use_item(item_id)
+	busy = true
 	GameState.add_log(text, "player", GameState.player["name"])
 	st["historico"].append({"role": "user", "content": ("[ao telefone] " if chan == LIGACAO else "") + text})
 	TimeManager.advance(3)
@@ -244,7 +261,7 @@ func give_money(amount: int) -> void:
 	GameState.add_money(-amount)
 	state[talking_to]["dinheiro"] = int(state[talking_to]["dinheiro"]) + amount
 	state[talking_to]["pago"] = int(state[talking_to].get("pago", 0)) + amount
-	talk("*entrega R$ %d em dinheiro*" % amount)
+	talk("*entrega R$ %d em dinheiro*" % amount, true)
 
 
 func give_item(item_id: String) -> void:
@@ -252,7 +269,7 @@ func give_item(item_id: String) -> void:
 		return
 	if not GameState.remove_item(item_id):
 		return
-	talk("*entrega %s*" % World.item_name(item_id).to_lower())
+	talk("*entrega %s*" % World.item_name(item_id).to_lower(), true)
 
 
 func _apply_reply(id: String, data: Dictionary, chan: String = PRESENCIAL) -> void:
