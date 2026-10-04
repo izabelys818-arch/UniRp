@@ -47,7 +47,7 @@ func ground_y() -> float:
 
 
 func body_h() -> float:
-	return size.y * 0.4
+	return size.y * 0.45
 
 
 func _relayout() -> void:
@@ -131,6 +131,8 @@ func _process(delta: float) -> void:
 				tg["wait"] = randf_range(3.0, 9.0)
 				if randf() < 0.45:
 					tg["x"] = clampf(x + randf_range(-120.0, 120.0), left_bound, right_bound)
+		if NPCManager.state.has(id):
+			b.set_emotion(str(NPCManager.state[id].get("emocao", "neutro")))
 		b.highlight = move_toward(b.highlight, 1.0 if id == hover_id else 0.0, delta * 6.0)
 		if id == pending_npc or id == hover_id:
 			pass
