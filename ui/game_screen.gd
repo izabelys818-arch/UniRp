@@ -303,6 +303,7 @@ func _sync_actors() -> void:
 		var tag := UI.chip("", UI.TEXT, 14)
 		tag.name = "Tag"
 		tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		tag.hide()
 		a.add_child(tag)
 		stage.add_child(a)
 		actors[id] = a

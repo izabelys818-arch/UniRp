@@ -144,6 +144,8 @@ func _process(delta: float) -> void:
 
 
 func _update_tag() -> void:
+	tag.hide()
+	return
 	if hover_id == "" or not npcs.has(hover_id):
 		tag.hide()
 		return
