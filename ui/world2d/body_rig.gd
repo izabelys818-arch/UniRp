@@ -29,6 +29,8 @@ func _process(delta: float) -> void:
 
 
 func _poly(pts: PackedVector2Array, c: Color, outline: bool = true) -> void:
+	if Geometry2D.triangulate_polygon(pts).is_empty():
+		return
 	draw_colored_polygon(pts, c)
 	if outline:
 		var closed := pts.duplicate()

@@ -23,6 +23,7 @@ const DEFS := {
 		"titulo": "Surto de gripe lota o hospital", "texto": "Hospital São Lucas atende acima da capacidade. Muita gente está de cama e faltando ao trabalho."},
 }
 const BASE_RATE := 0.012
+var random_enabled: bool = true
 
 
 func _ready() -> void:
@@ -180,7 +181,7 @@ func _on_time_advanced(minutes: int, _sleeping: bool) -> void:
 	var now := TimeManager.total_minutes
 	st["active"] = st["active"].filter(func(e): return now < int(e["ate"]) + 1440)
 	var steps := mini(int(minutes / 60.0), 72)
-	var rate := BASE_RATE * World.mod("eventos")
+	var rate := BASE_RATE * World.mod("eventos") if random_enabled else 0.0
 	for i in steps:
 		if active_list().size() >= 2 or randf() > rate:
 			continue
@@ -197,7 +198,7 @@ func _on_time_advanced(minutes: int, _sleeping: bool) -> void:
 				pool.append(id)
 		if not pool.is_empty():
 			start(pool.pick_random())
-	if TimeManager.day() >= int(st["next_arrival"]):
+	if random_enabled and TimeManager.day() >= int(st["next_arrival"]):
 		st["next_arrival"] = TimeManager.day() + int(randf_range(5.0, 9.0) / maxf(World.mod("eventos"), 0.5))
 		Population.arrive()
 	changed.emit()
