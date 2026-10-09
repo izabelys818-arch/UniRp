@@ -46,6 +46,7 @@ var stage: Control
 var world_view: WorldView
 var dim: ColorRect
 var _side_sig: String = ""
+var speech_emotion: Dictionary = {}
 var _ev_sig: String = ""
 var actors: Dictionary = {}
 var place_title: Label
@@ -249,6 +250,9 @@ func _build() -> void:
 	add_child(dialogue)
 	dialogue.submitted.connect(_on_submit)
 	dialogue.end_pressed.connect(NPCManager.end_conversation)
+	dialogue.expression.connect(_on_speech_expression)
+	dialogue.speaking_pulse.connect(_on_speaking_pulse)
+	dialogue.speech_finished.connect(_on_speech_finished)
 
 	context_menu = PopupMenu.new()
 	context_menu.id_pressed.connect(_on_context)
@@ -355,8 +359,9 @@ func _layout_actors() -> void:
 		label.text = NPCManager.display_name(id) + ("  •  em ligação" if on_call else "")
 		tag.position = Vector2(w / 2.0 - tag.get_combined_minimum_size().x / 2.0 - 30.0 * s, 50.0 * s)
 		var st: Dictionary = NPCManager.state[id]
-		if str(st["emocao"]) != a.emotion:
-			a.set_emotion(str(st["emocao"]))
+		var want_emo: String = str(speech_emotion.get(id, st["emocao"]))
+		if want_emo != a.emotion:
+			a.set_emotion(want_emo)
 	if focus != "" and actors.has(focus):
 		stage.move_child(actors[focus], -1)
 
@@ -372,6 +377,28 @@ func _on_walk_npc(id: String) -> void:
 	if NPCManager.talking_to != id and not NPCManager.busy:
 		NPCManager.start_conversation(id)
 		dialogue.input.grab_focus.call_deferred()
+
+
+# A expressão acompanha o que está sendo dito, frase por frase.
+func _on_speech_expression(e: String) -> void:
+	var id := NPCManager.talking_to
+	if id == "" or not actors.has(id):
+		return
+	speech_emotion[id] = e
+	(actors[id] as FaceRig).set_emotion(e)
+
+
+func _on_speaking_pulse() -> void:
+	var id := NPCManager.talking_to
+	if id != "" and actors.has(id):
+		(actors[id] as FaceRig).talk(0.16)
+
+
+func _on_speech_finished() -> void:
+	var id := NPCManager.talking_to
+	speech_emotion.erase(id)
+	if id != "" and actors.has(id) and NPCManager.state.has(id):
+		(actors[id] as FaceRig).set_emotion(str(NPCManager.state[id]["emocao"]))
 
 
 func _on_actor_input(e: InputEvent, id: String) -> void:

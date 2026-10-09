@@ -11,6 +11,7 @@ var free_only: CheckBox
 var model_list: ItemList
 var model_label: Label
 var temp_slider: HSlider
+var local_check: CheckBox
 var temp_label: Label
 var status: Label
 var models: Array = []
@@ -67,6 +68,10 @@ func _ready() -> void:
 	temp_slider.value_changed.connect(_update_temp_label.unbind(1))
 	trow.add_child(temp_slider)
 	_update_temp_label()
+	local_check = CheckBox.new()
+	local_check.text = "Respostas rápidas locais (saudações, preços, direções, elogios... sem gastar IA)"
+	local_check.button_pressed = Settings.local_dialogue
+	root.add_child(local_check)
 
 	status = UI.label("", 15, UI.MUTED)
 	root.add_child(status)
@@ -118,6 +123,7 @@ func _on_model_selected(idx: int) -> void:
 func _apply() -> void:
 	Settings.api_key = key_edit.text.strip_edges()
 	Settings.temperature = temp_slider.value
+	Settings.local_dialogue = local_check.button_pressed
 	Settings.save_settings()
 
 

@@ -21,13 +21,14 @@ var head_lights: Array = []
 var player_pos: Vector2 = Vector2.ZERO
 
 
-func setup(l: Layout, c: Node3D) -> void:
+func setup(l: Layout, c: Node3D, with_people: bool = true) -> void:
 	layout = l
 	city = c
 	rng.seed = 5511
 	_make_cars()
-	_make_peds()
-	_make_dogs()
+	if with_people:
+		_make_peds()
+		_make_dogs()
 	_make_birds()
 	for i in 4:
 		var sp := SpotLight3D.new()

@@ -503,6 +503,7 @@ func _phone_tests() -> void:
 
 func _ready() -> void:
 	WorldEvents.random_enabled = false
+	Settings.local_dialogue = false
 	Settings.api_key = ""
 	Settings.model = ""
 	SaveManager.path = "user://test_save.json"

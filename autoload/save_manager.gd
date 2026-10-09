@@ -44,6 +44,17 @@ func load_game() -> bool:
 	return GameState.active
 
 
+# Resumo do save para a tela inicial (sem carregar o jogo).
+func preview() -> Dictionary:
+	if not has_save():
+		return {}
+	var data = JSON.parse_string(FileAccess.get_file_as_string(path))
+	if typeof(data) != TYPE_DICTIONARY:
+		return {}
+	var p: Dictionary = data.get("game", {}).get("player", {})
+	return {"name": str(p.get("name", "")), "day": int(data.get("time", 0)) / 1440 + 1, "money": int(p.get("money", 0)), "location": str(p.get("location", ""))}
+
+
 func delete_save() -> void:
 	if has_save():
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(path))

@@ -6,6 +6,7 @@ signal npc_replied(npc_id: String, data: Dictionary)
 
 const Prompts = preload("res://ai/prompts.gd")
 const ActionCheck = preload("res://ai/action_check.gd")
+const LocalDialogue = preload("res://ai/local_dialogue.gd")
 const MAX_HISTORY := 24
 const MAX_MEMORIES := 25
 const REL_KEYS := ["confianca", "afeto", "medo", "suspeita"]
@@ -241,6 +242,17 @@ func talk(text: String, raw: bool = false) -> void:
 	st["historico"].append({"role": "user", "content": ("[ao telefone] " if chan == LIGACAO else "") + text})
 	TimeManager.advance(3)
 	npc_thinking.emit(id, true)
+	# respostas rápidas locais: não gastam IA e saem na hora
+	if not raw and Settings.local_dialogue:
+		var local := LocalDialogue.try_reply(id, text, chan)
+		if not local.is_empty():
+			await get_tree().create_timer(randf_range(0.35, 0.95)).timeout
+			npc_thinking.emit(id, false)
+			busy = false
+			if state[id].get("vivo", true) and talking_to == id:
+				st["historico"].append({"role": "assistant", "content": JSON.stringify({"fala": local["fala"], "emocao": local["emocao"]})})
+				_apply_reply(id, local, chan)
+			return
 	var res := await _request(id, chan)
 	npc_thinking.emit(id, false)
 	busy = false
@@ -254,6 +266,12 @@ func talk(text: String, raw: bool = false) -> void:
 func text_reply(id: String, player_text: String) -> Dictionary:
 	var st: Dictionary = state[id]
 	st["historico"].append({"role": "user", "content": "[mensagem de celular] " + player_text})
+	if Settings.local_dialogue:
+		var local := LocalDialogue.try_reply(id, player_text, MENSAGEM)
+		if not local.is_empty():
+			st["historico"].append({"role": "assistant", "content": JSON.stringify({"fala": local["fala"], "emocao": local["emocao"]})})
+			_apply_reply(id, local, MENSAGEM)
+			return {"ok": true, "data": local}
 	var res := await _request(id, MENSAGEM)
 	if not res["ok"]:
 		st["historico"].pop_back()

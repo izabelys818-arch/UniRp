@@ -2,10 +2,14 @@ extends PanelContainer
 
 signal submitted(text: String)
 signal end_pressed
+signal expression(emotion: String)
+signal speaking_pulse
+signal speech_finished
 
 const UI = preload("res://ui/ui_theme.gd")
 const IconButton = preload("res://ui/game/icon_button.gd")
 const HistoryPanel = preload("res://ui/game/history_panel.gd")
+const ExpressionEngine = preload("res://ai/expression_engine.gd")
 
 var name_chip: PanelContainer
 var name_label: Label
@@ -20,6 +24,14 @@ var star_re := RegEx.new()
 var _type_tween: Tween
 var _dots: float = 0.0
 var _thinking_who: String = ""
+var _segs: Array = []
+var _seg_next: int = 0
+var _typing: bool = false
+var _total_chars: int = 0
+var _last_chars: int = 0
+var _pulse_t: float = 0.0
+var _plain: String = ""
+var _settle_t: float = -1.0
 
 
 func _ready() -> void:
@@ -82,6 +94,25 @@ func _process(delta: float) -> void:
 	if _thinking_who != "":
 		_dots += delta * 3.0
 		thinking.text = _thinking_who + ".".repeat(1 + int(_dots) % 3)
+	if _typing:
+		var n := int(round(text_view.visible_ratio * float(_total_chars)))
+		while _seg_next < _segs.size() and int(_segs[_seg_next]["start"]) <= n:
+			expression.emit(str(_segs[_seg_next]["emotion"]))
+			_seg_next += 1
+		_pulse_t -= delta
+		if n != _last_chars:
+			var ch := _plain.substr(maxi(n - 1, 0), 1)
+			if ch.strip_edges() != "" and _pulse_t <= 0.0:
+				speaking_pulse.emit()
+				_pulse_t = 0.1
+			_last_chars = n
+		if text_view.visible_ratio >= 0.999:
+			_typing = false
+			_settle_t = 1.4
+	elif _settle_t >= 0.0:
+		_settle_t -= delta
+		if _settle_t < 0.0:
+			speech_finished.emit()
 
 
 func set_thinking(who: String) -> void:
@@ -116,6 +147,18 @@ func show_entry(e: Dictionary) -> void:
 	text_view.clear()
 	text_view.append_text(body)
 	text_view.visible_ratio = 0.0
+	_typing = false
+	_settle_t = -1.0
+	if kind == "npc":
+		var base := "neutro"
+		if NPCManager.talking_to != "" and NPCManager.state.has(NPCManager.talking_to):
+			base = str(NPCManager.state[NPCManager.talking_to].get("emocao", "neutro"))
+		_plain = text_view.get_parsed_text()
+		_total_chars = text_view.get_total_character_count()
+		_segs = ExpressionEngine.segments(str(e.get("text", "")), _plain, base)
+		_seg_next = 0
+		_last_chars = 0
+		_typing = true
 	if _type_tween:
 		_type_tween.kill()
 	var length := str(e.get("text", "")).length()

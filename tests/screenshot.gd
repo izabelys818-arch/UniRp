@@ -57,7 +57,7 @@ func _ready() -> void:
 	var menu = preload("res://ui/main_menu.gd").new()
 	menu.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root.add_child(menu)
-	await get_tree().create_timer(0.8).timeout
+	await get_tree().create_timer(7.0).timeout
 	await _shot("screenshot_menu.png")
 	menu.queue_free()
 	var game2 = preload("res://ui/game_screen.gd").new()
