@@ -4,6 +4,8 @@ extends RefCounted
 # um quarteirão; os quarteirões residenciais são divididos em lotes com casas voltadas para a rua.
 # Também calcula rotas a pé pelas ruas (A* sobre os cruzamentos).
 
+const Art = preload("res://world3d/art_style.gd")
+
 const GRID := 8
 const BLOCK := 30.0
 const STREET := 10.0
@@ -66,17 +68,7 @@ func _assign() -> void:
 			if blocks.has(c):
 				continue
 			var r := rng.randf()
-			var kind := "casas"
-			if r < 0.12:
-				kind = "predio"
-			elif r < 0.17:
-				kind = "terreno"
-			elif r < 0.21:
-				kind = "estacionamento"
-			elif r < 0.27:
-				kind = "verde"
-			elif r < 0.34:
-				kind = "comercio"
+			var kind := Art.fill_kind(r)
 			blocks[c] = {"loc": "", "kind": kind, "seed": rng.randi(), "lots": []}
 			if kind == "casas":
 				_make_houses(c)

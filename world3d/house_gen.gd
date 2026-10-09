@@ -7,6 +7,7 @@ extends RefCounted
 
 const Kit = preload("res://world3d/mesh_kit.gd")
 const Furn = preload("res://world3d/furn_lib.gd")
+const Art = preload("res://world3d/art_style.gd")
 
 const Y0 := 0.17
 const H := 2.9
@@ -33,19 +34,26 @@ func _jit(c: Color, a: float = 0.05) -> Color:
 func _style(lot: Dictionary) -> Dictionary:
 	var abandoned: bool = str(Houses.st(lot["id"])["tipo"]) == "abandonada"
 	var w: float = (lot["building"] as Rect2).size.x
+	var wall := Art.pick("walls", rng) if rng.randf() < 0.82 else Art.pick("accent_walls", rng)
 	var st := {
-		"wall": _jit(_c(WALLS[rng.randi() % WALLS.size()])),
-		"roof": _jit(_c(ROOFS[rng.randi() % ROOFS.size()]), 0.03),
-		"door": _c(DOORS[rng.randi() % DOORS.size()]),
-		"kind": ["gable_x", "gable_z", "hip"][rng.randi() % 3],
-		"porch": rng.randf() < 0.62,
-		"garage": w >= 8.6 and rng.randf() < 0.5,
-		"chimney": rng.randf() < 0.35,
-		"fence": ["wood", "chain", "hedge", "wall", "none", "wood"][rng.randi() % 6],
-		"shutters": rng.randf() < 0.4,
+		"wall": _jit(wall, 0.03),
+		"roof": _jit(Art.pick("roofs", rng), 0.025),
+		"door": Art.pick("doors", rng),
+		"kind": ["gable_x", "gable_z", "hip", "hip"][rng.randi() % 4],
+		"porch": rng.randf() < 0.55,
+		"garage": w >= 8.6 and rng.randf() < 0.55,
+		"chimney": rng.randf() < 0.12,
+		"fence": Art.fence_kind(rng),
+		"shutters": rng.randf() < 0.3,
 		"abandoned": abandoned,
+		"wear": Art.wear(rng),
+		"tank": rng.randf() < Art.num("tank"),
+		"bars": rng.randf() < Art.num("bars"),
+		"porch_life": rng.randi() % 4,
 	}
-	st["trim"] = _c("#f0ebdd") if rng.randf() < 0.75 else _c("#5a4a3a")
+	st["trim"] = Art.pick("trims", rng)
+	if abandoned:
+		st["wear"] = maxf(float(st["wear"]), 0.85)
 	if abandoned:
 		st["wall"] = (st["wall"] as Color).darkened(0.28).lerp(Color("#6e6a5e"), 0.35)
 		st["roof"] = (st["roof"] as Color).darkened(0.25)
@@ -201,6 +209,7 @@ func build(c: Node3D, lot: Dictionary) -> Dictionary:
 			for cz in [z0, z1]:
 				k.box_ab(Vector3(cx - 0.09, Y0, cz - 0.09), Vector3(cx + 0.09, top, cz + 0.09), trim)
 	kf.box_ab(Vector3(gap0, Y0 + 2.15, z1 - T), Vector3(gap1, Y0 + H, z1), wall)
+	_weather(kf, st, x0, x1, z0, z1, gap0, gap1)
 	kf.box_ab(Vector3(gap0 - 0.07, Y0 + 2.1, z1 - T - 0.02), Vector3(gap1 + 0.07, Y0 + 2.2, z1 + 0.03), trim)
 	# friso de topo
 	kf.box_ab(Vector3(x0 - 0.1, Y0 + H - 0.2, z0 - 0.1), Vector3(x1 + 0.1, Y0 + H, z1 + 0.1), trim.darkened(0.05))
@@ -233,10 +242,16 @@ func build(c: Node3D, lot: Dictionary) -> Dictionary:
 		kl.add("box", Transform3D(cm * Basis.from_scale(Vector3(1.06, 1.16, 0.05)), wc + n * 0.1), Color.WHITE)
 		kf.add("box", Transform3D(cm * Basis.from_scale(Vector3(0.05, 1.2, 0.07)), wc + n * 0.11), trim)
 		kf.add("box", Transform3D(cm * Basis.from_scale(Vector3(1.4, 0.08, 0.26)), wc + n * 0.1 + Vector3(0, -0.78, 0)), trim.darkened(0.08))
+		if st["bars"] and absf(yaw) < 0.1:
+			var bar_c := Color("#2c2d2f") if rng.randf() < 0.7 else Color("#e4e0d6")
+			for bi in 6:
+				kf.add("box", Transform3D(cm * Basis.from_scale(Vector3(0.025, 1.3, 0.025)), wc + n * 0.17 + cm * Vector3(-0.55 + bi * 0.22, 0, 0)), bar_c)
+			for by in [-0.62, 0.62]:
+				kf.add("box", Transform3D(cm * Basis.from_scale(Vector3(1.24, 0.04, 0.03)), wc + n * 0.17 + Vector3(0, by, 0)), bar_c)
 		if st["shutters"] and absf(yaw) < 0.1:
 			for sx in [-1, 1]:
 				kf.add("box", Transform3D(cm * Basis.from_scale(Vector3(0.42, 1.45, 0.06)), wc + cm * Vector3(sx * 0.9, 0, 0.12)), (st["door"] as Color).darkened(0.1))
-		if abandoned and rng.randf() < 0.6:
+		if (abandoned or (Art.p().get("tarps", false) and float(st["wear"]) > 0.75)) and rng.randf() < 0.6:
 			for bi in 3:
 				kf.add("box", Transform3D(cm * Basis(Vector3.BACK, rng.randf_range(-0.25, 0.25)).scaled(Vector3(1.5, 0.14, 0.05)), wc + n * 0.14 + Vector3(0, -0.4 + bi * 0.4, 0)), Color("#6a5538"))
 		s["windows"].append(wc)
@@ -296,6 +311,12 @@ func build(c: Node3D, lot: Dictionary) -> Dictionary:
 		var chx := rng.randf_range(-w * 0.28, w * 0.28)
 		kf.box(Vector3(chx, Y0 + H + rh * 0.6, -d * 0.12), Vector3(0.75, rh + 1.2, 0.75), Color("#8a4a3a"))
 		kf.box(Vector3(chx, Y0 + H + rh * 0.6 + rh / 2.0 + 0.7, -d * 0.12), Vector3(0.95, 0.14, 0.95), Color("#6a6a6a"))
+	if st["tank"]:
+		var tx2 := rng.randf_range(-w * 0.22, w * 0.22)
+		var tz2 := -d * 0.18
+		kf.box(Vector3(tx2, Y0 + H + rh * 0.62, tz2), Vector3(1.3, 0.12, 1.3), Color("#8a8680"))
+		kf.cyl(Vector3(tx2, Y0 + H + rh * 0.62 + 0.06, tz2), 0.56, 0.62, Color("#3f6fa8") if not st["abandoned"] else Color("#5a6a7a"))
+		kf.cyl(Vector3(tx2, Y0 + H + rh * 0.62 + 0.68, tz2), 0.6, 0.08, Color("#2f5a8a") if not st["abandoned"] else Color("#4a5a6a"))
 	if rng.randf() < 0.3:
 		kf.cyl(Vector3(w * 0.2, Y0 + H + rh * 0.55, d * 0.15), 0.18, 0.15, Color("#cfcfcf"))
 		kf.box(Vector3(w * 0.2, Y0 + H + rh * 0.7, d * 0.15), Vector3(0.9, 0.04, 0.9), Color("#d8d8d8"), 0.3)
@@ -310,6 +331,9 @@ func build(c: Node3D, lot: Dictionary) -> Dictionary:
 		_tree(ka, Vector3(tx, Y0, z1 + rng.randf_range(1.2, 2.2)), rng.randf_range(0.8, 1.1), rng.randi() % 3)
 	for i in rng.randi_range(1, 3):
 		_tree(ka, Vector3(rng.randf_range(local_lot.position.x + 1.2, local_lot.end.x - 1.2), Y0, z0 - rng.randf_range(0.8, 1.4)), rng.randf_range(0.9, 1.3), rng.randi() % 3)
+	_porch_life(ka, st, dx, z1, x0, x1, gar_w > 0.0, drive_x)
+	_regional(ka, kf, st, local_lot, x0, x1, z0, z1, dx, rh)
+	_street_tree(ka, st, local_lot, dx, drive_x, gar_w > 0.0)
 	# caixa de correio e lixeiras na calçada
 	var mbx := dx + 1.8
 	ka.box(Vector3(mbx, Y0 + 0.55, front_z - 0.25), Vector3(0.08, 1.1, 0.08), Color("#4a3a2a"))
@@ -358,9 +382,13 @@ func _fence(k: Kit, body: StaticBody3D, s: Dictionary, lr: Rect2, dx: float, dri
 	var inset := 0.18
 	var r := lr.grow(-inset)
 	var col := Color("#d8d0bc") if kind == "wood" else (Color("#7a7a7e") if kind == "chain" else (Color("#c8bfae") if kind == "wall" else Color("#3f6b35")))
+	if kind == "muro":
+		col = (s["style"]["wall"] as Color).lerp(Color("#bdb5a5"), 0.45).darkened(0.05)
 	if s["style"]["abandoned"]:
 		col = col.darkened(0.3)
-	var hgt: float = 1.1 if kind in ["wood", "wall"] else (1.25 if kind == "chain" else 0.95)
+	var hgt: float = 1.1 if kind in ["wood", "wall"] else (1.25 if kind == "chain" else (1.75 if kind == "muro" else 0.95))
+	if kind == "muro":
+		_gates(k, s, r, dx, drive_x, garage)
 	# segmentos: [início, fim] em x ou z; frente com portão
 	var segs: Array = []
 	segs.append([Vector2(r.position.x, r.position.y), Vector2(r.end.x, r.position.y)])   # fundos
@@ -405,6 +433,19 @@ func _fence(k: Kit, body: StaticBody3D, s: Dictionary, lr: Rect2, dx: float, dri
 				var wh := hgt * (0.7 if front_seg else 1.0)
 				k.add("box", Transform3D(Basis(Vector3.UP, yaw) * Basis.from_scale(Vector3(len, wh, 0.22)), Vector3(mid.x, Y0 + wh / 2.0, mid.y)), col)
 				k.add("box", Transform3D(Basis(Vector3.UP, yaw) * Basis.from_scale(Vector3(len, 0.08, 0.3)), Vector3(mid.x, Y0 + wh, mid.y)), col.darkened(0.12))
+			"muro":
+				var mh := 1.45 if front_seg else 1.8
+				var wcol := col.darkened(0.06 * float(s["style"]["wear"]))
+				k.add("box", Transform3D(Basis(Vector3.UP, yaw) * Basis.from_scale(Vector3(len, mh, 0.18)), Vector3(mid.x, Y0 + mh / 2.0, mid.y)), wcol)
+				k.add("box", Transform3D(Basis(Vector3.UP, yaw) * Basis.from_scale(Vector3(len + 0.04, 0.07, 0.26)), Vector3(mid.x, Y0 + mh, mid.y)), wcol.lightened(0.12))
+				k.add("box", Transform3D(Basis(Vector3.UP, yaw) * Basis.from_scale(Vector3(len + 0.02, 0.32, 0.2)), Vector3(mid.x, Y0 + 0.16, mid.y)), wcol.darkened(0.22))
+				var np := int(len / 3.0)
+				for i in range(1, np + 1):
+					var pp4 := a + dir * (len * float(i) / float(np + 1))
+					k.box(Vector3(pp4.x, Y0 + mh / 2.0, pp4.y), Vector3(0.26, mh + 0.05, 0.26), wcol.lightened(0.05))
+				if float(s["style"]["wear"]) > 0.55 and rng.randf() < 0.5:
+					var sp := a + dir * len * rng.randf_range(0.2, 0.8)
+					k.add("box", Transform3D(Basis(Vector3.UP, yaw) * Basis.from_scale(Vector3(rng.randf_range(0.6, 1.4), rng.randf_range(0.4, 0.9), 0.2)), Vector3(sp.x, Y0 + rng.randf_range(0.4, 1.1), sp.y)), wcol.darkened(0.18))
 			"hedge":
 				var n3 := int(len / 0.75)
 				for i in n3 + 1:
@@ -414,6 +455,159 @@ func _fence(k: Kit, body: StaticBody3D, s: Dictionary, lr: Rect2, dx: float, dri
 		var horiz := absf(dir.x) > 0.5
 		var cr := Rect2(mid.x - (len / 2.0 if horiz else 0.1), mid.y - (0.1 if horiz else len / 2.0), len if horiz else 0.2, 0.2 if horiz else len)
 		_sb(body, cr, 1.0)
+
+
+# Portões de grade (pedestre e garagem) do muro, abertos para dentro do lote.
+func _gates(k: Kit, s: Dictionary, r: Rect2, dx: float, drive_x: float, garage: bool) -> void:
+	var gc := Color("#2e3033") if rng.randf() < 0.7 else Color("#5a3f2e")
+	if float(s["style"]["wear"]) > 0.6:
+		gc = gc.lerp(Color("#6b4a32"), 0.4)
+	var fz := r.end.y
+	var opens: Array = [[dx, 1.9]]
+	if garage:
+		opens.append([drive_x, 3.4])
+	for o in opens:
+		var cx: float = o[0]
+		var gw: float = o[1]
+		# pilares do portão
+		for sx in [-1, 1]:
+			k.box(Vector3(cx + sx * (gw / 2.0 + 0.1), Y0 + 0.95, fz), Vector3(0.3, 1.9, 0.3), (s["style"]["wall"] as Color).lerp(Color("#bdb5a5"), 0.4))
+		# folha aberta, encostada no muro por dentro
+		var leaf := gw * (0.5 if gw > 2.5 else 1.0)
+		var hinge := Vector3(cx - gw / 2.0, Y0, fz - 0.12)
+		var yaw := -PI / 2.0 + 0.12
+		var bas := Basis(Vector3.UP, yaw)
+		for bi in int(leaf / 0.14) + 1:
+			k.add("box", Transform3D(bas * Basis.from_scale(Vector3(0.03, 1.55, 0.03)), hinge + bas * Vector3(bi * 0.14, 0.82, 0)), gc)
+		for by in [0.12, 0.85, 1.58]:
+			k.add("box", Transform3D(bas * Basis.from_scale(Vector3(leaf, 0.05, 0.04)), hinge + bas * Vector3(leaf / 2.0, by, 0)), gc)
+		k.add("box", Transform3D(bas * Basis.from_scale(Vector3(leaf, 0.5, 0.015)), hinge + bas * Vector3(leaf / 2.0, 1.3, 0)), gc.lightened(0.05))
+
+
+# Sujeira na base, escorridos sob as janelas e remendos de reboco: mais desgaste, mais marcas.
+func _weather(k: Kit, st: Dictionary, x0: float, x1: float, z0: float, z1: float, gap0: float, gap1: float) -> void:
+	var wear: float = st["wear"]
+	var wall: Color = st["wall"]
+	var grime := wall.darkened(0.22 + wear * 0.18).lerp(Color("#4a4238"), 0.25)
+	# barra encardida no pé da parede (frente e lado visível)
+	k.box_ab(Vector3(x0 - 0.01, Y0, z1 - 0.01), Vector3(gap0, Y0 + 0.35 + wear * 0.35, z1 + 0.012), grime)
+	k.box_ab(Vector3(gap1, Y0, z1 - 0.01), Vector3(x1 + 0.01, Y0 + 0.35 + wear * 0.35, z1 + 0.012), grime)
+	k.box_ab(Vector3(x1 - 0.01, Y0, z0), Vector3(x1 + 0.012, Y0 + 0.35 + wear * 0.35, z1), grime)
+	if wear < 0.25:
+		return
+	# escorridos verticais
+	for i in int(wear * 6.0):
+		var sx := rng.randf_range(x0 + 0.4, x1 - 0.4)
+		if sx > gap0 - 0.3 and sx < gap1 + 0.3:
+			continue
+		var ln := rng.randf_range(0.5, 1.4)
+		k.box(Vector3(sx, Y0 + H - 0.25 - ln / 2.0, z1 + 0.013), Vector3(rng.randf_range(0.08, 0.22), ln, 0.01), wall.darkened(0.1 + wear * 0.15))
+	for i in int(wear * 4.0):
+		var sz := rng.randf_range(z0 + 0.4, z1 - 0.4)
+		var ln2 := rng.randf_range(0.5, 1.4)
+		k.box(Vector3(x1 + 0.013, Y0 + H - 0.25 - ln2 / 2.0, sz), Vector3(0.01, ln2, rng.randf_range(0.08, 0.22)), wall.darkened(0.1 + wear * 0.15))
+	# remendos de reboco e tinta descascada
+	if wear > 0.5:
+		for i in int(wear * 3.0):
+			var px := rng.randf_range(x0 + 0.5, x1 - 0.5)
+			if px > gap0 - 0.6 and px < gap1 + 0.6:
+				continue
+			k.box(Vector3(px, rng.randf_range(Y0 + 0.6, Y0 + H - 0.6), z1 + 0.014), Vector3(rng.randf_range(0.3, 0.9), rng.randf_range(0.2, 0.6), 0.01), wall.lerp(Color("#b8b0a0"), 0.5).darkened(rng.randf() * 0.1))
+
+
+# Traços de cada cenário: flores e frutíferas no interior, lonas e arame no colapso.
+func _regional(ka: Kit, kf: Kit, st: Dictionary, lr: Rect2, x0: float, x1: float, z0: float, z1: float, dx: float, rh: float) -> void:
+	if rng.randf() < float(Art.p().get("flowers", 0.2)) and not st["abandoned"]:
+		# primavera (buganvília) caindo sobre o muro ou a varanda
+		var fx := lr.position.x + 0.6 if rng.randf() < 0.5 else lr.end.x - 0.6
+		var pink := Color("#c2457a") if rng.randf() < 0.6 else Color("#d9853a")
+		for i in 6:
+			ka.sphere(Vector3(fx + rng.randf_range(-0.4, 0.4), Y0 + rng.randf_range(0.9, 1.9), lr.end.y - rng.randf_range(0.3, 2.4)), Vector3(0.7, 0.55, 0.7), pink.lerp(Color("#4a6a38"), rng.randf() * 0.35))
+		if Art.id() == "vale_sereno" and rng.randf() < 0.6:
+			# frutífera no quintal dos fundos
+			var tp := Vector3(rng.randf_range(lr.position.x + 1.5, lr.end.x - 1.5), Y0, z0 - 1.3)
+			ka.cyl(tp, 0.15, 1.6, Color("#5a4636"))
+			ka.sphere(tp + Vector3(0, 2.3, 0), Vector3(2.4, 1.9, 2.4), Color("#4f7a38"))
+			for fi in 7:
+				ka.sphere(tp + Vector3(rng.randf_range(-0.9, 0.9), rng.randf_range(1.8, 2.8), rng.randf_range(-0.9, 0.9)), Vector3(0.16, 0.16, 0.16), Color("#e0902a"))
+	if Art.p().get("tarps", false):
+		var w := x1 - x0
+		var d := z1 - z0
+		if rng.randf() < 0.45:
+			# lona azul remendando o telhado
+			kf.add("box", Transform3D(Basis(Vector3.UP, rng.randf_range(-0.3, 0.3)) * Basis(Vector3.RIGHT, -0.45).scaled(Vector3(rng.randf_range(1.8, 3.2), 0.04, rng.randf_range(1.4, 2.4))), Vector3(rng.randf_range(-w * 0.2, w * 0.2), Y0 + H + rh * 0.45, d * 0.18)), Color("#2f5f9a"))
+		if rng.randf() < 0.5 and not st["abandoned"]:
+			# sacos de areia na porta
+			for si in 5:
+				ka.sphere(Vector3(dx - 0.9 + si * 0.45, Y0 + 0.18, z1 + 0.5), Vector3(0.5, 0.3, 0.38), Color("#8a7a58"))
+		if st["fence"] == "muro":
+			# arame farpado no alto do muro
+			for side in [lr.position.y + 0.2, lr.end.y - 0.2]:
+				for ai in int(lr.size.x / 0.45):
+					ka.add("box", Transform3D(Basis(Vector3.RIGHT, 0.6 if ai % 2 == 0 else -0.6).scaled(Vector3(0.45, 0.02, 0.02)), Vector3(lr.position.x + 0.25 + ai * 0.45, Y0 + 1.9, side)), Color("#3a3a3a"))
+
+
+# Sinais de quem mora: cadeira de plástico, bicicleta, vasos, capacho.
+func _porch_life(k: Kit, st: Dictionary, dx: float, z1: float, x0: float, x1: float, garage: bool, drive_x: float) -> void:
+	if st["abandoned"]:
+		return
+	var kind: int = st["porch_life"]
+	var free_x := x1 - 1.0 if dx < (x0 + x1) / 2.0 else x0 + 1.0
+	if garage and absf(free_x - drive_x) < 2.0:
+		free_x = dx + (1.6 if dx < 0 else -1.6)
+	match kind:
+		0:
+			# cadeiras de plástico brancas na frente
+			for i in 2:
+				var cp := Vector3(free_x + (i - 0.5) * 0.7, Y0, z1 + 0.7)
+				k.box(cp + Vector3(0, 0.42, 0), Vector3(0.48, 0.05, 0.46), Color("#e8e6e0"))
+				k.box(cp + Vector3(0, 0.7, -0.21), Vector3(0.48, 0.55, 0.04), Color("#e8e6e0"))
+				for lx in [-0.2, 0.2]:
+					for lz in [-0.18, 0.18]:
+						k.box(cp + Vector3(lx, 0.21, lz), Vector3(0.04, 0.42, 0.04), Color("#dedcd6"))
+		1:
+			# bicicleta encostada
+			var bp := Vector3(free_x, Y0, z1 + 0.35)
+			for wx in [-0.45, 0.45]:
+				k.add("cyl", Transform3D(Basis(Vector3.FORWARD, PI / 2.0).scaled(Vector3(0.62, 0.04, 0.62)), bp + Vector3(wx, 0.32, 0)), Color("#1c1c1c"))
+			k.box(bp + Vector3(0, 0.5, 0), Vector3(0.9, 0.04, 0.04), Color("#8a2a2a"))
+			k.box(bp + Vector3(0.1, 0.42, 0), Vector3(0.04, 0.32, 0.04), Color("#8a2a2a"))
+			k.box(bp + Vector3(0.38, 0.72, 0), Vector3(0.04, 0.04, 0.4), Color("#2a2a2a"))
+		2:
+			# vasos de planta em fila
+			for i in 3:
+				var vp := Vector3(free_x + (i - 1) * 0.5, Y0, z1 + 0.35)
+				k.cyl(vp, 0.17, 0.32, Color("#9a5a3a"))
+				k.sphere(vp + Vector3(0, 0.5, 0), Vector3(0.42, 0.45, 0.42), Color("#4f7a3a").lerp(Color("#6a8a3a"), rng.randf()))
+		3:
+			# vaso grande e banquinho
+			k.cyl(Vector3(free_x, Y0, z1 + 0.4), 0.24, 0.45, Color("#7a6a5a"))
+			k.sphere(Vector3(free_x, Y0 + 0.75, z1 + 0.4), Vector3(0.7, 0.7, 0.7), Color("#4a6a38"))
+			k.box(Vector3(free_x + 0.7, Y0 + 0.25, z1 + 0.4), Vector3(0.35, 0.5, 0.35), Color("#7a5534"))
+	k.box(Vector3(dx, Y0 + 0.03, z1 + 0.35), Vector3(0.7, 0.02, 0.4), Color("#5a4636"))
+
+
+# Árvore na calçada, com canteiro, longe da porta e da entrada da garagem.
+func _street_tree(k: Kit, st: Dictionary, lot_r: Rect2, dx: float, drive_x: float, garage: bool) -> void:
+	if rng.randf() > Art.num("street_trees"):
+		return
+	var tz := lot_r.end.y + 1.45
+	var cands: Array = [lot_r.position.x + 1.4, lot_r.end.x - 1.4, (lot_r.position.x + lot_r.end.x) / 2.0]
+	for tx in cands:
+		var x: float = tx
+		if absf(x - dx) < 1.6:
+			continue
+		if garage and absf(x - drive_x) < 2.2:
+			continue
+		k.box_ab(Vector3(x - 0.55, Y0 - 0.005, tz - 0.55), Vector3(x + 0.55, Y0 + 0.012, tz + 0.55), Color("#5a4a38"))
+		k.box_ab(Vector3(x - 0.6, Y0, tz - 0.6), Vector3(x + 0.6, Y0 + 0.06, tz - 0.52), Color("#a39f95"))
+		k.box_ab(Vector3(x - 0.6, Y0, tz + 0.52), Vector3(x + 0.6, Y0 + 0.06, tz + 0.6), Color("#a39f95"))
+		var g := Color("#4e6a38").lerp(Color("#6f8a40"), rng.randf())
+		var h := rng.randf_range(2.6, 3.4)
+		k.cyl(Vector3(x, Y0, tz), 0.13, h, Color("#5a4636"))
+		k.sphere(Vector3(x, Y0 + h + 0.4, tz), Vector3(2.4, 1.9, 2.4), g)
+		k.sphere(Vector3(x + 0.4, Y0 + h + 1.0, tz + 0.2), Vector3(1.7, 1.4, 1.7), g.lightened(0.07))
+		return
 
 
 # ---------- interior (sob demanda) ----------
@@ -435,7 +629,9 @@ func build_interior(s: Dictionary) -> Node3D:
 	var ab: bool = st["abandoned"]
 	var kk := Kit.new()
 	var kf := Kit.new()
-	var inner := Color("#b9ae98") if not ab else Color("#6f695a")
+	var inner_pal := ["#b9ae98", "#a9b0a6", "#c4b49c", "#a8a2b0", "#b7a58e", "#9fa9a8", "#c2b9a6"]
+	var inner := Color(inner_pal[rng.randi() % inner_pal.size()]) if not ab else Color("#6f695a")
+	var resident: String = str(Houses.st(str(lot["id"]))["tipo"])
 	var base_c := Color("#6a5a48")
 	var bd := clampf(d * 0.46, 2.9, 3.5)
 	var zdiv := z0 + bd
@@ -559,6 +755,10 @@ func build_interior(s: Dictionary) -> Node3D:
 		for i in 10:
 			var rrr: Rect2 = (rooms[rng.randi() % rooms.size()][1] as Rect2).grow(-0.4)
 			_fb(kk, Vector3(rng.randf_range(rrr.position.x, rrr.end.x), Y0 + 0.12, rng.randf_range(rrr.position.y, rrr.end.y)), Vector3(rng.randf_range(0.2, 0.6), 0.14, rng.randf_range(0.2, 0.6)), Color("#4a4034"), rng.randf() * PI)
+	if not ab:
+		_curtains(kk, s, resident)
+	if use_models and not ab:
+		_personal_touch(node, kk, rooms, resident)
 	node.add_child(_mk(kk))
 	var light := OmniLight3D.new()
 	light.position = Vector3(0, Y0 + 2.4, 0)
@@ -630,6 +830,77 @@ func _furnish_models(node: Node3D, rooms: Array, st: Dictionary, w: float, d: fl
 				_m(node, "desk", rr.position.x + 0.5, cz + 0.4, PI / 2.0)
 				for bi in 3:
 					_m(node, "cardboardBoxClosed", rr.position.x + 1.4 + (bi % 2) * 0.5, rr.end.y - 0.5 - int(bi / 2) * 0.5, rng.randf() * 0.5)
+
+
+# Cortinas por dentro das janelas: tecidos diferentes para cada morador.
+func _curtains(k: Kit, s: Dictionary, resident: String) -> void:
+	var pal := {"familia": ["#c9a06a", "#8a9a6a", "#b07a5a"], "idoso": ["#d8c8a8", "#b8a08a", "#a87a6a"], "estudante": ["#5a6a8a", "#3a3a3a", "#7a3a3a"], "casal": ["#d8d0c0", "#8a7a6a", "#6a7a8a"]}
+	var cols: Array = pal.get(resident, ["#c8b8a0"])
+	var c := Color(str(cols[rng.randi() % cols.size()]))
+	for wc in s["windows"]:
+		var p: Vector3 = wc
+		var d: float = s["d"]
+		var w: float = s["w"]
+		# janela da frente/fundos (normal em z) ou lateral (normal em x)
+		if absf(absf(p.z) - d / 2.0) < 0.3:
+			var nz := -signf(p.z)
+			for sx in [-1, 1]:
+				_fb(k, Vector3(p.x + sx * 0.5, p.y + 0.05, p.z + nz * (T + 0.05)), Vector3(0.32, 1.45, 0.04), c)
+			_fb(k, Vector3(p.x, p.y + 0.78, p.z + nz * (T + 0.05)), Vector3(1.4, 0.08, 0.06), c.darkened(0.3))
+		elif absf(absf(p.x) - w / 2.0) < 0.3:
+			var nx := -signf(p.x)
+			for sz in [-1, 1]:
+				_fb(k, Vector3(p.x + nx * (T + 0.05), p.y + 0.05, p.z + sz * 0.5), Vector3(0.04, 1.45, 0.32), c)
+
+
+# Objetos que contam quem mora ali.
+func _personal_touch(node: Node3D, k: Kit, rooms: Array, resident: String) -> void:
+	for r in rooms:
+		var rr: Rect2 = r[1]
+		var tipo: String = r[0]
+		var cx := rr.get_center().x
+		var cz := rr.get_center().y
+		match resident:
+			"estudante":
+				if tipo.begins_with("quarto"):
+					_m(node, "desk", rr.end.x - 0.6, rr.end.y - 0.45, PI)
+					_m(node, "laptop", rr.end.x - 0.6, rr.end.y - 0.45, PI, 0.75)
+					_m(node, "chairDesk", rr.end.x - 0.6, rr.end.y - 1.0, 0.0)
+					for i in 3:
+						_m(node, "cardboardBoxOpen", rr.position.x + 0.4 + i * 0.45, rr.end.y - 0.35, rng.randf())
+					_fb(k, Vector3(cx, Y0 + 1.6, rr.position.y + 0.15), Vector3(0.6, 0.8, 0.02), Color.from_hsv(rng.randf(), 0.6, 0.8))
+				if tipo == "sala":
+					_m(node, "speakerSmall", rr.end.x - 0.35, rr.position.y + 0.6, -PI / 2.0)
+					_m(node, "pillow", cx - 0.3, cz + 0.6, rng.randf())
+			"idoso":
+				if tipo == "sala":
+					_m(node, "loungeChairRelax", rr.end.x - 0.7, rr.end.y - 0.8, -PI * 0.75)
+					_m(node, "radio", rr.position.x + 0.3, rr.position.y + 0.3, 0.0, 0.0)
+					_m(node, "rugRound", cx, cz, 0.0)
+					for i in 2:
+						_m(node, "pottedPlant", rr.position.x + 0.35 + i * 0.6, rr.end.y - 0.3, 0.0)
+				if tipo.begins_with("quarto"):
+					_m(node, "sideTableDrawers", rr.end.x - 0.3, rr.end.y - 0.4, PI)
+					_m(node, "lampRoundTable", rr.end.x - 0.3, rr.end.y - 0.4, 0.0, 0.5)
+			"familia":
+				if tipo.begins_with("quarto") and rr.size.x < 3.2:
+					_m(node, "bear", cx, rr.end.y - 0.4, rng.randf_range(-0.5, 0.5))
+					for i in 3:
+						_fb(k, Vector3(cx + rng.randf_range(-0.8, 0.8), Y0 + 0.12, cz + rng.randf_range(-0.4, 0.6)), Vector3(0.18, 0.12, 0.18), Color.from_hsv(rng.randf(), 0.7, 0.85), rng.randf())
+				if tipo == "sala":
+					_m(node, "loungeChair", rr.end.x - 0.6, rr.end.y - 0.6, -PI * 0.75)
+					_m(node, "plantSmall2", rr.position.x + 0.4, rr.position.y + 0.4, 0.0, 0.0, 0.5)
+				if tipo == "cozinha":
+					_m(node, "kitchenMicrowave", rr.end.x - 1.4, rr.position.y + 0.4, 0.0, 0.92)
+			"casal":
+				if tipo == "sala":
+					_m(node, "plantSmall3", rr.end.x - 0.4, rr.end.y - 0.4, 0.0, 0.0, 0.5)
+					_m(node, "books", cx - 0.2, cz + 0.1, rng.randf(), 0.42)
+				if tipo == "cozinha":
+					_m(node, "kitchenCoffeeMachine", rr.end.x - 1.4, rr.position.y + 0.4, 0.0, 0.92)
+		if tipo == "banheiro":
+			_m(node, "bathroomMirror", rr.position.x + 0.18, rr.position.y + 1.7, PI / 2.0, 1.15)
+			_m(node, "trashcan", rr.position.x + 0.85, rr.position.y + 0.3, 0.0)
 
 
 func _mk(k: Kit) -> MeshInstance3D:

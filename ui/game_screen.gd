@@ -8,6 +8,8 @@ const LookBuilder = preload("res://ui/face/look_builder.gd")
 const PhonePanel = preload("res://ui/phone/phone_panel.gd")
 const SceneView = preload("res://ui/game/scene_view.gd")
 const WorldView = preload("res://world3d/world_view.gd")
+const FilmFx = preload("res://ui/menu/film_fx.gd")
+const ArtStyle = preload("res://world3d/art_style.gd")
 const IconButton = preload("res://ui/game/icon_button.gd")
 const Icons = preload("res://ui/game/icons.gd")
 const DialogueBox = preload("res://ui/game/dialogue_box.gd")
@@ -45,6 +47,8 @@ var scene_view: SceneView
 var stage: Control
 var world_view: WorldView
 var dim: ColorRect
+var grade: FilmFx
+var help_panel: PanelContainer
 var _side_sig: String = ""
 var speech_emotion: Dictionary = {}
 var _ev_sig: String = ""
@@ -105,7 +109,7 @@ func _ready() -> void:
 	if not GameState.log_entries.is_empty():
 		_on_log(GameState.log_entries[-1])
 	_refresh()
-	get_tree().create_timer(1.2).timeout.connect(func() -> void: _toast("WASD anda  •  clique no chão para ir  •  clique numa pessoa para conversar"))
+	get_tree().create_timer(1.2).timeout.connect(func() -> void: _toast("WASD anda  •  clique no chão para ir  •  clique numa pessoa para conversar  •  F1 ajuda"))
 	if args.has("new_origin"):
 		World.start_story(args["new_origin"])
 
@@ -132,6 +136,10 @@ func _build() -> void:
 	world_view.pause_check = func() -> bool:
 		return phone.visible or bag.visible or map_panel.visible or shop.visible or history.visible or money_panel.visible or choice_panel.visible or business_panel.visible
 	add_child(world_view)
+	grade = FilmFx.new()
+	grade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(grade)
+	grade.setup_game(ArtStyle.p()["grade"])
 	dim = ColorRect.new()
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	dim.color = Color(0.02, 0.02, 0.04, 0.55)
@@ -496,6 +504,10 @@ func _refresh() -> void:
 		scene_view.set_place(World.current_id(), scene_kind)
 	player_portrait.scene = scene_kind
 	place_title.text = loc.get("nome", "")
+	if World.current_id() == "rua" and world_view:
+		var street := world_view.current_street()
+		if street != "":
+			place_title.text = street
 	place_sub.text = "Dia %d • %s • %02d:%02d • %s" % [TimeManager.day(), TimeManager.weekday(), TimeManager.hour(), TimeManager.minute(), TimeManager.period()]
 	(money_chip.get_child(0) as Label).text = "R$ %d" % GameState.money()
 	stars_view.set_stars(CrimeSystem.wanted())
@@ -664,11 +676,55 @@ func _unhandled_key_input(e: InputEvent) -> void:
 		return
 	if phone.visible or bag.visible or map_panel.visible or shop.visible or history.visible or money_panel.visible:
 		return
+	if e.keycode == KEY_F1 or e.keycode == KEY_SLASH:
+		_toggle_help()
+		return
 	match e.keycode:
 		KEY_M: _open_map()
 		KEY_B: _open_bag()
 		KEY_C: _open_phone()
 		KEY_H: _open_history()
+
+
+# Ajuda rápida: controles e onde fica cada coisa, para ninguém ficar perdido.
+func _toggle_help() -> void:
+	if help_panel == null:
+		help_panel = PanelContainer.new()
+		help_panel.add_theme_stylebox_override("panel", UI.glass(18, 22, Color(0.04, 0.05, 0.07, 0.94)))
+		_anchor(help_panel, 0.5, 0.5, 0.5, 0.5)
+		help_panel.offset_left = -330
+		help_panel.offset_right = 330
+		help_panel.offset_top = -250
+		help_panel.offset_bottom = 250
+		var v := UI.vbox(8)
+		help_panel.add_child(v)
+		v.add_child(UI.title("Como jogar", 24))
+		var lines := [
+			["Andar", "WASD ou setas  •  Shift corre  •  clique no chão para ir até lá"],
+			["Câmera", "roda do mouse aproxima e afasta"],
+			["Conversar", "clique numa pessoa (ou na lista Pessoas aqui)  •  escreva e aperte Enter"],
+			["Ações", "use *asteriscos* para gestos: *ofereço um café*  •  só funciona com o que você tem"],
+			["Opções", "botão direito numa pessoa: elogiar, ameaçar, dar dinheiro, roubar..."],
+			["Lugares", "o painel da direita mostra o que dá para fazer onde você está"],
+			["Portas", "chegue perto de uma porta trancada: tentar, bater ou arrombar aparecem no painel"],
+			["Atalhos", "M mapa  •  B bolsa  •  C celular  •  H histórico  •  F1 esta ajuda"],
+			["Tempo", "o relógio anda sozinho; para durante conversas e com o celular aberto"],
+			["Sobreviver", "fome, sede, energia, higiene, saúde e sanidade ficam no canto esquerdo"],
+		]
+		for ln in lines:
+			var row := UI.hbox(12)
+			var k := UI.label(str(ln[0]), 15, UI.ACCENT)
+			k.custom_minimum_size = Vector2(110, 0)
+			row.add_child(k)
+			var d := UI.label(str(ln[1]), 15, UI.TEXT)
+			d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			d.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			row.add_child(d)
+			v.add_child(row)
+		v.add_child(UI.label("Aperte F1 de novo para fechar.", 13, UI.MUTED))
+		add_child(help_panel)
+		help_panel.hide()
+	help_panel.visible = not help_panel.visible
 
 
 func _open_map() -> void:

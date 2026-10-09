@@ -102,8 +102,22 @@ func gable(center: Vector3, size: Vector3, color: Color, ridge_x: bool = true) -
 	add("prism", Transform3D(b, center), color)
 
 
+var _tri_center := Vector3.INF
+
+
+# Triângulo solto. Se houver um centro de referência, orienta a face para fora dele
+# (Godot desenha a face da frente no sentido horário) e põe a normal para fora.
 func tri(a: Vector3, b: Vector3, c: Vector3, color: Color) -> void:
-	var n := (b - a).cross(c - a).normalized()
+	var n := (b - a).cross(c - a)
+	if _tri_center != Vector3.INF:
+		var centroid := (a + b + c) / 3.0
+		if n.dot(centroid - _tri_center) > 0.0:
+			var tmp := b
+			b = c
+			c = tmp
+			n = (b - a).cross(c - a)
+		n = -n
+	n = n.normalized()
 	st.set_color(color)
 	for v in [a, b, c]:
 		st.set_normal(n)
@@ -130,6 +144,7 @@ func hip(center: Vector3, w: float, h: float, d: float, color: Color) -> void:
 	var e := Vector3(x0, y0, z1)
 	var r0: Vector3
 	var r1: Vector3
+	_tri_center = Vector3(center.x, y0 - 0.5, center.z)
 	if w >= d:
 		var inset := d / 2.0
 		r0 = Vector3(x0 + inset, y1, center.z)
@@ -146,6 +161,7 @@ func hip(center: Vector3, w: float, h: float, d: float, color: Color) -> void:
 		quad(b, r0, r1, c, color.lightened(0.04))
 		tri(a, r0, b, color.darkened(0.12))
 		tri(c, r1, e, color.darkened(0.12))
+	_tri_center = Vector3.INF
 
 
 func commit(material: Material) -> ArrayMesh:

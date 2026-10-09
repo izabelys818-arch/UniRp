@@ -10,6 +10,7 @@ const CityBuilder = preload("res://world3d/city_builder.gd")
 const Humanoid = preload("res://world3d/person.gd")
 const Kit = preload("res://world3d/mesh_kit.gd")
 const Life = preload("res://world3d/life.gd")
+const Art = preload("res://world3d/art_style.gd")
 const LookBuilder = preload("res://ui/face/look_builder.gd")
 
 signal npc_chosen(id: String)
@@ -340,6 +341,8 @@ func _paused() -> bool:
 
 
 func _move_player(delta: float) -> void:
+	# engasgos de quadro (montagem de interiores) não podem virar teletransporte nem falso travamento
+	delta = minf(delta, 0.05)
 	var dir := Vector3.ZERO
 	if not _typing() and not _paused():
 		var fwd := Vector3(-1, 0, -1).normalized()
@@ -385,7 +388,7 @@ func _move_player(delta: float) -> void:
 	var real_speed: float = moved / maxf(delta, 0.0001)
 	if dir != Vector3.ZERO and not path.is_empty() and moved < speed * delta * 0.15:
 		_stuck += delta
-		if _stuck > 0.6:
+		if _stuck > 1.0:
 			path.remove_at(0)
 			_stuck = 0.0
 	player_fig.move_speed = real_speed
@@ -652,23 +655,27 @@ func _update_environment() -> void:
 	var tint: Array = sc.get("tint", [0, 0, 0, 0])
 	var tint_c := Color(float(tint[0]), float(tint[1]), float(tint[2]))
 	var tint_a := float(tint[3])
+	# luz do dia pelos quadros-chave da direção de arte (manhã azulada, tarde dourada, noite azul)
+	var L := Art.light_at(hf)
 	var elev := clampf(sin((hf - 6.0) / 12.0 * PI), 0.05, 1.0)
-	sun.rotation = Vector3(-deg_to_rad(18.0 + 52.0 * elev), deg_to_rad(-35.0 + (hf - 12.0) * 9.0), 0)
-	var sun_c := Color("#fff4e0").lerp(Color("#ff9a55"), clampf(dusk, 0.0, 1.0) * 0.8)
-	sun.light_color = sun_c.lerp(Color("#8fa6d8"), 1.0 - day)
-	sun.light_energy = lerpf(0.08, 0.78, day) * (0.6 if storm else 1.0)
-	sun.shadow_enabled = day > 0.2
-	var amb := Color("#2a3756").lerp(Color("#b9c6d8"), day)
+	sun.rotation = Vector3(-deg_to_rad(14.0 + 50.0 * elev), deg_to_rad(-35.0 + (hf - 12.0) * 9.0), 0)
+	sun.light_color = (L["sun"] as Color).lerp(Color("#9aa4b4"), 0.5 if storm else 0.0)
+	sun.light_energy = float(L["sun_e"]) * (0.45 if storm else 1.0)
+	sun.shadow_enabled = float(L["sun_e"]) > 0.2 and not storm
+	var amb: Color = L["amb"]
 	if storm:
-		amb = amb.darkened(0.25)
-	env.ambient_light_color = amb.lerp(tint_c, tint_a)
-	env.ambient_light_energy = lerpf(0.3, 0.32, day)
+		amb = amb.lerp(Color("#5a6270"), 0.45 * day).darkened(0.06 * (1.0 - day))
+	if not power and day < 0.45:
+		amb = amb.darkened(0.3)
+	env.ambient_light_color = amb.lerp(tint_c, tint_a * 0.7)
+	env.ambient_light_energy = float(L["amb_e"]) * (1.0 + 0.15 * day if storm else 1.0)
 	env.background_color = Color("#0a0f1c").lerp(Color("#7fa3c9"), day).lerp(tint_c, tint_a)
 	rain.emitting = storm
+	city.set_wet(storm)
 	life.update_slow(day < 0.45)
-	env.fog_enabled = hf < 7.5 or hf > 23.5 or storm
-	env.fog_density = 0.0025 if hf < 7.5 else 0.0015
-	env.fog_light_color = Color("#9fb0c4") if hf < 12.0 else Color("#3a4358")
+	env.fog_enabled = (storm and day > 0.4) or (hf > 5.0 and hf < 6.8)
+	env.fog_density = 0.0007 if storm else 0.0006
+	env.fog_light_color = Color("#8e98a6") if storm else Color("#a8b0bc")
 	var night := day < 0.45
 	# postes perto do jogador
 	var p := player.position
@@ -680,8 +687,9 @@ func _update_environment() -> void:
 		if l.visible:
 			l.position = spots[i]
 	city.festa_mat.albedo_color = Color.WHITE if night else Color(0.85, 0.85, 0.85)
-	city.lit_mat.emission_energy_multiplier = (1.6 if night else 0.25) if power else 0.0
-	city.lit_mat.albedo_color = Color("#ffd98a") if power and night else Color("#3b4552")
+	city.lit_mat.emission_energy_multiplier = (1.7 if night else (0.6 if day < 0.75 else 0.18)) if power else 0.0
+	city.lit_mat.albedo_color = Color("#ffd08a") if power and day < 0.75 else Color("#3b4552")
+	city.neon_mat.albedo_color = Color.WHITE if power and night else Color(0.55, 0.5, 0.5)
 	# portas, luzes internas, fogo, festa
 	var pp2 := _p2()
 	for id in city.loc_info:
@@ -702,6 +710,22 @@ func _update_environment() -> void:
 		city.set_fire(id, CrimeSystem.fire_at(id))
 	if city.festa_node:
 		city.festa_node.visible = WorldEvents.festa_on()
+
+
+# Nome da rua onde o jogador está (quando não está dentro de um lote).
+func current_street() -> String:
+	var p := _p2()
+	if layout.lot_at(p) != "":
+		return ""
+	var gx := (p.x - Layout.STREET / 2.0) / Layout.PITCH
+	var gy := (p.y - Layout.STREET / 2.0) / Layout.PITCH
+	var nx := clampi(int(round(gx)), 0, Layout.GRID)
+	var ny := clampi(int(round(gy)), 0, Layout.GRID)
+	var dx := absf(p.x - (nx * Layout.PITCH + Layout.STREET / 2.0))
+	var dy := absf(p.y - (ny * Layout.PITCH + Layout.STREET / 2.0))
+	if dx < 7.5 and dy < 7.5:
+		return "%s com %s" % [Layout.STREETS_V[nx], Layout.STREETS_H[ny]]
+	return Layout.STREETS_V[nx] if dx < dy else Layout.STREETS_H[ny]
 
 
 # ---------- entrada ----------
