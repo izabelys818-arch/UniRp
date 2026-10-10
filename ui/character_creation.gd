@@ -3,12 +3,12 @@ extends Control
 signal navigate(screen: String, args: Dictionary)
 
 # Criação de personagem: categorias numa coluna, controles de verdade à direita e prévia ao vivo
-# (retrato pintado ou corpo 3D girando, com as expressões). A linha "Editando" mostra o que está
+# (retrato da própria pessoa ou corpo 3D girando, com as expressões). A linha "Editando" mostra o que está
 # sendo mexido e o rodapé da prévia diz o que mudou. Idade em faixas (criança, adolescente,
 # adulto, idoso) com data de aniversário no calendário do jogo.
 
 const UI = preload("res://ui/ui_theme.gd")
-const FaceRig = preload("res://ui/face/face_paint.gd")  # retrato pintado (opção B)
+const FaceRig = preload("res://ui/face/face_portrait.gd")  # retrato da própria pessoa 3D
 const LookBuilder = preload("res://ui/face/look_builder.gd")
 const Person = preload("res://world3d/person.gd")
 const MAX_TRAITS := 3
@@ -64,6 +64,7 @@ var change_label: Label
 var error_label: Label
 var _focus_row: PanelContainer
 var _emotion: String = "neutro"
+var _emotion_picker: OptionButton
 
 var preview_stack: Control
 var view3d: SubViewportContainer
@@ -134,6 +135,17 @@ func _ready() -> void:
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		b.add_theme_font_size_override("font_size", 13)
 		emo_grid.add_child(b)
+	var emotion_picker := OptionButton.new()
+	_emotion_picker = emotion_picker
+	emotion_picker.add_item("Todas as expressões…")
+	emotion_picker.set_item_disabled(0, true)
+	var emotions: Array = FaceRig.EXPRESSIONS.keys()
+	for e in emotions:
+		emotion_picker.add_item(str(World.emotions.get(e, {"pt": e})["pt"]).capitalize())
+	emotion_picker.item_selected.connect(func(i: int):
+		if i > 0:
+			_set_emotion(str(emotions[i - 1])))
+	left.add_child(emotion_picker)
 	left.add_child(UI.button("Testar fala", _test_talk))
 
 	# --- categorias ---
@@ -299,6 +311,8 @@ func _process(delta: float) -> void:
 
 func _set_emotion(emo: String) -> void:
 	_emotion = emo
+	if _emotion_picker != null:
+		_emotion_picker.select(FaceRig.EXPRESSIONS.keys().find(emo) + 1)
 	portrait.set_emotion(emo, false)
 	if _fig != null:
 		_fig.set_emotion(emo)
@@ -423,7 +437,7 @@ func _selector(title: String, options: Array, getter: Callable, setter: Callable
 	return value
 
 
-# Grade de miniaturas: cada opção desenhada com o próprio retrato (mesmo rosto, só muda a opção).
+# Grade de miniaturas: cada opção capturada com o próprio retrato (mesmo rosto, só muda a opção).
 func _thumbs(title: String, key: String, options: Array, columns: int = 6) -> void:
 	var row := _row(title)
 	row.get_child(0).custom_minimum_size = Vector2(110, 0)
@@ -445,6 +459,7 @@ func _thumbs(title: String, key: String, options: Array, columns: int = 6) -> vo
 		pc.tooltip_text = str(options[i]).capitalize()
 		pc.mouse_filter = Control.MOUSE_FILTER_STOP
 		var f = FaceRig.new()
+		f.frozen = true
 		f.custom_minimum_size = Vector2(56, 70)
 		f.scene = "vazio"
 		f.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -453,7 +468,6 @@ func _thumbs(title: String, key: String, options: Array, columns: int = 6) -> vo
 		pc.add_child(f)
 		f.set_look(LookBuilder.build(sp, age, GENDERS[gender]))
 		f.set_emotion(_emotion, true)
-		f.set_process(false)
 		pc.gui_input.connect(func(e: InputEvent):
 			if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
 				spec[key] = i
@@ -705,6 +719,9 @@ func _cat_face() -> void:
 	_slider("Maçãs do rosto", "cheek", "suaves", "marcadas")
 	_slider("Mandíbula", "jaw", "estreita", "forte")
 	_slider("Queixo", "chin_w", "pontudo", "largo")
+	_slider("Altura do queixo", "chin_length", "curto", "longo")
+	_slider("Perfil da testa", "forehead", "recuada", "saliente")
+	_slider("Assimetria natural", "asymmetry", "esquerda", "direita")
 	_section("Marcas do tempo")
 	_slider("Rugas e vincos", "rugas", "lisa", "marcada")
 	_note("As rugas também chegam sozinhas com a idade; este controle só adianta ou atrasa.")
@@ -725,6 +742,7 @@ func _cat_eyes() -> void:
 		spec["ajustes"]["eye_h"] = float(EYE_SHAPES[v][1])
 		spec["ajustes"]["eye_tilt"] = float(EYE_SHAPES[v][2])
 		_show_cat.call_deferred(cat))
+	_slider("Distância entre os olhos", "eye_spacing", "próximos", "afastados")
 	_slider("Tamanho", "eye_size", "pequenos", "grandes")
 	_slider("Abertura", "eye_h", "fechados", "abertos")
 	_slider("Inclinação", "eye_tilt", "caídos", "puxados")
@@ -750,6 +768,7 @@ func _cat_nose_mouth() -> void:
 	_section("Nariz")
 	_slider("Largura do nariz", "nose_w", "fino", "largo")
 	_slider("Comprimento do nariz", "nose_len", "curto", "comprido")
+	_slider("Ponte do nariz", "nose_bridge", "suave", "marcada")
 	_mark_chips([16, 3], 2)
 	_section("Boca")
 	_slider("Volume dos lábios", "lips", "finos", "carnudos")
@@ -804,6 +823,12 @@ func _cat_body() -> void:
 	_section("Corpo")
 	_spec_selector("Tipo físico", "corpo", _cat_options("corpo"))
 	_spec_selector("Altura", "altura", _cat_options("altura"))
+	_slider("Ajuste de altura", "stature", "menor", "maior")
+	_slider("Tórax", "chest", "estreito", "largo")
+	_slider("Cintura", "waist", "fina", "larga")
+	_slider("Quadril", "hips", "estreito", "largo")
+	_slider("Braços e pernas", "limbs", "delgados", "volumosos")
+	_slider("Abdome", "abdomen", "plano", "volumoso")
 	_note("A altura e o tipo físico aparecem no corpo 3D (botão Corpo 3D, em cima da prévia). Criança e adolescente usam proporções próprias.")
 	_mark_chips([1], 2)
 
@@ -871,7 +896,7 @@ func _randomize_part(id: String) -> void:
 	match id:
 		"rosto":
 			spec["rosto"] = randi() % 5
-			_rand_adj(["face_w", "face_len", "cheek", "jaw", "chin_w"])
+			_rand_adj(["face_w", "face_len", "cheek", "jaw", "chin_w", "forehead", "chin_length", "asymmetry"])
 			spec["ajustes"]["rugas"] = snappedf(randf_range(-0.3, 0.5), 0.05)
 		"olhos":
 			spec["olhos"] = [0, 0, 1, 1, 2, 3, 4, 5][randi() % 8]
@@ -883,7 +908,7 @@ func _randomize_part(id: String) -> void:
 			spec.erase("sobrancelha_cor")
 			_rand_adj(["brow_w", "brow_y"], 0.5)
 		"nariz_boca":
-			_rand_adj(["nose_w", "nose_len", "lips", "mouth_w"])
+			_rand_adj(["nose_w", "nose_len", "lips", "mouth_w", "nose_bridge"])
 			_rand_marks([16, 3, 10], 0.06)
 		"orelhas":
 			_rand_adj(["ear_size", "ear_out"], 0.5)
@@ -905,6 +930,7 @@ func _randomize_part(id: String) -> void:
 		"corpo":
 			spec["corpo"] = randi() % 7
 			spec["altura"] = randi() % 4
+			_rand_adj(["stature", "chest", "waist", "hips", "limbs", "abdomen"], 0.55)
 		"roupa":
 			spec["roupa"] = randi() % LookBuilder.CLOTHES.size()
 			spec["cor_roupa"] = CLOTHES_SWATCHES.pick_random()
@@ -955,7 +981,11 @@ func describe() -> String:
 	return desc + ("; " + ex if ex != "" else "")
 
 
+var _starting := false
+
 func _start() -> void:
+	if _starting:
+		return
 	var pname := player_name.strip_edges()
 	if pname == "":
 		error_label.text = "Seu personagem precisa de um nome (categoria Identidade)."
@@ -992,6 +1022,10 @@ func _start() -> void:
 		"inventory": inventory,
 		"alive": true,
 	}
+	_starting = true
+	error_label.text = "Preparando sua nova vida…"
+	await get_tree().process_frame
+	await get_tree().process_frame
 	GameState.new_game(player)
 	TimeManager.total_minutes = int(origin["hora"]) * 60
 	TimeManager.days_per_month = Settings.days_per_month

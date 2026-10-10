@@ -12,6 +12,8 @@ const Kit = preload("res://world3d/mesh_kit.gd")
 const Life = preload("res://world3d/life.gd")
 const Art = preload("res://world3d/art_style.gd")
 const LookBuilder = preload("res://ui/face/look_builder.gd")
+const HumanMotion = preload("res://world3d/human_motion.gd")
+const Leaves = preload("res://world3d/falling_leaves.gd")
 
 signal npc_chosen(id: String)
 signal npc_menu(id: String)
@@ -53,6 +55,7 @@ var wet_level := 0.0
 var _wet_min := -1
 var npcs: Dictionary = {}           # id -> {"fig", "loc", "path", "wait"}
 var life: Life
+var falling_leaves: Leaves
 var path: PackedVector2Array = PackedVector2Array()
 var pending_npc: String = ""
 # ação com o corpo em andamento (dormir, banho, comer, beber) — ver start_action
@@ -78,6 +81,9 @@ var _door_locked: Dictionary = {}
 var _built: bool = false
 var _talk_anchor: Vector2 = Vector2.INF
 var hint: Label
+var _loading: CanvasLayer
+var _loading_text: Label
+signal world_ready
 
 
 func _ready() -> void:
@@ -90,13 +96,32 @@ func _ready() -> void:
 	viewport.msaa_3d = Viewport.MSAA_4X
 	viewport.handle_input_locally = false
 	add_child(viewport)
-	_setup_scene()
+	_loading = CanvasLayer.new()
+	_loading.layer = 100
+	add_child(_loading)
+	var backdrop := ColorRect.new()
+	backdrop.color = Color("#161c20")
+	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_loading.add_child(backdrop)
+	_loading_text = Label.new()
+	_loading_text.text = "Preparando o bairro…"
+	_loading_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_loading_text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_loading_text.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_loading_text.add_theme_font_size_override("font_size", 24)
+	backdrop.add_child(_loading_text)
+	await get_tree().process_frame
+	await _setup_scene()
 	World.open_world = true
 	World.location_changed.connect(_on_location_changed)
 	World.walk_requested.connect(_on_walk_requested)
-	NPCManager.npc_replied.connect(func(id: String, _d: Dictionary) -> void:
+	NPCManager.npc_replied.connect(func(id: String, data: Dictionary) -> void:
 		if npcs.has(id):
-			(npcs[id]["fig"] as Humanoid).talk_left = 3.5)
+			(npcs[id]["fig"] as Humanoid).talk_left = 3.5
+			var gesture := str(data.get("gesto_visual", ""))
+			if gesture != "" and NPCManager.channel == NPCManager.PRESENCIAL:
+				(npcs[id]["fig"] as Humanoid).gesture(gesture)
+				player_fig.gesture(gesture))
 	hint = Label.new()
 	hint.add_theme_font_size_override("font_size", 15)
 	hint.add_theme_color_override("font_color", Color("#fff3d6"))
@@ -110,6 +135,8 @@ func _ready() -> void:
 	_last_minutes = TimeManager.total_minutes
 	_update_environment()
 	_built = true
+	_loading.queue_free()
+	world_ready.emit()
 
 
 func _exit_tree() -> void:
@@ -146,7 +173,7 @@ func _setup_scene() -> void:
 	layout = Layout.new()
 	city = CityBuilder.new()
 	viewport.add_child(city)
-	city.build(layout)
+	await city.build(layout, true, func(message: String): _loading_text.text = message)
 	print("CIDADE montada em %d ms (%d casas)" % [Time.get_ticks_msec() - t0, layout.house_ids.size()])
 	for s in city.seats:
 		var lid := layout.lot_at(s["p"])
@@ -168,7 +195,8 @@ func _setup_scene() -> void:
 	viewport.add_child(player)
 	player_fig = Humanoid.new()
 	player.add_child(player_fig)
-	_prewarm_bodies()
+	_loading_text.text = "Preparando os moradores…"
+	await _prewarm_bodies()
 	refresh_player_look()
 	# marcadores
 	marker = _ring(Color("#ffd166"), 0.45)
@@ -189,7 +217,11 @@ func _setup_scene() -> void:
 	_setup_rain()
 	life = Life.new()
 	viewport.add_child(life)
-	life.setup(layout, city)
+	_loading_text.text = "Preparando a vida nas ruas…"
+	await life.setup(layout, city, true, true, func(message: String): _loading_text.text = message)
+	falling_leaves = Leaves.new()
+	viewport.add_child(falling_leaves)
+	falling_leaves.sources = city.foliage_sources
 
 
 func _ring(c: Color, r: float) -> MeshInstance3D:
@@ -243,7 +275,7 @@ func _on_birthday(id: String, _age: int) -> void:
 		refresh_player_look()
 	elif npcs.has(id):
 		var n: Dictionary = NPCManager.npcs[id]
-		(npcs[id]["fig"] as Node3D).set_look(LookBuilder.build(World.npc_looks.get(id, {}), int(n["idade"]), str(n["genero"])))
+		(npcs[id]["fig"] as Node3D).set_look(LookBuilder.build(LookBuilder.individual_spec(World.npc_looks.get(id, {}), id), int(n["idade"]), str(n["genero"])))
 
 
 # Cada combinação de gênero, idade e tipo físico gera a malha do corpo e das roupas uma vez (~150 ms).
@@ -252,11 +284,11 @@ func _prewarm_bodies() -> void:
 	if not GameState.active:
 		return
 	var seen := {}
+	var prepared := 0
 	for id in NPCManager.npcs:
 		var n: Dictionary = NPCManager.npcs[id]
-		var lk := LookBuilder.build(World.npc_looks.get(id, {}), int(n["idade"]), str(n["genero"]))
-		var age := int(lk["age"])
-		var key := "%s_%d_%d_%s" % [str(lk["gender"]), 0 if age < 13 else (1 if age < 18 else 2), int(lk["body_type"]), str(lk["clothes"])]
+		var lk := LookBuilder.build(LookBuilder.individual_spec(World.npc_looks.get(id, {}), id), int(n["idade"]), str(n["genero"]))
+		var key := str(lk) # inclui a anatomia individual, preparada junto do corpo
 		if seen.has(key):
 			continue
 		seen[key] = true
@@ -264,6 +296,9 @@ func _prewarm_bodies() -> void:
 		viewport.add_child(f)
 		f.set_look(lk)
 		f.free()
+		prepared += 1
+		_loading_text.text = "Preparando os moradores… %d de %d" % [prepared, NPCManager.npcs.size()]
+		await get_tree().process_frame
 
 
 func refresh_player_look() -> void:
@@ -356,6 +391,7 @@ func _go_to(dest: Vector2) -> void:
 func _process(delta: float) -> void:
 	if not _built:
 		return
+	falling_leaves.update(delta, player.position, _inside_any(_p2()) != "", WorldEvents.raining())
 	if TimeManager.total_minutes - _last_minutes > 20 or TimeManager.total_minutes < _last_minutes:
 		_snap_npcs = true
 	_last_minutes = TimeManager.total_minutes
@@ -369,6 +405,7 @@ func _process(delta: float) -> void:
 			_update_location()
 		_time_flow(delta)
 	_camera(delta)
+	_animate_lowering(delta)
 	var tq := Time.get_ticks_usec()
 	_t_cut -= delta
 	if _t_cut <= 0.0:
@@ -397,7 +434,7 @@ func _process(delta: float) -> void:
 		hover_ring.visible = true
 		hover_ring.position = hf.position + Vector3(0, 0.08, 0)
 		var head_px := camera.unproject_position(hf.global_position + Vector3(0, 2.0, 0))
-		hint.text = "Clique para conversar   •   botão direito: opções" if NPCManager.talking_to == "" else "Em conversa"
+		hint.text = "Clique para conversar   â€¢   botão direito: opções" if NPCManager.talking_to == "" else "Em conversa"
 		hint.size = hint.get_combined_minimum_size()
 		hint.position = head_px - Vector2(hint.size.x / 2.0, hint.size.y + 8.0)
 		hint.visible = true
@@ -454,7 +491,8 @@ func _move_player(delta: float) -> void:
 		else:
 			dir = Vector3(d.x, 0, d.y).normalized()
 	var running := Input.is_physical_key_pressed(KEY_SHIFT) and dir != Vector3.ZERO
-	var speed := RUN_SPEED if running else WALK_SPEED
+	var age_profile := HumanMotion.profile(int(GameState.player.get("age", 30)))
+	var speed := (RUN_SPEED * float(age_profile["run"])) if running else (WALK_SPEED * float(age_profile["walk"]))
 	if NeedsSystem.get_value("energia") < 12.0:
 		speed *= 0.6
 		running = false
@@ -462,7 +500,7 @@ func _move_player(delta: float) -> void:
 	# aceleração e frenagem: o corpo tem inércia, não liga e desliga
 	var vel2 := Vector2(player.velocity.x, player.velocity.z)
 	var want := Vector2(dir.x, dir.z) * speed
-	vel2 = vel2.move_toward(want, (16.0 if want != Vector2.ZERO else 24.0) * delta)
+	vel2 = vel2.move_toward(want, (float(age_profile["accel"]) if want != Vector2.ZERO else 19.0) * delta)
 	player.velocity.x = vel2.x
 	player.velocity.z = vel2.y
 	player.velocity.y = 0.0 if player.is_on_floor() else player.velocity.y - 20.0 * delta
@@ -485,7 +523,7 @@ func _move_player(delta: float) -> void:
 	var p_wet := WorldEvents.raining() and _inside_any(_p2()) == "" and _act.is_empty()
 	player_fig.set_umbrella(p_wet)
 	player_fig.hunched = p_wet
-	player_fig.running = real_speed > 5.0
+	player_fig.running = running and real_speed > WALK_SPEED * float(age_profile["walk"])
 	if vel2.length() > 0.3:
 		player_fig.rotation.y = lerp_angle(player_fig.rotation.y, atan2(vel2.x, vel2.y), minf(delta * 9.0, 1.0))
 	_walk_acc += moved
@@ -593,8 +631,95 @@ func _camera(delta: float) -> void:
 # inteiro uma laje de paredes baixas — torres e lojas sem interior "sumiam" e piscavam ao passar.
 # Agora: só abre o prédio em que o jogador está dentro (com folga na porta para não piscar), e só
 # a frente/telhado baixam. Atrás de prédios, o jogador aparece em silhueta (person.gd, raio-x).
+# Estilo Project Zomboid / Sims: o prédio ou a casa que está entre a câmera e o jogador "abaixa"
+# (como se as paredes caíssem) até uma altura que deixa o boneco à vista, e sobe de novo quando
+# o jogador sai da linha. Nada some: a fachada e a porta continuam no lugar.
+const LOWER_MIN := 2.4
+var _lowering: Array = []
+
+
+func _hide_blockers(p: Vector2) -> void:
+	var d := CAM_DIR.normalized()
+	var hd := Vector2(d.x, d.z) / d.y          # deslocamento horizontal por metro de altura, rumo à câmera
+	for s in city.structures:
+		var r: Rect2 = s["rect"]
+		if not s.has("root"):
+			continue
+		if not s.has("h"):
+			s["h"] = _structure_height(s)
+		var h: float = s["h"]
+		var want := 1.0
+		if h > LOWER_MIN + 0.5 and not r.has_point(p) and r.grow(30.0).has_point(p):
+			var lowered: bool = float(s.get("sy_t", 1.0)) < 0.99
+			var t_in := _segment_hits_rect(p, p + hd * (h - 1.7), r.grow(0.6 if not lowered else 1.6))
+			if t_in >= 0.0:
+				# altura do raio no ponto onde ele entra no prédio: abaixo dela o boneco já aparece
+				var entry := 1.7 + t_in * (h - 1.7)
+				want = clampf(maxf(LOWER_MIN, entry - 0.5) / h, 0.05, 1.0)
+		if absf(float(s.get("sy_t", 1.0)) - want) > 0.001:
+			s["sy_t"] = want
+			if not s in _lowering:
+				_lowering.append(s)
+
+
+# Move a altura de cada prédio até o alvo, um pouco por quadro.
+func _animate_lowering(delta: float) -> void:
+	if _lowering.is_empty():
+		return
+	var done: Array = []
+	for s in _lowering:
+		var root: Node3D = s["root"]
+		var target: float = s["sy_t"]
+		# desce rápido, sobe um pouco mais devagar
+		var rate := 7.0 if target < root.scale.y else 4.0
+		var y := lerpf(root.scale.y, target, minf(delta * rate, 1.0))
+		if absf(y - target) < 0.004:
+			y = target
+			done.append(s)
+		root.scale = Vector3(1.0, y, 1.0)
+	for s in done:
+		_lowering.erase(s)
+
+
+func _structure_height(s: Dictionary) -> float:
+	var top := 0.0
+	for node in [s["full"], s["cut"]]:
+		for c in (node as Node3D).get_children():
+			if c is MeshInstance3D and (c as MeshInstance3D).mesh != null and (c as MeshInstance3D).cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+				top = maxf(top, (c as MeshInstance3D).get_aabb().end.y)
+	return top
+
+
+# Onde (0..1) o segmento a→b entra no retângulo; -1 se não cruza.
+static func _segment_hits_rect(a: Vector2, b: Vector2, r: Rect2) -> float:
+	var t0 := 0.0
+	var t1 := 1.0
+	var dv := b - a
+	for axis in 2:
+		var o := a[axis]
+		var dd := dv[axis]
+		var lo := r.position[axis]
+		var hi := r.end[axis]
+		if absf(dd) < 0.00001:
+			if o < lo or o > hi:
+				return -1.0
+		else:
+			var ta := (lo - o) / dd
+			var tb := (hi - o) / dd
+			if ta > tb:
+				var tmp := ta
+				ta = tb
+				tb = tmp
+			t0 = maxf(t0, ta)
+			t1 = minf(t1, tb)
+			if t0 > t1:
+				return -1.0
+	return t0
+
+
 func _cutaway() -> void:
 	var p := _p2()
+	_hide_blockers(p)
 	var built := 0
 	for s in city.structures:
 		var r: Rect2 = s["rect"]
@@ -622,7 +747,7 @@ func _cutaway() -> void:
 # O efeito é sempre a função que já existia (HomeSystem/Economy), chamada só no fim; se o
 # jogador se mexer antes, a ação é cancelada sem efeito e sem deixar pose presa.
 
-const ACT_TIME := {"dormir": 3.4, "banho": 3.2, "comer": 3.4, "beber": 2.4}
+const ACT_TIME := {"dormir": 3.4, "banho": 3.2, "comer": 3.4, "beber": 3.5, "cozinhar": 5.8, "tv": 4.0, "sofa": 4.0, "pc": 5.0}
 
 
 func action_busy() -> bool:
@@ -643,6 +768,16 @@ func start_action(kind: String, loc_id: String, effect: Callable, item_id: Strin
 			if not pts.has("chuveiro"):
 				return false
 			plan = (pts["chuveiro"] as Dictionary).duplicate()
+		"cozinhar", "tv", "sofa", "pc":
+			var point_key := "fogao" if kind == "cozinhar" else ("computador" if kind == "pc" else "sofa")
+			if not pts.has(point_key):
+				return false
+			plan = (pts[point_key] as Dictionary).duplicate(true)
+			if plan.has("seat"):
+				var seat_key := _seat_key(plan["seat"])
+				if seat_used.has(seat_key):
+					return false
+				seat_used[seat_key] = "jogador"
 		"comer", "beber":
 			var lot := layout.lot_at(_p2())
 			var seat = _free_seat(lot, _p2()) if lot != "" else null
@@ -720,6 +855,8 @@ func _update_action(delta: float) -> void:
 func _begin_pose() -> void:
 	var plan: Dictionary = _act["plan"]
 	Humanoid.set_xray_strength(0.0)
+	player_fig.daily_action = str(_act["kind"])
+	player_fig.action_time = 0.0
 	match str(_act["kind"]):
 		"dormir":
 			# deita de costas: pés no pé da cama, cabeça no travesseiro, e se cobre
@@ -744,6 +881,7 @@ func _begin_pose() -> void:
 				_fade.color = Color(0.02, 0.02, 0.04, 0.0)
 				add_child(_fade)
 		"banho":
+			player_fig.activity = "banho"
 			# água caindo do chuveiro
 			var w := CPUParticles3D.new()
 			w.amount = 70
@@ -769,13 +907,35 @@ func _begin_pose() -> void:
 			w.position = plan["head"]
 			viewport.add_child(w)
 			_act_props.append(w)
+		"cozinhar":
+			player_fig.activity = "cozinhar"
+			var steam := CPUParticles3D.new()
+			steam.amount = 14
+			steam.lifetime = 1.2
+			steam.direction = Vector3.UP
+			steam.gravity = Vector3(0, 0.2, 0)
+			steam.initial_velocity_min = 0.15
+			steam.initial_velocity_max = 0.3
+			var quad := QuadMesh.new()
+			quad.size = Vector2(0.05, 0.05)
+			var vapor := StandardMaterial3D.new()
+			vapor.albedo_color = Color(0.9, 0.9, 0.9, 0.18)
+			vapor.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			vapor.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+			quad.material = vapor
+			steam.mesh = quad
+			steam.position = plan["steam"]
+			viewport.add_child(steam)
+			_act_props.append(steam)
+		"tv", "sofa", "pc":
+			player_fig.activity = "sentar"
 		"comer", "beber":
 			if str(plan.get("pose", "")) == "sentar":
 				var sp: Vector2 = plan["seat"]["p"]
 				player.position = Vector3(sp.x, player.position.y, sp.y)
 				player_fig.activity = "sentar"
 			else:
-				player_fig.activity = "mexer"
+				player_fig.activity = ""
 			var held := _held_item(str(_act["item"]), str(_act["kind"]))
 			if held != null:
 				_act_props.append(held)
@@ -783,11 +943,15 @@ func _begin_pose() -> void:
 
 # Comida ou bebida na mão (presa no osso da mão direita).
 func _held_item(item_id: String, kind: String) -> Node3D:
-	if player_fig.skel == null or player_fig.skel.find_bone("hand_r") < 0:
+	return _held_for(player_fig, item_id, kind)
+
+
+func _held_for(fig: Humanoid, item_id: String, kind: String) -> Node3D:
+	if fig.skel == null or fig.skel.find_bone("hand_r") < 0:
 		return null
 	var att := BoneAttachment3D.new()
 	att.bone_name = "hand_r"
-	player_fig.skel.add_child(att)
+	fig.skel.add_child(att)
 	var kit := preload("res://world3d/mesh_kit.gd").new()
 	var tipo := str(World.items.get(item_id, {}).get("tipo", ""))
 	if kind == "beber":
@@ -813,7 +977,7 @@ func _held_item(item_id: String, kind: String) -> Node3D:
 	var mi := MeshInstance3D.new()
 	mi.mesh = kit.commit(city.mat)
 	# o corpo é escalado; o objeto mantém o tamanho real
-	mi.scale = Vector3.ONE / maxf(player_fig.scale.y, 0.5)
+	mi.scale = Vector3.ONE / maxf(fig.scale.y, 0.5)
 	att.add_child(mi)
 	return att
 
@@ -823,6 +987,8 @@ func _end_pose() -> void:
 	player_fig.rotation = Vector3(0.0, player_fig.rotation.y, 0.0)
 	player_fig.position = Vector3.ZERO
 	player_fig.activity = ""
+	player_fig.daily_action = ""
+	player_fig.action_time = 0.0
 	for p in _act_props:
 		if is_instance_valid(p):
 			p.queue_free()
@@ -889,7 +1055,7 @@ func _sync_npcs() -> void:
 			made += 1
 			var n: Dictionary = NPCManager.npcs[id]
 			var fig := Humanoid.new()
-			fig.set_look(LookBuilder.build(World.npc_looks.get(id, {}), int(n["idade"]), str(n["genero"])))
+			fig.set_look(LookBuilder.build(LookBuilder.individual_spec(World.npc_looks.get(id, {}), id), int(n["idade"]), str(n["genero"])))
 			viewport.add_child(fig)
 			var sp := layout.spot_in(want, rng)
 			fig.position = Vector3(sp.x, 0.17, sp.y)
@@ -902,7 +1068,7 @@ func _sync_npcs() -> void:
 				# criança anda solta, às vezes correndo
 				pace = rng.randf_range(1.5, 1.9)
 			if n.has("bebe"):
-				var skin: Color = LookBuilder.build(World.npc_looks.get(id, {}), age, str(n["genero"]))["skin"]
+				var skin: Color = LookBuilder.build(LookBuilder.individual_spec(World.npc_looks.get(id, {}), id), age, str(n["genero"]))["skin"]
 				fig.set_stroller(true, skin.lightened(0.08))
 				pace = minf(pace, 1.15)
 			npcs[id] = {"id": id, "fig": fig, "loc": want, "path": PackedVector2Array(), "wait": rng.randf_range(2.0, 8.0), "pace": pace, "v": 0.0, "act": "",
@@ -966,13 +1132,20 @@ func _update_npcs(delta: float) -> void:
 				_end_act(e, fig)
 			# a pessoa vem até o jogador para conversar
 			var gap := pp - fp
-			if gap.length() > 1.5:
-				var st := gap.normalized() * minf(NPC_SPEED * 1.4 * delta, gap.length() - 1.5)
+			var spacing := 1.5
+			if fig.gesture_left > 0.0:
+				spacing = {"cumprimento": 1.0, "abraco": 0.74, "beijo": 0.62}.get(fig.social_gesture, 1.5)
+			if gap.length() > spacing:
+				var st := gap.normalized() * minf(float(e.get("pace", NPC_SPEED)) * delta, gap.length() - spacing)
 				fig.position.x += st.x
 				fig.position.z += st.y
 				fig.move_speed = NPC_SPEED * 1.4
 				fig.walking = true
 			else:
+				if fig.gesture_left <= 0.0 and gap.length() < 1.25:
+					var back := -gap.normalized() * minf(0.65 * delta, 1.25 - gap.length())
+					fig.position.x += back.x
+					fig.position.z += back.y
 				fig.walking = false
 				_face(player_fig, fp)
 			_face(fig, pp)
@@ -1062,6 +1235,17 @@ func _choose_act(e: Dictionary, fig: Humanoid) -> void:
 	var indoors: bool = lot.has("building") and (lot["building"] as Rect2).size != Vector2.ZERO
 	e["wait"] = rng.randf_range(5.0, 14.0)
 	var r := rng.randf()
+	# Refeições e café nas mesas do bairro, com utensílio e gesto na mão.
+	if r < 0.24 and loc in ["bar", "lanchonete", "minha_lanchonete", "pensao"]:
+		var meal_seat = _free_seat(loc, fp)
+		if meal_seat != null:
+			seat_used[_seat_key(meal_seat)] = id
+			e["seat"] = meal_seat
+			e["act"] = "ir_refeicao"
+			e["path"] = PackedVector2Array([meal_seat["p"]])
+			e["meal"] = "beber" if rng.randf() < 0.5 else "comer"
+			e["wait"] = rng.randf_range(8.0, 15.0)
+			return
 	# paciente no hospital (ou hóspede na pensão) deita num leito livre
 	if r < 0.35 and str(World.locations.get(loc, {}).get("tipo", "")) in ["servico", "hospedagem"]:
 		var bed = _free_bed(loc, fp)
@@ -1147,6 +1331,12 @@ func _birthday_here(loc: String) -> bool:
 
 func _arrive(e: Dictionary, fig: Humanoid) -> void:
 	match str(e.get("act", "")):
+		"ir_refeicao":
+			e["act"] = "sentar"
+			fig.activity = "sentar"
+			fig.daily_action = str(e["meal"])
+			fig.action_time = 0.0
+			e["held"] = _held_for(fig, "cafe" if fig.daily_action == "beber" else "pao", fig.daily_action)
 		"ir_deitar":
 			var bed: Dictionary = e["bed"]
 			var an: Vector3 = bed["anchor"]
@@ -1166,6 +1356,9 @@ func _arrive(e: Dictionary, fig: Humanoid) -> void:
 
 
 func _end_act(e: Dictionary, fig: Node3D) -> void:
+	if is_instance_valid(e.get("held")):
+		e["held"].queue_free()
+	e["held"] = null
 	if e.get("seat") != null:
 		seat_used.erase(_seat_key(e["seat"]))
 		e["seat"] = null
@@ -1186,6 +1379,8 @@ func _end_act(e: Dictionary, fig: Node3D) -> void:
 	e["look"] = Vector3.INF
 	if fig is Humanoid:
 		(fig as Humanoid).activity = ""
+		(fig as Humanoid).daily_action = ""
+		(fig as Humanoid).action_time = 0.0
 
 
 func _bed_key(b: Dictionary) -> String:
@@ -1374,6 +1569,8 @@ func _fade_lamps(delta: float) -> void:
 
 # Nome da rua onde o jogador está (quando não está dentro de um lote).
 func current_street() -> String:
+	if not _built:
+		return ""
 	var p := _p2()
 	if layout.lot_at(p) != "":
 		return ""
@@ -1437,6 +1634,8 @@ func _ground_at(pos: Vector2) -> Vector2:
 
 
 func _gui_input(e: InputEvent) -> void:
+	if not _built:
+		return
 	if not GameState.active:
 		return
 	if e is InputEventMouseMotion:

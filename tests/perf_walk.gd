@@ -55,6 +55,8 @@ func _ready() -> void:
 	screen.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root.add_child(screen)
 	wv = screen.world_view
+	while not wv._built:
+		await get_tree().process_frame
 	for i in 90:
 		await get_tree().process_frame
 	recording = true

@@ -332,6 +332,15 @@ func build(c: Node3D, lot: Dictionary) -> Dictionary:
 		for li in 5:
 			kf.box_ab(Vector3(gx0, Y0 + 0.4 + li * 0.42, z1 + 0.06), Vector3(gx1, Y0 + 0.44 + li * 0.42, z1 + 0.09), Color("#b9b5a8"))
 	# --- telhado ---
+	# Objetos cotidianos na entrada, com mais plantas no Vale Sereno.
+	if not st["abandoned"]:
+		ka.box(Vector3(dx + door_w * 0.5, Y0 + 0.01, z1 + 0.32), Vector3(0.8, 0.02, 0.45), Color("#74624b"))
+		if rng.randf() < 0.55:
+			for shoe in [-0.09, 0.09]:
+				ka.box(Vector3(dx + door_w + 0.22 + shoe, Y0 + 0.055, z1 + 0.25), Vector3(0.12, 0.09, 0.25), Color("#4b423b"))
+		if Art.id() == "vale_sereno" or rng.randf() < 0.32:
+			ka.cyl(Vector3(dx - 0.35, Y0, z1 + 0.25), 0.14, 0.25, Color("#8f563c"))
+			ka.sphere(Vector3(dx - 0.35, Y0 + 0.48, z1 + 0.25), Vector3(0.45, 0.55, 0.4), Color("#587343"))
 	var rh := clampf(minf(w, d) * 0.4, 1.5, 2.7)
 	var roof: Color = st["roof"]
 	var ov := 0.55

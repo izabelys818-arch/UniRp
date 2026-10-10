@@ -3,7 +3,7 @@ extends Control
 signal navigate(screen: String, args: Dictionary)
 
 const UI = preload("res://ui/ui_theme.gd")
-const FaceRig = preload("res://ui/face/face_paint.gd")  # retrato pintado (opção B)
+const FaceRig = preload("res://ui/face/face_portrait.gd")  # retrato da própria pessoa 3D
 const LookBuilder = preload("res://ui/face/look_builder.gd")
 const PhonePanel = preload("res://ui/phone/phone_panel.gd")
 const SceneView = preload("res://ui/game/scene_view.gd")
@@ -146,6 +146,7 @@ func _build() -> void:
 	world_view.npc_chosen.connect(_on_walk_npc)
 	world_view.npc_menu.connect(_open_context)
 	world_view.toast.connect(_toast)
+	world_view.world_ready.connect(_queue_refresh)
 	world_view.pause_check = func() -> bool:
 		return phone.visible or bag.visible or map_panel.visible or shop.visible or history.visible or money_panel.visible or choice_panel.visible or business_panel.visible or (pause_layer != null and pause_layer.visible)
 	add_child(world_view)
@@ -357,7 +358,7 @@ func _sync_actors() -> void:
 		a.scene = FaceRig.scene_for_location(World.current_id(), str(World.current().get("tipo", "")))
 		a.mouse_filter = Control.MOUSE_FILTER_STOP
 		a.tooltip_text = "Botão direito: mais ações"
-		a.set_look(LookBuilder.build(World.npc_looks.get(id, {}), int(n["idade"]), n["genero"]))
+		a.set_look(LookBuilder.build(LookBuilder.individual_spec(World.npc_looks.get(id, {}), id), int(n["idade"]), n["genero"]))
 		a.set_emotion(str(NPCManager.state[id]["emocao"]), true)
 		a.gui_input.connect(_on_actor_input.bind(id))
 		actors[id] = a
@@ -436,9 +437,13 @@ func _open_context(id: String) -> void:
 	context_menu.add_item("Perguntar o nome", 1)
 	context_menu.add_item("Pedir o número", 2)
 	context_menu.add_item("Elogiar", 3)
+	context_menu.add_item("Cumprimentar com a mão", 9)
 	# com criança ou adolescente: nada de flerte, ameaça, empurrão nem violência
 	var target_minor := int(NPCManager.npcs[id].get("idade", 30)) < 18
 	if not GameState.is_minor() and not target_minor:
+		context_menu.add_item("Pedir um abraço de amizade", 10)
+		if bool(NPCManager.state[id].get("namoro", false)):
+			context_menu.add_item("Beijar seu parceiro", 11)
 		context_menu.add_item("Flertar", 4)
 	context_menu.add_item("Provocar", 5)
 	if not target_minor:
@@ -491,6 +496,12 @@ func _on_context(menu_id: int) -> void:
 		CrimeSystem.pickpocket(id)
 		return
 	if not _ensure_talking(id):
+		return
+	if menu_id in [9, 10, 11]:
+		if not world_view.npcs.has(id) or (world_view.npcs[id]["fig"] as Node3D).position.distance_to(world_view.player.position) > 2.2:
+			_toast("Aproxime-se da pessoa para cumprimentar ou demonstrar carinho.")
+			return
+		SocialSystem.contact(id, {9: "cumprimento", 10: "abraco", 11: "beijo"}[menu_id])
 		return
 	if MENU_ACTIONS.has(menu_id):
 		NPCManager.talk(MENU_ACTIONS[menu_id])
@@ -565,14 +576,21 @@ func _refresh() -> void:
 # Ações de casa com o corpo: o personagem vai até a cama/chuveiro, faz a ação e só então o
 # efeito real (HomeSystem/Economy, como sempre) é aplicado. Sem ponto de uso, segue direto.
 func _do_action(id: String) -> void:
+	if world_view.action_busy():
+		_toast("Termine a atividade atual ou ande para interrompê-la.")
+		return
 	var kind := ""
 	match id:
+		"casa:cozinhar", "casa:tv", "casa:sofa", "casa:pc":
+			kind = id.trim_prefix("casa:")
 		"dormir_casa", "dormir_quarto":
 			kind = "dormir"
 		"banho_casa":
 			if bool(HomeSystem.utils(World.current_id()).get("agua", true)):
 				kind = "banho"
-	if kind != "" and world_view.start_action(kind, World.current_id(), func() -> void: Economy.do_action(id)):
+	if kind != "":
+		if not world_view.start_action(kind, World.current_id(), func() -> void: Economy.do_action(id)):
+			_toast("Não há um lugar livre para essa atividade agora.")
 		return
 	Economy.do_action(id)
 

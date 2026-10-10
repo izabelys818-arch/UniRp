@@ -77,6 +77,8 @@ func _ready() -> void:
 	root.add_child(screen)
 	await get_tree().process_frame
 	wv = screen.world_view
+	while not wv._built:
+		await get_tree().process_frame
 	for i in 40:
 		await get_tree().process_frame
 	var home := "apartamento"
@@ -166,6 +168,53 @@ func _ready() -> void:
 	check(wv._act.is_empty(), "interromper: ação cancelada ao andar")
 	check(absf(wv.player_fig.rotation.x) < 0.01, "interromper: não ficou preso deitado")
 	check(absf(NeedsSystem.get_value("energia") - e1) < 1.0 and TimeManager.total_minutes - m1 < 60, "interromper: nenhum efeito aplicado (energia %.2f → %.2f, +%d min)" % [e1, NeedsSystem.get_value("energia"), TimeManager.total_minutes - m1])
+	# --- beber e atividades adicionais ---
+	GameState.player["inventory"]["agua"] = 1
+	NeedsSystem.apply({"hidratacao": -40})
+	var hydration := NeedsSystem.get_value("hidratacao")
+	check(screen._use_item_animated("agua"), "água: iniciou gesto")
+	check(GameState.player["inventory"].has("agua"), "água: item reservado até concluir")
+	await _follow([], 15.0)
+	check(not GameState.player["inventory"].has("agua") and NeedsSystem.get_value("hidratacao") > hydration, "água: consumo e hidratação no fim")
+	HomeSystem.housing()["moveis"][home] = ["fogao", "geladeira", "sofa", "tv", "computador"]
+	HomeSystem.utils(home)["internet"] = true
+	HomeSystem.utils(home)["agua"] = true
+	HomeSystem.utils(home)["luz"] = true
+	WorldEvents.stop("apagao")
+	for kind in ["cozinhar", "tv", "sofa", "pc"]:
+		var point_key: String = "fogao" if kind == "cozinhar" else ("computador" if kind == "pc" else "sofa")
+		var target: Vector2 = wv.city.use_points[home][point_key]["path"].back()
+		await _put_player(target + Vector2(0.0, 0.6), home)
+		var clock := TimeManager.total_minutes
+		var money := GameState.money()
+		screen._do_action("casa:" + kind)
+		check(wv.action_busy(), kind + ": começou uma atividade com o corpo")
+		screen._do_action("casa:" + kind)
+		check(TimeManager.total_minutes == clock and GameState.money() == money, kind + ": duplo clique não antecipa efeito")
+		var timeout := Time.get_ticks_msec()
+		while _stage() != "animar" and wv.action_busy() and Time.get_ticks_msec() - timeout < 12000:
+			await get_tree().process_frame
+		await _wait(1.0)
+		check(wv.player_fig.daily_action == kind, kind + ": gesto próprio ativo")
+		await _shot(kind)
+		await _follow([], 10.0)
+		check(TimeManager.total_minutes > clock, kind + ": efeito real aplicado no fim")
+		check(wv.player_fig.daily_action == "", kind + ": gesto e cadeira liberados")
+	# --- contato social, resposta e proteção de menores ---
+	NPCManager.state["ze"]["confianca"] = 50
+	NPCManager.state["ze"]["afeto"] = 50
+	NPCManager.state["ze"]["suspeita"] = 0
+	NPCManager.channel = NPCManager.PRESENCIAL
+	check(SocialSystem.contact("ze", "abraco"), "amizade: abraço correspondido com vínculo")
+	var affection: int = NPCManager.state["ze"]["afeto"]
+	SocialSystem.contact("ze", "abraco")
+	check(NPCManager.state["ze"]["afeto"] == affection, "amizade: repetir gesto não acumula afeto")
+	check(not SocialSystem.contact("ze", "beijo"), "beijo: sem namoro não é correspondido")
+	NPCManager.state["ze"]["namoro"] = true
+	check(SocialSystem.contact("ze", "beijo"), "casal adulto: beijo correspondido")
+	GameState.player["age"] = 17
+	check(not SocialSystem.contact("ze", "beijo"), "menor: beijo romântico bloqueado")
+	GameState.player["age"] = 30
 	# --- hospital ---
 	var hb: Rect2 = wv.layout.lots["hospital"]["building"]
 	var beds := 0

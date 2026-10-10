@@ -127,6 +127,36 @@ func partners() -> Array:
 	return out
 
 
+# Afeto cotidiano: a resposta respeita o vínculo, a idade e o espaço da outra pessoa.
+func contact(id: String, kind: String) -> bool:
+	if not GameState.active or NPCManager.busy or NPCManager.channel != NPCManager.PRESENCIAL or not NPCManager.state.has(id):
+		return false
+	var state: Dictionary = NPCManager.state[id]
+	if not state.get("vivo", true) or state.get("bloqueado", false):
+		return false
+	if kind != "cumprimento" and (GameState.is_minor() or int(NPCManager.npcs[id].get("idade", 30)) < 18):
+		return false
+	var accepted := int(state.get("medo", 0)) < 25 and int(state.get("suspeita", 0)) < 60
+	if kind == "abraco":
+		accepted = accepted and int(state.get("confianca", 0)) >= 25 and int(state.get("afeto", 0)) >= 35
+	elif kind == "beijo":
+		accepted = accepted and bool(state.get("namoro", false)) and int(state.get("afeto", 0)) >= 35
+	elif kind != "cumprimento":
+		return false
+	var phrase := "Você estende a mão para cumprimentar." if kind == "cumprimento" else ("Você pede um abraço." if kind == "abraco" else "Você se aproxima para um beijo.")
+	GameState.add_log(phrase, "player")
+	var repeated := TimeManager.total_minutes - int(state.get("ultimo_carinho", -10000)) < 60
+	if accepted:
+		state["ultimo_carinho"] = TimeManager.total_minutes
+	var body := {"cumprimento": "aperta sua mão", "abraco": "corresponde ao abraço", "beijo": "corresponde ao beijo"}
+	NPCManager._apply_reply(id, {"fala": "É bom ter você por perto." if accepted and kind != "cumprimento" else ("Oi, tudo bem?" if accepted else "Agora eu prefiro um pouco de espaço."),
+		"acao_corporal": body[kind] if accepted else "recua com delicadeza", "emocao": "carinhoso" if accepted and kind != "cumprimento" else "neutro",
+		"gesto_visual": kind if accepted else "", "relacao": {"afeto": 1 if accepted and not repeated else 0}, "acoes": []})
+	if accepted:
+		note_contact(id)
+	return accepted
+
+
 static func is_flirt(text: String) -> bool:
 	if text.begins_with("*flerta") or text.begins_with("*pisca") or text.begins_with("*beija"):
 		return true

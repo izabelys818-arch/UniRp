@@ -8,6 +8,7 @@ const Layout = preload("res://world3d/city_layout.gd")
 const Humanoid = preload("res://world3d/person.gd")
 const Toon = preload("res://world3d/humanoid.gd")
 const Kit = preload("res://world3d/mesh_kit.gd")
+const HumanMotion = preload("res://world3d/human_motion.gd")
 const LookBuilder = preload("res://ui/face/look_builder.gd")
 
 var layout: Layout
@@ -21,13 +22,13 @@ var head_lights: Array = []
 var player_pos: Vector2 = Vector2.ZERO
 
 
-func setup(l: Layout, c: Node3D, with_people: bool = true) -> void:
+func setup(l: Layout, c: Node3D, with_people: bool = true, staged: bool = false, progress: Callable = Callable()) -> void:
 	layout = l
 	city = c
 	rng.seed = 5511
 	_make_cars()
 	if with_people:
-		_make_peds()
+		await _make_peds(staged, progress)
 		_make_dogs()
 	_make_birds()
 	for i in 4:
@@ -220,24 +221,29 @@ func _assign_headlights(night: bool) -> void:
 
 # ---------- pedestres ----------
 
-func _make_peds() -> void:
+func _make_peds(staged: bool = false, progress: Callable = Callable()) -> void:
 	var outfits := ["camiseta", "jeans", "moletom", "social", "blusa", "regata", "couro", "vestido", "academia", "time", "sobretudo"]
 	for i in 30:
 		var female := rng.randf() < 0.5
 		var spec: Dictionary = Population.random_look(female, [outfits[rng.randi() % outfits.size()]])
 		var fig := Humanoid.new()
-		fig.set_look(LookBuilder.build(spec, rng.randi_range(14, 78), "mulher" if female else "homem"))
+		var age := rng.randi_range(7, 82)
+		fig.set_look(LookBuilder.build(spec, age, "mulher" if female else "homem"))
 		add_child(fig)
 		var node := Vector2i(rng.randi_range(0, Layout.GRID), rng.randi_range(0, Layout.GRID))
 		var side := 1.0 if rng.randf() < 0.5 else -1.0
 		var p := Layout._node_pos(node) + Vector2(5.9 * side, 5.9 * side)
 		fig.position = Vector3(p.x, 0.17, p.y)
 		var kind := "walk"
-		var spd := rng.randf_range(1.05, 1.5)
+		var spd := rng.randf_range(1.05, 1.5) * float(HumanMotion.profile(age)["walk"])
 		if i % 9 == 0:
 			kind = "jog"
-			spd = rng.randf_range(3.0, 3.6)
+			spd = rng.randf_range(3.0, 3.6) * float(HumanMotion.profile(age)["run"])
 		peds.append({"fig": fig, "node": node, "side": side, "target": p, "speed": spd, "kind": kind, "night": rng.randf() < 0.3, "wait": 0.0, "cur": spd})
+		if staged:
+			if progress.is_valid():
+				progress.call("Preparando a vida nas ruas… %d de 30" % (i + 1))
+			await get_tree().process_frame
 
 
 func _update_peds(delta: float, night: bool, raining: bool) -> void:

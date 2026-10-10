@@ -45,10 +45,11 @@ const TRAITS := [[1.0, 0.0, 1.05, 1.05], [1.0, 0.0, 0.92, 0.9], [1.05, 0.0, 1.3,
 const RANGES := {
 	"face_w": 0.14, "face_len": 0.12, "cheek": 0.1, "jaw": 0.14, "chin_w": 0.12,
 	"nose_w": 0.35, "nose_len": 0.25, "lips": 0.4, "eye_size": 0.2, "eye_tilt": 0.4,
-	"brow_w": 0.5, "brow_y": 1.0, "eye_h": 0.25, "mouth_w": 0.2, "ear_size": 0.3, "ear_out": 0.5, "rugas": 1.0,
+	"brow_w": 0.5, "brow_y": 1.0, "eye_h": 0.25, "mouth_w": 0.2, "ear_size": 0.3, "ear_out": 0.5, "rugas": 1.0, "eye_spacing": 0.16, "nose_bridge": 0.018, "chin_length": 0.014, "forehead": 0.018, "asymmetry": 0.004,
+	"chest": 0.16, "waist": 0.2, "hips": 0.16, "limbs": 0.18, "abdomen": 0.055, "stature": 0.1,
 }
 # Ajustes que somam direto (sem multiplicar pelo valor base)
-const ADDITIVE := ["eye_tilt", "brow_y", "rugas"]
+const ADDITIVE := ["eye_tilt", "brow_y", "rugas", "nose_bridge", "chin_length", "forehead", "asymmetry", "abdomen"]
 
 
 static func _idx(spec: Dictionary, key: String, n: int) -> int:
@@ -97,6 +98,8 @@ static func build(spec: Dictionary, age: int, gender: String) -> Dictionary:
 		"clothes_color": Color(spec.get("cor_roupa", colors[0])),
 		"clothes_color2": Color(spec.get("cor_roupa2", colors[1])),
 		"height": float(HEIGHTS[_idx(spec, "altura", HEIGHTS.size())]),
+		"eye_spacing": 1.0, "nose_bridge": 0.0, "chin_length": 0.0, "forehead": 0.0, "asymmetry": 0.0,
+		"chest": 1.0, "waist": 1.0, "hips": 1.0, "limbs": 1.0, "abdomen": 0.0, "stature": 1.0,
 		"mouth_w": 1.0, "ear_size": 1.0, "ear_out": 1.0, "rugas": 0.0,
 		"marks": spec.get("marcas", []).map(func(m): return int(m)),
 		"extras": spec.get("extras", []),
@@ -117,3 +120,16 @@ static func build(spec: Dictionary, age: int, gender: String) -> Dictionary:
 		if RANGES.has(k):
 			look[k] = float(look.get(k, 0.0)) + float(adj[k]) * float(RANGES[k]) * (1.0 if k in ADDITIVE else float(look.get(k, 1.0)))
 	return look
+
+
+static func individual_spec(spec: Dictionary, identity: String) -> Dictionary:
+	if spec.has("ajustes"):
+		return spec
+	var result := spec.duplicate(true)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = absi(identity.hash()) + 18271
+	var adjustments := {}
+	for key in ["face_w", "face_len", "cheek", "jaw", "chin_w", "nose_w", "nose_len", "lips", "eye_size", "eye_h", "eye_tilt", "eye_spacing", "mouth_w", "ear_size", "ear_out", "brow_w", "brow_y", "nose_bridge", "chin_length", "forehead", "asymmetry"]:
+		adjustments[key] = snappedf(rng.randf_range(-0.85, 0.85), 0.05)
+	result["ajustes"] = adjustments
+	return result

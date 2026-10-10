@@ -124,7 +124,7 @@ func random_look(female: bool, clothes: Array) -> Dictionary:
 	}
 	if randf() < 0.35:
 		look["marcas"] = [[0, 6, 7, 9, 11, 15][randi() % 6]]
-	return look
+	return preload("res://ui/face/look_builder.gd").individual_spec(look, str(randi()))
 
 
 func describe_look(spec: Dictionary) -> String:

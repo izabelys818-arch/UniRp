@@ -8,13 +8,13 @@ Registro de tudo o que foi feito no projeto, para quem for continuar (Claude Cod
 ## 1. O que é o UniRp
 
 RPG de vida com NPCs controlados por IA, passado numa cidade brasileira melancólica ("Porto Cinza" e mais 3 cenários).
-Estilo: mundo aberto **isométrico 2.5D em 3D** (visão tipo Project Zomboid / The Sims), conversa por retrato desenhado em código (estilo "I'm Not Human", agora pintado), celular com apps, economia estilo Sims, crime, empregos, vícios, clima, eventos.
+Estilo: mundo aberto **isométrico 2.5D em 3D** (visão tipo Project Zomboid / The Sims), conversa com retrato animado da própria pessoa 3D (seção 14), celular com apps, economia estilo Sims, crime, empregos, vícios, clima, eventos.
 
 - **Motor:** Godot 4.7.2 (GDScript), renderizador **`gl_compatibility`** (não trocar sem autorização do dono).
 - **IA:** OpenRouter. A chave e o modelo são configurados pelo dono na tela de Configurações do jogo. **Nunca digitar, pedir ou mostrar a chave.**
 - **Pasta do projeto:** `C:\Users\glznc\OneDrive\Documentos\UniRp`
 - **Cenários:** `porto_cinza`, `vale_sereno`, `nova_aurora`, `colapso` (`data/cenarios.json`).
-- **Modelos 3D:** corpos e cabelos da Quaternius (CC0), animações "Universal Animation Library" (`assets/anim/ual.glb`), móveis Quaternius/Kenney (CC0). **NÃO usar imagens geradas por IA** (o dono rejeitou); tudo visual é desenhado/animado por código.
+- **Modelos 3D:** personagens MakeHuman hm08 (CC0; seção 13), assets Quaternius antigos arquivados, animações "Universal Animation Library" (`assets/anim/ual.glb`), móveis Quaternius/Kenney (CC0). **NÃO usar imagens geradas por IA** (o dono rejeitou); tudo visual é desenhado/animado por código.
 
 ## 2. Como rodar
 
@@ -46,8 +46,9 @@ C:\Users\glznc\AppData\Local\Microsoft\WinGet\Packages\GodotEngine.GodotEngine_M
 
 ## 4. Estado do git
 
-- Commit de referência / último commit: **`0076408` "Direcao de arte: mundo melancolico, brasileiro e com identidade por cenario"**.
-- **Nada foi commitado desde então.** Há ~43 arquivos modificados (+5400 / −720 linhas) e ~50 arquivos novos (testes e módulos). O dono ainda não aprovou o commit.
+- Commit visual de referência: **`0076408` "Direcao de arte: mundo melancolico, brasileiro e com identidade por cenario"**.
+- Último commit confirmado localmente e no GitHub: **`650e6a0` "Personagens, calendario, vida social e mundo vivo"**. O dono commitou e enviou as rodadas anteriores.
+- As reformulações 3D e dos retratos das seções 12–14 estão no diretório de trabalho, sem commit. Não commitar sem aprovação explícita.
 - Rodapé de commit exigido pelo ambiente: `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>` (ou o modelo em uso).
 - Terminações de linha: o repositório mistura CRLF e LF; o git avisa "LF will be replaced by CRLF". Ao editar por script, preservar a terminação do arquivo.
 
@@ -181,7 +182,7 @@ O dono relatou que o jogo "travou muito" e que precisou reiniciar o PC. **Não c
 - Rosto 3D igual para todo mundo do mesmo gênero (falta variar nariz, mandíbula, olhos conforme o rosto desenhado); só 6 malhas de cabelo para 14 estilos; bigodes/costeletas sem malha no 3D.
 - Pernas ainda têm a silhueta musculosa do modelo original; diferença entre "atlético" e "forte" sutil de longe.
 - Criança no 3D ainda com pernas de proporção adulta; bebê é simples (cabeça + manta), não é NPC próprio.
-- Trocar o modelo base por outro com corpos variados (exigiria baixar modelo CC0 compatível com o esqueleto da UAL — pedir autorização para baixar).
+- Modelo base substituído por MakeHuman CC0 a pedido do dono (seção 13). Melhorar acabamento de cabelo/pele e fidelidade dos estilos de roupa continua pendente.
 - Verificar tranças, dreads, moicano e rabo de cavalo no retrato; miniaturas da criação não atualizam ao mexer em outra categoria.
 - Confirmar no jogo (câmera isométrica, 4 cenários) os corpos novos.
 
@@ -226,3 +227,239 @@ O dono relatou que o jogo "travou muito" e que precisou reiniciar o PC. **Não c
 3. Mudou algo visual? Gerar captura real (não basta compilar) e mostrar ao dono antes/depois.
 4. Mudou desempenho? Medir com `perf_walk` (dia/noite/chuva) alternando ligado/desligado; **não** com o dono jogando.
 5. Só commitar com aprovação explícita do dono.
+
+
+## 12. Rodada Codex — 10/out: personagens mais sóbrios e humanos
+
+Pedido do dono: reformular totalmente a direção do boneco 3D, com referências
+The Sims / Project Zomboid nas características físicas e tom melancólico e
+sombrio de I'm Not Human. Autorizada a reformulação de corpo, materiais,
+rosto, cabelo e expressão. O retrato pintado 2D continua com seu estilo aprovado.
+
+**Implementação**
+- `world3d/person.gd`: adulto com braços, pernas, mãos, pescoço e peito menos
+  volumosos; cintura menos heroica, suavização do relevo muscular dos membros;
+  cabeça adulta ligeiramente menor e postura de repouso mais contida.
+- Roupas mais soltas, materiais foscos, normais reconstruídas pela roupa;
+  detalhes de abertura/gola/costura na malha. Cabelo com menos brilho;
+  recortes de bigode/costeleta/cavanhaque e barba por fazer pintada na pele;
+  coque convertido de dois volumes laterais para um volume atrás da cabeça.
+- `world3d/human_style.gd`: cabeça separada do corpo compartilhado, subdivisão
+  curva e anatomia individual. Nariz, mandíbula, queixo, maçãs, lábios,
+  olhos e orelhas usam os controles físicos existentes. Pele com olheiras,
+  pigmento dos lábios e sulcos de idade; textura de detalhe obtida por código
+  do próprio asset CC0. Cor dos olhos desenhada por código.
+- Expressões: 8 deformações na pele + 3 nas sobrancelhas + fechamento do olho;
+  tensão da boca/testa, olhos semicerrados, sorriso assimétrico, piscar e fala.
+  São combinadas nas 18 emoções existentes; continuam obedecendo ao LOD.
+- `world3d/world_view.gd`: prepara também as anatomias individuais dos moradores
+  durante o carregamento. Caches de rosto e olhos limitados a 96 entradas.
+- `tests/human_style_review.gd/.tscn`: galeria real de rostos, corpos, expressões
+  e sete tipos físicos; confere deformação, índices/rig e pesos dos vértices.
+  `HUMAN_REVIEW_OUT` escolhe a pasta de capturas; padrão em `user://`.
+
+**Limites do visual**
+O rig e os assets CC0 existentes foram remodelados por código, sem baixar um
+modelo externo. O resultado continua sendo realismo estilizado, com algumas
+características do cabelo e da topologia originais. A aprovação estética do dono
+ainda depende de ele ver as capturas e o jogo atualizado.
+
+**Verificado nesta rodada**
+- `smoke_test`, `social_test`, `calendar_test`, `age_rules_test`,
+  `creation_shots` e `life_actions`: todos terminaram em `OK`.
+- A galeria `human_style_review`: `OK`, com capturas reais do Godot.
+- Saves do dono não foram utilizados nos testes (cada teste usa seu arquivo).
+- Sem mudanças em renderizador, economia, colisão, mapas, diálogos ou formato
+  do save. Nenhum commit feito pelo Codex.
+
+**Desempenho nesta máquina (RTX 2060)**
+- Antes: dia 165,2 FPS / noite 196,6 FPS (rota `perf_walk`).
+- Primeira versão, antes do cache de anatomias: dia 169,1 FPS, mas 3 quadros
+  de 131–145 ms entrando no bairro. Por isso foi acrescentado o cache/preparo.
+- Revisão com caches: dia **151,9 FPS** (pior quadro 21 ms; zero >33 ms);
+  noite **171,1 FPS** (pior 142,1 ms; 5 >50 ms); chuva **135,2 FPS**
+  (pior 95,1 ms; 3 >50 ms). Medido antes do acabamento final de preenchimento
+  de luz dos materiais e retirada dos símbolos de emoção padrão.
+- Os testes sorteiam moradores, então esses números não isolam perfeitamente
+  o custo do visual. Houve queda nas médias versus as medidas anteriores;
+  a investigação de engasgos continua parcial, não foi resolvida nesta rodada.
+- Capturas reais geradas nos quatro cenários (`char_ingame`), incluindo
+  dia/noite/chuva e zoom distante. Conferidos frente/isométrico e galeria.
+- Ajuste final: preenchimento muito discreto nos materiais de pele/roupa para
+  preservar a silhueta à noite; símbolos de emoção acima da cabeça passam a
+  ser opcionais (`set_emotion(..., true)`), com expressões físicas como padrão.
+- A galeria foi executada novamente após os acabamentos e terminou em `OK`.
+
+| Área | Status | Evidência / limite |
+|---|---|---|
+| Proporções, materiais e rosto 3D | Concluído | Capturas reais e controles físicos testados |
+| Expressões e compatibilidade das animações | Concluído | Galeria + `life_actions` e criação em `OK` |
+| Compatibilidade dos sistemas e saves | Concluído | Seis testes existentes em `OK` |
+| Redução de engasgos | Parcial | Sem engasgo no teste diurno; persistem à noite/chuva |
+| Aprovação estética do dono | Não concluído | Aguardando avaliação das capturas e jogo |
+
+Arquivos desta rodada: `PROGRESS.md`, `world3d/person.gd`,
+`world3d/human_style.gd`, `world3d/world_view.gd`,
+`tests/human_style_review.gd`, `tests/human_style_review.tscn`.
+Nenhuma aprovação para commit foi solicitada ou presumida.
+
+
+## 13. Rodada Codex — 10/out: substituição da base 3D, referência inZOI
+
+O dono rejeitou o acabamento da seção 12 e autorizou permanecer no Godot,
+substituir totalmente corpo e rosto e usar as fotos do inZOI como referência
+anatômica e de realismo. A rodada anterior ficou aquém da referência.
+
+**Troca aplicada**
+- O jogo usa `assets/humans/Human_male.gltf`, `Human_female.gltf` e versões
+  `_child`. São novas malhas anatômicas MakeHuman hm08, não deformações da
+  topologia Superhero. 13.380 vértices anatômicos por base, UVs de pele e rig
+  de 53 ossos, com aliases para o sistema de animações existente.
+- Bases infantis geradas com macros de criança. Escala por idade e altura
+  individual continua no renderer. Adolescentes usam a transição adulta.
+- Roupas próprias do pacote: gola, botões, dobras, mangas, bolsos e jeans.
+  Três famílias por gênero, com cores independentes em cima/baixo.
+- Nove bases de cabelo com textura e recorte alfa; sobrancelhas e cílios
+  texturizados; olhos com íris/esclera originais e cor de íris configurável.
+- Pele de 2048 px, versões jovem/meia idade/idosa. Texturas reais CC0 do
+  MakeHuman, sem geração de imagens por IA e sem copiar assets do inZOI.
+- Controles existentes de tipo físico, nariz, mandíbula, queixo, lábios,
+  olhos, orelhas e idade continuam alimentando o renderer; oito expressões
+  faciais combináveis, sobrancelhas, cílios e barba acompanham a expressão.
+- Pose de repouso mais natural: mãos abertas, braços soltos e pernas menos
+  afastadas. Caminhada/conversa/sentar continuam usando UAL retargetada.
+- O preparador alinha a pose A do MakeHuman à pose T da UAL. Consulta somente
+  posições dos ossos do rig antigo, sem usar seu corpo, rosto ou cabelo.
+- Pesos dos helpers de roupa transferidos do corpo; pele coberta ocultada
+  pelas máscaras das peças. IDs anatômicos em COLOR_0 evitam erros quando o
+  importador reordena vértices; substituídos por branco antes de desenhar.
+- `world3d/person.gd` e `human_style.gd` removem os antigos geradores de roupa,
+  remodelagem de herói e auxiliares de suavização sem uso.
+
+**Origem/reprodução**
+- Base/rig/macros/pesos: repositório oficial makehumancommunity/makehuman.
+- Cabelo, roupa, pele e detalhes: pacote oficial `makehuman_system_assets_cc0.zip`.
+  Um espelho antigo foi consultado durante a pesquisa, mas os arquivos usados
+  foram substituídos pelos arquivos do pacote oficial, com declaração CC0.
+- `assets/humans/README.md`, `LICENSE-CC0.txt` e `manifest.json` documentam
+  origem, licença e hashes. `tools/build_humans.py` prepara os assets com
+  Python/NumPy/Pillow; nenhum desses programas é exigido pelo jogo.
+- Os assets Quaternius antigos permanecem arquivados no repositório.
+
+**Conferido nesta rodada**
+- Importação/compilação do Godot e capturas reais de corpo/rosto, expressões,
+  sete tipos físicos, variações de pele/cabelo, idosos e jovens.
+- Poses de caminhada, sentado e conversa conferidas visualmente. As capturas
+  mostraram problemas de roupa/pose/olhos na primeira versão; eles foram
+  corrigidos e as capturas geradas novamente.
+- Capturas reais na cidade nos quatro cenários, dia/noite/chuva. A iluminação
+  noturna do mundo continua escura e ainda limita a leitura da roupa preta.
+- Ferramentas: `tools/human_preview.tscn` e `human_world_preview.tscn`.
+  Capturas em `C:/Users/glznc/Documents/Codex/2026-10-10/humans`.
+- Não foram executadas suítes funcionais nesta rodada. Compatibilidade de
+  saves, ações como banho/dormir e fluxo completo de criação não foram
+  revalidados por testes; o formato de save e os sistemas não foram alterados.
+
+**Desempenho — amostras curtas, personagem parado, 1280×800, RTX 2060**
+
+| Cenário | Dia | Noite | Chuva |
+|---|---:|---:|---:|
+| Porto Cinza | 164,4 FPS | 154,8 FPS | 154,1 FPS |
+| Vale Sereno | 157,7 FPS | 147,3 FPS | 138,4 FPS |
+| Nova Aurora | 150,0 FPS | 152,1 FPS | 141,7 FPS |
+| Colapso | 162,3 FPS | 152,8 FPS | 154,4 FPS |
+
+600 quadros por amostra, após 120 quadros de aquecimento, sem limite de FPS.
+Os piores quadros diurnos foram 90,9–98 ms. A medição não percorreu a rota
+`perf_walk` usada anteriormente (151,9/171,1/135,2 FPS na seção 12), portanto
+**não demonstra ganho ou perda comparável**. NPCs/clima são variáveis entre
+execuções. A investigação das travadas continua parcial.
+
+**Limites do resultado**
+A base foi substituída, mas o acabamento completo de inZOI ainda não foi
+atingido. Cabelo continua usando cartões de malha, pele não tem espalhamento
+de luz e rostos não são escaneados. Alguns estilos de roupa/cabelo compartilham
+peças (coque/rabo, tranças/dreads). A aprovação estética depende do dono.
+Renderizador continua `gl_compatibility`; mapas, retratos 2D, sistemas e
+campos de save mantidos. Nenhum commit feito.
+
+| Área | Status | Evidência / limite |
+|---|---|---|
+| Substituir corpo e rosto Superhero | Concluído | Quatro bases hm08, capturas reais |
+| Anatomia, materiais e controles físicos | Concluído | Galerias de corpo/rosto/idade/tipo físico |
+| Animações principais | Concluído | Caminhada, conversa e sentado nas capturas |
+| Demais ações, saves e fluxos | Não concluído | Sem revalidação funcional nesta rodada |
+| Acabamento completo inspirado no inZOI | Parcial | Cabelo, pele e variedade de roupa ainda limitados |
+| Investigação das travadas | Parcial | Amostras curtas; picos diurnos de até 98 ms |
+| Aprovação estética | Não concluído | Aguardando avaliação das capturas pelo dono |
+
+Arquivos desta rodada: `world3d/person.gd`, `world3d/human_style.gd`,
+`assets/humans/*`, `tools/build_humans.py`, `tools/human_preview.gd/.tscn`,
+`tools/human_world_preview.gd/.tscn`, `PROGRESS.md`. Alterações anteriores de
+`world3d/world_view.gd` e `tests/human_style_review.gd/.tscn` foram preservadas.
+
+
+## 14. Retratos com a mesma identidade do personagem 3D (10/out/2026)
+
+**Pedido do dono:** substituir o rosto 2D pelo mesmo rosto do personagem 3D,
+com cabelo/nariz/boca iguais, mais realismo, apresentação melancólica e todas
+as expressões. Direção autorizada pelo pedido e pelas referências do inZOI.
+
+**Aplicado**
+- `ui/face/face_portrait.gd` substitui o retrato pintado na criação, HUD e
+  conversa. Apresenta a mesma anatomia MakeHuman e o mesmo `LookBuilder` em
+  um SubViewport transparente; nenhuma feição é redesenhada em polígonos 2D.
+- Mesmos cabelos, cores, roupa, idade, proporções do rosto, nariz, lábios,
+  olhos e orelhas da pessoa 3D. Pose frontal e enquadramento de rosto/ombros.
+- Luz quente lateral, preenchimento frio, sombra, fundo desfocado procedural,
+  vinheta discreta e tratamento suave dos tons claros. Renderizador mantido.
+- As 18 emoções existentes continuam com a mesma API (`set_emotion`, `talk`).
+  Piscadas, maxilar durante a fala, inclinação da cabeça, lágrimas, suor,
+  rubor, palidez, olheiras e hematomas. Sem os balões desenhados de emote do
+  retrato antigo: a apresentação passa a enfatizar o rosto.
+- `portrait_person.gd` mantém a anatomia neutra do mundo e amplia a abertura
+  do maxilar para a câmera próxima, com interior bucal/dentes discretos.
+  Cache com assinatura própria evita modificar a expressão do modelo do mundo.
+- A criação mantém oito atalhos e ganha o seletor “Todas as expressões…”.
+- Miniaturas capturadas uma vez: o SubViewport/mundo 3D é liberado depois.
+  Retratos vivos são atualizados a 24 Hz; escondidos deixam de renderizar.
+  Reconstrução limitada a uma pessoa por quadro e atrasada 120 ms nos controles.
+- `world3d/human_features.gd`/`human_marks.gdshader` passam a representar marcas
+  e acessórios em ambas as apresentações: óculos, piercings, brincos, boné,
+  corrente, sardas, cicatriz, tatuagens, pintas, queimadura e maquiagem.
+  Nariz quebrado é uma deformação compartilhada; dente de ouro no retrato.
+  São representações procedurais, sem assets do inZOI ou imagens de IA.
+- Arquivos do retrato pintado antigo preservados como histórico/ferramentas.
+  Sem mudança em mapas, lógica da IA, formato do save ou conteúdo do jogo.
+
+**Capturas e desempenho**
+- Ferramenta de captura `tools/portrait_preview.gd/.tscn`: não lê/salva a
+  partida do dono e não chama a IA. Galeria de idade/pele, 18 emoções de
+  homem/mulher, 14 opções de cabelo, acessórios, criação e caixa de conversa.
+- Capturas: `C:/Users/glznc/Documents/Codex/2026-10-10/portraits`.
+- Amostra isolada com seis retratos visíveis, 1280×800, RTX 2060, sem VSync,
+  quatro segundos: anterior 39,9 FPS; novo 1515,0 FPS da janela de captura.
+  O novo desenha a cena dos retratos a 24 Hz e reapresenta a textura entre
+  atualizações; esse número alto **não é FPS da cidade, nem taxa da animação**.
+  Não foi medido antes/depois numa partida ou rota comparável.
+- Capturas reais renderizadas sem erro de script/shader na versão final.
+  Fala, ida/volta entre retrato e corpo 3D conferidas visualmente. Após as
+  miniaturas, restam dois SubViewports na criação (retrato e prévia de corpo),
+  em vez de um mundo 3D ativo por miniatura.
+  Suítes funcionais e carregamento de saves não executados nesta rodada.
+
+| Área | Status | Evidência / limite |
+|---|---|---|
+| Mesma base de rosto/cabelo do 3D | Concluído | Mesma malha, aparência e texturas |
+| As 18 expressões e fala | Concluído | Galerias reais de homem/mulher; código de fala preservado |
+| Criação, miniaturas, HUD e conversa | Concluído | Capturas reais das telas |
+| Marcas e acessórios | Parcial | Representações procedurais; exemplos capturados, nem todas as combinações revistas |
+| Acabamento equivalente ao inZOI | Parcial | Limites de cabelo, pele e modelo permanecem |
+| Desempenho no jogo completo e saves | Não concluído | Só amostra isolada; sem suíte funcional |
+| Aprovação estética | Não concluído | Aguardando avaliação do dono |
+
+Arquivos desta rodada: `ui/face/face_portrait.gd`, `portrait_person.gd`,
+`portrait_skin.gdshader`, `portrait_finish.gdshader`, `ui/character_creation.gd`,
+`ui/game_screen.gd`, `world3d/human_features.gd`, `human_marks.gdshader`, pequenos
+ajustes em `world3d/person.gd`/`human_style.gd`, `tools/portrait_preview.gd/.tscn`,
+`PROGRESS.md`. Nenhum commit feito.

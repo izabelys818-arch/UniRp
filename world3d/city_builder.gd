@@ -67,12 +67,13 @@ var seats: Array = []
 var beds: Array = []
 # pontos de uso das ações do jogador por lugar: loc_id -> {"cama": {...}, "chuveiro": {...}}
 var use_points: Dictionary = {}
+var foliage_sources: Array = []
 var neon_mat: StandardMaterial3D
 var wear_city: float = 0.35
 var rng := RandomNumberGenerator.new()
 
 
-func build(l: Layout) -> void:
+func build(l: Layout, staged: bool = false, progress: Callable = Callable()) -> void:
 	layout = l
 	rng.seed = 90210
 	ASPHALT = Art.col("asphalt")
@@ -124,12 +125,18 @@ func build(l: Layout) -> void:
 	body.add_child(floor_cs)
 	house_gen = HouseGen.new()
 	_ground()
+	var count := 0
 	for c in layout.blocks:
 		var info: Dictionary = layout.blocks[c]
 		if str(info["loc"]) != "":
 			_build_location(str(info["loc"]), c)
 		else:
 			_build_filler(c, info)
+		count += 1
+		if staged and count % 3 == 0:
+			if progress.is_valid():
+				progress.call("Construindo o bairro… %d%%" % int(100.0 * count / layout.blocks.size()))
+			await get_tree().process_frame
 
 
 # ---------- utilidades ----------
@@ -207,6 +214,7 @@ func drop_interior(s: Dictionary) -> void:
 
 
 func _tree(k, p: Vector3, scale: float = 1.0) -> void:
+	foliage_sources.append(p + Vector3(0, 3.4 * scale, 0))
 	Flora.tree(k, p, scale, rng)
 
 
@@ -648,6 +656,7 @@ func _avenue_furniture(k) -> void:
 
 
 func _pit_tree(k, p: Vector3) -> void:
+	foliage_sources.append(p + Vector3(0, 3.3, 0))
 	var old: String = k.cat
 	k.cat = "walk"
 	# canteiro com terra e guia de concreto em volta
@@ -1582,6 +1591,13 @@ func _furnish_home(k, id: String, b: Rect2, y0: float) -> void:
 		k.sphere(o + Vector3(6.7 + fi * 0.18, 0.99, 0.6), Vector3(0.12, 0.11, 0.12), [Color("#c0392b"), Color("#e0b030"), Color("#6aa03a")][fi])
 	k.box(o + Vector3(7.5, 1.02, 0.6), Vector3(0.18, 0.18, 0.12), Color("#c9883a"))
 	k.cyl(o + Vector3(7.9, 0.93, 0.55), 0.05, 0.22, Color("#2a6a9a"))
+	use_points[id]["fogao"] = {"path": [Vector2(o.x + 9.85, o.z + 1.45)], "yaw": PI, "steam": o + Vector3(9.85, 1.03, 0.7)}
+	k.cyl(o + Vector3(9.85, 0.98, 0.7), 0.15, 0.13, Color("#52575b"))
+	k.box(o + Vector3(10.06, 1.02, 0.7), Vector3(0.18, 0.035, 0.035), Color("#282a2c"))
+	k.box(o + Vector3(7.2, 0.95, 0.7), Vector3(0.4, 0.025, 0.22), wood)
+	k.cyl(o + Vector3(7.2, 1.08, 0.48), 0.065, 0.2, Color("#6d755f"))
+	for utensil in 3:
+		k.box(o + Vector3(7.17 + utensil * 0.035, 1.2, 0.48), Vector3(0.015, 0.2, 0.015), wood)
 	# --- banheiro (canto direito, divisórias baixas para a câmera ver dentro) ---
 	var tile := Color("#c8d2d6")
 	k.box_ab(o + Vector3(9.0, 0, 2.38), o + Vector3(11.65, 1.15, 2.48), tile)
@@ -1613,6 +1629,14 @@ func _furnish_home(k, id: String, b: Rect2, y0: float) -> void:
 		k.box_ab(o + Vector3(0.8, 0.42, cz), o + Vector3(1.42, 0.55, cz + 0.88), sofa_c.lightened(0.08))
 	seats.append({"p": Vector2(o.x + 1.15, o.z + 6.65), "yaw": PI / 2.0})
 	seats.append({"p": Vector2(o.x + 1.15, o.z + 7.6), "yaw": PI / 2.0})
+	use_points[id]["sofa"] = {"path": [Vector2(o.x + 1.15, o.z + 6.65)], "yaw": PI / 2.0, "seat": {"p": Vector2(o.x + 1.15, o.z + 6.65), "yaw": PI / 2.0}}
+	k.box(o + Vector3(5.3, 0.73, 8.7), Vector3(1.15, 0.08, 0.55), wood)
+	for dx in [-0.48, 0.48]:
+		k.box(o + Vector3(5.3 + dx, 0.37, 8.7), Vector3(0.06, 0.74, 0.44), wood)
+	k.box(o + Vector3(5.3, 1.0, 8.8), Vector3(0.46, 0.3, 0.04), Color("#33363b"))
+	k.box(o + Vector3(5.3, 0.8, 8.55), Vector3(0.42, 0.02, 0.17), Color("#6a6c70"))
+	_chair_furniture(k, o + Vector3(5.3, 0, 7.95), 0.0, wood)
+	use_points[id]["computador"] = {"path": [Vector2(o.x + 5.3, o.z + 7.95)], "yaw": 0.0, "seat": {"p": Vector2(o.x + 5.3, o.z + 7.95), "yaw": 0.0}}
 	k.box_ab(o + Vector3(1.7, 0, 5.8), o + Vector3(3.5, 0.015, 8.4), Color("#8a3b3b").lerp(tone, 0.3))
 	k.box_ab(o + Vector3(2.1, 0, 6.6), o + Vector3(2.9, 0.42, 7.5), wood)
 	k.cyl(o + Vector3(2.5, 0.42, 7.05), 0.06, 0.12, Color("#e8e2d0"))

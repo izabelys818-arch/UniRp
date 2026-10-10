@@ -1,25 +1,33 @@
 extends Node3D
 
-# Pessoa com modelo 3D pronto (corpos e cabelos da Quaternius, CC0), animações da Universal
-# Animation Library retargetadas para o esqueleto. As roupas são geradas por código a partir da
-# própria malha do corpo (camiseta, calça, sapato...), então seguem a animação sem rasgar.
+# Pessoa com anatomia MakeHuman hm08 (CC0), roupas modeladas e cabelo por cartões
+# texturizados. UAL retargetada para o rig humano de 53 ossos. A personalização
+# preserva a API do jogo e os campos dos saves existentes.
 # Mantém a mesma interface do antigo Humanoid (set_look, set_emotion, talk_left, look_target...).
 
 const AnimBank = preload("res://world3d/anim_bank.gd")
 const Toon = preload("res://world3d/humanoid.gd")
+const HumanStyle = preload("res://world3d/human_style.gd")
+const HumanMotion = preload("res://world3d/human_motion.gd")
+const HumanFeatures = preload("res://world3d/human_features.gd")
 
 const BODY := {
-	"homem": "res://assets/chars/body/Superhero_Male_FullBody.gltf",
-	"mulher": "res://assets/chars/body/Superhero_Female_FullBody.gltf",
+	"homem": "res://assets/humans/Human_male.gltf",
+	"mulher": "res://assets/humans/Human_female.gltf",
+}
+const BODY_CHILD := {
+	"homem": "res://assets/humans/Human_male_child.gltf",
+	"mulher": "res://assets/humans/Human_female_child.gltf",
 }
 const SKIN_TEX := {
-	"homem": ["res://assets/chars/body/T_Superhero_Male_Ligh.png", "res://assets/chars/body/T_Superhero_Male_Dark.png"],
-	"mulher": ["res://assets/chars/body/T_Superhero_Female_Light_BaseColor.png", "res://assets/chars/body/T_Superhero_Female_Dark_BaseColor.png"],
+	"homem": "res://assets/humans/male_skin.png",
+	"mulher": "res://assets/humans/female_skin.png",
 }
 const HAIR_FILES := {
-	"raspado": "Hair_Buzzed", "curto": "Hair_SimpleParted", "desgrenhado": "Hair_SimpleParted", "franja": "Hair_SimpleParted",
-	"medio": "Hair_SimpleParted", "longo": "Hair_Long", "trancas": "Hair_Long", "dreads": "Hair_Long", "cacheado": "Hair_Long",
-	"coque": "Hair_Buns", "rabo": "Hair_Long", "moicano": "Hair_Buzzed", "black_power": "Hair_Buns",
+	"raspado": "short04", "curto": "short01", "desgrenhado": "short02", "franja": "short03",
+	"medio": "bob01", "longo": "long01", "trancas": "braid01", "dreads": "braid01",
+	"cacheado": "afro01", "coque": "ponytail01", "rabo": "ponytail01", "moicano": "short04",
+	"black_power": "afro01",
 }
 
 const EMOTE_TEXT := {
@@ -31,53 +39,23 @@ const EMOTE_TEXT := {
 	"exausto": ["zZ", Color("#c8d0e0")], "machucado": ["ai", Color("#ffd28a")],
 }
 
-# receitas de roupa: ossos que contam, limites de altura (y) e de largura (|x|), deslocamento
-const RECIPES := {
-	# off = folga (afastamento do corpo); loose = caimento extra que cresce para baixo da peça
-	"camiseta": {"bones": ["spine_01", "spine_02", "spine_03", "clavicle_l", "clavicle_r", "upperarm_l", "upperarm_r", "pelvis"], "ymin": 0.97, "ymax": 1.66, "xmax": 0.47, "off": 0.016, "loose": 0.014},
-	"manga_longa": {"bones": ["spine_01", "spine_02", "spine_03", "clavicle_l", "clavicle_r", "upperarm_l", "upperarm_r", "lowerarm_l", "lowerarm_r", "pelvis"], "ymin": 0.96, "ymax": 1.66, "xmax": 0.7, "off": 0.018, "loose": 0.016},
-	"jaqueta": {"bones": ["spine_01", "spine_02", "spine_03", "clavicle_l", "clavicle_r", "upperarm_l", "upperarm_r", "lowerarm_l", "lowerarm_r", "pelvis"], "ymin": 0.8, "ymax": 1.66, "xmax": 0.7, "off": 0.028, "loose": 0.024},
-	"regata": {"bones": ["spine_01", "spine_02", "spine_03", "clavicle_l", "clavicle_r", "pelvis"], "ymin": 0.97, "ymax": 1.6, "xmax": 0.3, "off": 0.013, "loose": 0.01},
-	"calca": {"bones": ["pelvis", "spine_01", "thigh_l", "thigh_r", "calf_l", "calf_r", "foot_l", "foot_r"], "ymin": 0.1, "ymax": 1.06, "xmax": 9.0, "off": 0.014, "loose": 0.008},
-	"bermuda": {"bones": ["pelvis", "spine_01", "thigh_l", "thigh_r"], "ymin": 0.55, "ymax": 1.06, "xmax": 9.0, "off": 0.014, "loose": 0.012},
-	"sapato": {"bones": ["foot_l", "foot_r", "ball_l", "ball_r", "calf_l", "calf_r"], "ymin": -1.0, "ymax": 0.13, "xmax": 9.0, "off": 0.014},
-}
-const STYLE_TOP := {
-	"camiseta": "camiseta", "time": "camiseta", "academia": "camiseta", "rasgada": "camiseta", "havaiana": "camiseta", "blusa": "camiseta",
-	"uniforme": "camiseta", "avental": "camiseta", "macacao": "camiseta", "moletom": "manga_longa", "social": "manga_longa",
-	"farda": "manga_longa", "batina": "jaqueta", "couro": "jaqueta", "terno": "jaqueta", "sobretudo": "jaqueta", "jaleco": "jaqueta",
-	"jeans": "jaqueta", "regata": "regata", "vestido": "regata",
-}
-
 static var _scenes: Dictionary = {}
 static var _cloth_cache: Dictionary = {}
-static var _avg: Dictionary = {}
-static var _hair_cache: Dictionary = {}
 static var _blob_mesh: ArrayMesh
 static var _shaped: Dictionary = {}
+static var _face_meshes: Dictionary = {}
+static var _eye_meshes: Dictionary = {}
 
-# Forma do corpo sobre a malha base "Superhero" (esqueleto, pesos e animações não mudam; só as
-# posições dos vértices). O modelo original é um super-herói esculpido; aqui cada gênero e cada
-# faixa de idade ganha proporções de gente comum e cada tipo físico (magro, médio, atlético,
-# forte, acima do peso, obeso, esquelético) muda braços, pernas, tronco, barriga e pescoço.
-# Chaves: arm/forearm/thigh/calf/hand/neck = escala em volta do eixo do osso (1 = igual ao modelo);
-# chest_x/chest_z/waist_x/hip_x = largura e profundidade do tronco; belly = barriga (metros);
-# shoulder_in = ombros mais estreitos (metros); smooth = quanto aplainar os músculos esculpidos.
-const SHAPE := {
-	"homem": {"arm": 0.66, "forearm": 0.78, "thigh": 0.78, "calf": 0.84, "hand": 0.95, "neck": 0.88, "chest_x": 0.84, "chest_z": 0.84, "waist_x": 1.0, "hip_x": 0.96, "belly": 0.0, "shoulder_in": 0.03, "smooth": 0.65},
-	"mulher": {"arm": 0.7, "forearm": 0.8, "thigh": 0.84, "calf": 0.84, "hand": 0.9, "neck": 0.82, "chest_x": 0.82, "chest_z": 0.8, "waist_x": 0.88, "hip_x": 1.06, "belly": 0.0, "shoulder_in": 0.05, "smooth": 0.65},
-	# criança e adolescente: peito reto, braços finos, quadril estreito (o modelo base é de adulto)
-	"homem_crianca": {"arm": 0.66, "forearm": 0.76, "thigh": 0.78, "calf": 0.84, "hand": 0.9, "neck": 0.88, "chest_x": 0.84, "chest_z": 0.76, "waist_x": 1.0, "hip_x": 0.92, "belly": 0.0, "shoulder_in": 0.035, "smooth": 0.9},
-	"mulher_crianca": {"arm": 0.68, "forearm": 0.78, "thigh": 0.8, "calf": 0.84, "hand": 0.88, "neck": 0.85, "chest_x": 0.84, "chest_z": 0.6, "waist_x": 1.02, "hip_x": 0.9, "belly": 0.0, "shoulder_in": 0.04, "smooth": 0.95},
-	"homem_adolescente": {"arm": 0.7, "forearm": 0.8, "thigh": 0.84, "calf": 0.88, "hand": 0.93, "neck": 0.88, "chest_x": 0.86, "chest_z": 0.84, "waist_x": 1.0, "hip_x": 0.95, "belly": 0.0, "shoulder_in": 0.03, "smooth": 0.7},
-	"mulher_adolescente": {"arm": 0.72, "forearm": 0.82, "thigh": 0.86, "calf": 0.88, "hand": 0.9, "neck": 0.84, "chest_x": 0.86, "chest_z": 0.72, "waist_x": 0.94, "hip_x": 1.0, "belly": 0.0, "shoulder_in": 0.04, "smooth": 0.7},
-}
+# Anatomia natural: o corpo médio é a malha MakeHuman, sem correção de herói.
+const NATURAL_SHAPE := {"arm": 1.0, "forearm": 1.0, "thigh": 1.0, "calf": 1.0,
+	"hand": 1.0, "neck": 1.0, "chest_x": 1.0, "chest_z": 1.0,
+	"waist_x": 1.0, "hip_x": 1.0, "belly": 0.0, "shoulder_in": 0.0, "smooth": 0.0}
 # Tipo físico (índice "corpo" da criação): multiplicadores sobre a forma do gênero e da idade.
 const BODY_TYPES := [
 	{"nome": "magro", "arm": 0.86, "forearm": 0.9, "thigh": 0.86, "calf": 0.9, "neck": 0.92, "chest_x": 0.93, "chest_z": 0.92, "waist_x": 0.92, "hip_x": 0.95, "belly": 0.0, "sh": 1.1, "smooth": 0.1},
 	{"nome": "médio", "arm": 1.0, "forearm": 1.0, "thigh": 1.0, "calf": 1.0, "neck": 1.0, "chest_x": 1.0, "chest_z": 1.0, "waist_x": 1.0, "hip_x": 1.0, "belly": 0.012, "sh": 1.0, "smooth": 0.0},
 	{"nome": "atlético", "arm": 1.12, "forearm": 1.06, "thigh": 1.08, "calf": 1.05, "neck": 1.04, "chest_x": 1.05, "chest_z": 1.04, "waist_x": 0.95, "hip_x": 1.0, "belly": 0.0, "sh": 0.9, "smooth": -0.15},
-	{"nome": "forte", "arm": 1.32, "forearm": 1.16, "thigh": 1.2, "calf": 1.1, "neck": 1.14, "chest_x": 1.12, "chest_z": 1.14, "waist_x": 1.02, "hip_x": 1.02, "belly": 0.0, "sh": 0.6, "smooth": -0.4},
+	{"nome": "forte", "arm": 1.32, "forearm": 1.16, "thigh": 1.2, "calf": 1.1, "neck": 1.14, "chest_x": 1.12, "chest_z": 1.14, "waist_x": 1.02, "hip_x": 1.02, "belly": 0.0, "sh": 0.6, "smooth": -0.12},
 	{"nome": "acima do peso", "arm": 1.28, "forearm": 1.08, "thigh": 1.18, "calf": 1.08, "neck": 1.12, "chest_x": 1.12, "chest_z": 1.16, "waist_x": 1.1, "hip_x": 1.07, "belly": 0.05, "sh": 0.8, "smooth": 0.3},
 	{"nome": "obeso", "arm": 1.5, "forearm": 1.14, "thigh": 1.3, "calf": 1.14, "neck": 1.22, "chest_x": 1.2, "chest_z": 1.28, "waist_x": 1.16, "hip_x": 1.06, "belly": 0.095, "sh": 0.55, "smooth": 0.5},
 	{"nome": "esquelético", "arm": 0.72, "forearm": 0.78, "thigh": 0.74, "calf": 0.8, "neck": 0.84, "chest_x": 0.88, "chest_z": 0.8, "waist_x": 0.84, "hip_x": 0.9, "belly": 0.0, "sh": 1.3, "smooth": 0.0},
@@ -86,8 +64,9 @@ const BODY_TYPES := [
 
 # Forma final = base do gênero/idade × tipo físico (criança e adolescente sentem menos o tipo).
 static func _shape_for(gender: String, stage: String, btype: int) -> Dictionary:
-	var key := gender if stage == "" else gender + "_" + stage
-	var base: Dictionary = SHAPE.get(key, SHAPE["homem"])
+	var base: Dictionary = NATURAL_SHAPE.duplicate()
+	if stage == "adolescente" and gender == "mulher":
+		base["chest_z"] = 0.9
 	var t: Dictionary = BODY_TYPES[clampi(btype, 0, BODY_TYPES.size() - 1)]
 	var strength := 1.0 if stage == "" else (0.45 if stage == "crianca" else 0.75)
 	var out := base.duplicate()
@@ -97,7 +76,7 @@ static func _shape_for(gender: String, stage: String, btype: int) -> Dictionary:
 		out[k] = float(base[k]) * (1.0 + dev * strength)
 	out["belly"] = float(base["belly"]) + float(t["belly"]) * strength
 	out["shoulder_in"] = float(base["shoulder_in"]) * lerpf(1.0, float(t["sh"]), strength)
-	out["smooth"] = clampf(float(base["smooth"]) + float(t["smooth"]), 0.0, 1.0)
+	out["smooth"] = 0.0
 	return out
 
 
@@ -188,27 +167,27 @@ static var face_fx: bool = true
 
 # Rosto 3D: deformações geradas por código sobre a própria malha (o modelo não tem blendshapes).
 # Boca: sorriso, boca triste e queixo (fala); olhos: piscar; sobrancelhas: erguer, bravas, tristes.
-const FACE_SHAPES := ["sorriso", "boca_triste", "queixo", "piscar"]
+const FACE_SHAPES := ["sorriso", "boca_triste", "queixo", "piscar", "apertar_olhos", "tensao_boca", "assimetria", "sobr_tensao"]
 const BROW_SHAPES := ["sobr_cima", "sobr_brava", "sobr_triste"]
 const FACE_EXPR := {
-	"neutro": {},
-	"feliz": {"sorriso": 0.8, "sobr_cima": 0.2},
-	"rindo": {"sorriso": 1.0, "queixo": 0.55, "sobr_cima": 0.35, "piscar": 0.3},
-	"triste": {"boca_triste": 0.8, "sobr_triste": 0.9},
-	"chorando": {"boca_triste": 1.0, "sobr_triste": 1.0, "piscar": 0.45, "queixo": 0.2},
-	"irritado": {"sobr_brava": 0.8, "boca_triste": 0.35},
-	"furioso": {"sobr_brava": 1.0, "boca_triste": 0.5, "queixo": 0.35},
-	"desconfiado": {"sobr_brava": 0.45, "piscar": 0.3, "sorriso": 0.1},
-	"assustado": {"sobr_cima": 1.0, "sobr_triste": 0.4, "queixo": 0.45},
-	"nervoso": {"sobr_triste": 0.6, "boca_triste": 0.3},
-	"sarcastico": {"sorriso": 0.45, "sobr_brava": 0.2},
-	"ameacador": {"sobr_brava": 0.75, "piscar": 0.2},
-	"carinhoso": {"sorriso": 0.6, "sobr_triste": 0.2},
-	"surpreso": {"sobr_cima": 1.0, "queixo": 0.6},
-	"envergonhado": {"sorriso": 0.3, "sobr_triste": 0.45},
-	"entediado": {"piscar": 0.35, "boca_triste": 0.2},
-	"exausto": {"piscar": 0.55, "sobr_triste": 0.3, "boca_triste": 0.25},
-	"machucado": {"boca_triste": 0.6, "sobr_brava": 0.3, "piscar": 0.25},
+	"neutro": {"apertar_olhos": 0.12, "tensao_boca": 0.1},
+	"feliz": {"sorriso": 0.65, "apertar_olhos": 0.2, "sobr_cima": 0.12},
+	"rindo": {"sorriso": 0.95, "queixo": 0.55, "apertar_olhos": 0.5, "sobr_cima": 0.2},
+	"triste": {"boca_triste": 0.75, "sobr_triste": 0.8, "apertar_olhos": 0.26, "tensao_boca": 0.2},
+	"chorando": {"boca_triste": 0.9, "sobr_triste": 0.95, "apertar_olhos": 0.65, "tensao_boca": 0.5, "queixo": 0.16},
+	"irritado": {"sobr_brava": 0.65, "sobr_tensao": 0.55, "tensao_boca": 0.7, "apertar_olhos": 0.38},
+	"furioso": {"sobr_brava": 0.95, "sobr_tensao": 1.0, "tensao_boca": 0.9, "apertar_olhos": 0.5, "queixo": 0.2},
+	"desconfiado": {"sobr_brava": 0.35, "apertar_olhos": 0.55, "assimetria": 0.35, "tensao_boca": 0.3},
+	"assustado": {"sobr_cima": 0.9, "sobr_triste": 0.3, "queixo": 0.45, "tensao_boca": 0.3},
+	"nervoso": {"sobr_triste": 0.45, "tensao_boca": 0.65, "assimetria": 0.18},
+	"sarcastico": {"sorriso": 0.16, "assimetria": 0.75, "sobr_cima": 0.28, "apertar_olhos": 0.3},
+	"ameacador": {"sobr_brava": 0.6, "sobr_tensao": 0.5, "apertar_olhos": 0.45, "tensao_boca": 0.7},
+	"carinhoso": {"sorriso": 0.45, "sobr_triste": 0.16, "apertar_olhos": 0.15},
+	"surpreso": {"sobr_cima": 0.95, "queixo": 0.6},
+	"envergonhado": {"sorriso": 0.15, "sobr_triste": 0.35, "assimetria": 0.2, "tensao_boca": 0.3},
+	"entediado": {"apertar_olhos": 0.6, "boca_triste": 0.15, "tensao_boca": 0.2},
+	"exausto": {"apertar_olhos": 0.8, "sobr_triste": 0.3, "boca_triste": 0.25},
+	"machucado": {"boca_triste": 0.55, "sobr_brava": 0.4, "apertar_olhos": 0.7, "tensao_boca": 0.55},
 }
 # Postura por emoção, em graus para a frente: [coluna, pescoço, cabeça]
 const POSTURE := {
@@ -245,6 +224,11 @@ var lying: bool = false
 var look_target: Vector3 = Vector3.INF
 # o que a pessoa está fazendo parada: sentar, conversar, celular, olhar, mexer, pegar, agachar, consertar
 var activity: String = ""
+var daily_action: String = ""
+var action_time: float = 0.0
+var _animation_pose: Array[Quaternion] = []
+var social_gesture := ""
+var gesture_left := 0.0
 # andar mais contido (pessoas mais velhas)
 var formal: bool = false
 # transição em curso (sentando, levantando): enquanto > 0 a pessoa não sai andando
@@ -275,24 +259,32 @@ var _head_scale: float = 1.0
 var _head_vec: Vector3 = Vector3.ONE
 var _old: float = 0.0
 var _pose_cur: Vector3 = Vector3.ZERO
+var _human_parts: Dictionary = {}
+var _lash_mi: MeshInstance3D
+var _beard_mi: MeshInstance3D
 var _brow_mi: MeshInstance3D
+var _face_mi: MeshInstance3D
+var _eye_mi: MeshInstance3D
+var _anatomy: Dictionary = {}
 var _face_t: Dictionary = {}
 var _face_w: Dictionary = {}
 var _blink: float = 0.0
 var _next_blink: float = 2.5
 var _body_key: String = ""
-var _show_bubble: bool = true
+var _outfit: int = 0
+var _show_bubble: bool = false
 
 
 static func cleanup() -> void:
 	_scenes.clear()
 	_cloth_cache.clear()
-	_avg.clear()
-	_hair_cache.clear()
 	_blob_mesh = null
 	_xray_mat = null
 	_shaped.clear()
+	_face_meshes.clear()
+	_eye_meshes.clear()
 	_brow_meshes.clear()
+	HumanStyle.cleanup()
 	_umb_canopy = null
 	_umb_shaft = null
 	_umb_meshes.clear()
@@ -306,32 +298,21 @@ static func _scene(path: String) -> PackedScene:
 	return _scenes[path]
 
 
-static func _avg_color(path: String) -> Color:
-	if _avg.has(path):
-		return _avg[path]
-	var tex: Texture2D = load(path) if ResourceLoader.exists(path) else null
-	var img: Image = tex.get_image() if tex != null else null
-	if img == null:
-		_avg[path] = Color(0.6, 0.48, 0.4)
-		return _avg[path]
-	if img.is_compressed():
-		img.decompress()
-	img.resize(8, 8, Image.INTERPOLATE_BILINEAR)
-	var sum := Color(0, 0, 0)
-	for y in 8:
-		for x in 8:
-			var c := img.get_pixel(x, y)
-			sum += Color(c.r, c.g, c.b)
-	var c2 := sum / 64.0
-	_avg[path] = c2
-	return c2
-
-
 func set_look(l: Dictionary) -> void:
+	_animation_pose.clear()
 	look = l
 	for c in get_children():
 		c.queue_free()
 	detail.clear()
+	_face_mi = null
+	_eye_mi = null
+	_brow_mi = null
+	_lash_mi = null
+	_beard_mi = null
+	_human_parts.clear()
+	_face_w.clear()
+	_anatomy.clear()
+	_blink = 0.0
 	var had_umbrella := umbrella_on
 	var had_stroller := stroller_on
 	umbrella_on = false
@@ -362,19 +343,19 @@ func _build() -> void:
 	# grisalho aos poucos, como no retrato
 	hair_c = hair_c.lerp(Color("#cdc8c0"), clampf((float(age) - 50.0) / 32.0, 0.0, 1.0) * 0.75)
 	# base de idade: criança bem menor e de cabeça proporcionalmente maior, adolescente quase
-	# adulto, idoso um pouco menor e curvado (a curvatura vem em _apply_posture)
+	# adulto, idoso um pouco menor, com postura ereta.
 	var kid := clampf((14.0 - float(age)) / 8.0, 0.0, 1.0)
 	var teen := clampf((19.0 - float(age)) / 6.0, 0.0, 1.0) * (1.0 - kid)
 	_old = clampf((float(age) - 55.0) / 30.0, 0.0, 1.0)
-	_head_scale = 1.0 + 0.38 * kid + 0.08 * teen
+	_head_scale = 1.0 + 0.04 * teen
 	var k: float = (0.95 if female else 1.0) * lerpf(1.0, 0.64, kid) * lerpf(1.0, 0.93, teen) * (1.0 - 0.03 * _old)
-	k *= lerpf(1.0, float(look.get("height", 1.0)), 1.0 - kid * 0.7)
+	k *= lerpf(1.0, float(look.get("height", 1.0)), 1.0 - kid * 0.7) * float(look.get("stature", 1.0))
 	var h1 := float(absi(hash(str(look.get("hair", "")) + str(look.get("skin", "")) + str(look.get("face_len", 0)))) % 1000) / 1000.0
 	var h2 := float(absi(hash(str(look.get("face_w", 0)) + str(look.get("hair_color", "")) + "x")) % 1000) / 1000.0
 	var wk: float = lerpf(0.96, 1.04, h1) * lerpf(1.0, 0.9, kid)
 	k *= lerpf(0.98, 1.02, h2)
 	scale = Vector3(k * wk, k, k * (0.5 + wk * 0.5))
-	var body_path: String = BODY[gender]
+	var body_path: String = BODY_CHILD[gender] if age < 13 else BODY[gender]
 	var ps := _scene(body_path)
 	if ps == null:
 		_fallback_body(c1)
@@ -384,14 +365,20 @@ func _build() -> void:
 	skel = model.get_node_or_null("Armature/Skeleton3D") as Skeleton3D
 	if skel != null:
 		for c in skel.get_children():
-			if c is MeshInstance3D and str(c.name).to_lower().begins_with("superhero"):
-				body_mi = c
+			if c is MeshInstance3D:
+				_human_parts[str(c.name)] = c
+				if str(c.name) == "HumanBody":
+					body_mi = c
+				elif str(c.name).begins_with("Human"):
+					c.visible = false
 	if skel == null or body_mi == null or body_mi.mesh == null:
 		_fallback_body(c1)
 		return
-	# corpo com proporções de gente comum (mesma malha e esqueleto, ver _shape_body); criança e
-	# adolescente têm forma própria
-	_body_key = gender + ("_crianca" if age < 13 else ("_adolescente" if age < 18 else "")) + "_t" + str(clampi(int(look.get("body_type", 1)), 0, BODY_TYPES.size() - 1))
+	# Variações físicas sobre a nova anatomia humana; o rig segue a UAL.
+	var profile_values: Array = []
+	for key in ["chest", "waist", "hips", "limbs", "abdomen"]:
+		profile_values.append(look.get(key, 0.0 if key == "abdomen" else 1.0))
+	_body_key = gender + ("_crianca" if age < 13 else ("_adolescente" if age < 18 else "")) + "_p" + str(hash(str(profile_values))) + "_t" + str(clampi(int(look.get("body_type", 1)), 0, BODY_TYPES.size() - 1))
 	body_mi.mesh = _shaped_body(_body_key)
 	_head = skel.find_bone("Head")
 	_neck = skel.find_bone("neck_01")
@@ -399,44 +386,57 @@ func _build() -> void:
 	# a cabeça ganha a largura e o comprimento do rosto desenhado (mesmos dados do retrato)
 	var fw: float = clampf(float(look.get("face_w", 1.0)), 0.8, 1.25)
 	var fl: float = clampf(float(look.get("face_len", 1.0)), 0.85, 1.2)
+	fw /= 0.92 if female else 1.04
+	fl /= 0.96 if female else 1.03
 	_head_vec = Vector3(_head_scale * lerpf(1.0, fw, 0.75), _head_scale * lerpf(1.0, fl, 0.7), _head_scale * lerpf(1.0, fw, 0.4))
 	if _head >= 0:
 		skel.set_bone_pose_scale(_head, _head_vec)
-	# pele
-	var tone_path: String = SKIN_TEX[gender][0] if skin.get_luminance() > 0.36 else SKIN_TEX[gender][1]
-	var avg := _avg_color(tone_path)
-	var base := body_mi.mesh.surface_get_material(0).duplicate() as StandardMaterial3D
-	base.albedo_texture = load(tone_path)
-	base.albedo_color = Color(clampf(skin.r / maxf(avg.r, 0.05), 0.3, 1.5), clampf(skin.g / maxf(avg.g, 0.05), 0.3, 1.5), clampf(skin.b / maxf(avg.b, 0.05), 0.3, 1.5))
-	base.roughness = 0.75
-	_rim(base, 0.36)
+	# Materiais foscos: o tom escolhido recebe a luz do mundo; sem brilho
+	# próprio nem textura que desenhe musculatura de herói na pele.
+	var base := StandardMaterial3D.new()
+	base.albedo_color = Color(skin.r / 0.82, skin.g / 0.63, skin.b / 0.51)
+	var skin_path: String = SKIN_TEX[gender]
+	var sex := "female" if female else "male"
+	if age >= 42:
+		skin_path = "res://assets/humans/" + sex + ("_old_skin.png" if age >= 60 else "_middleage_skin.png")
+	base.albedo_texture = load(skin_path)
+	base.roughness = 0.63
+	# Preenchimento mínimo para a pessoa não desaparecer na iluminação noturna.
 	base.emission_enabled = true
-	# brilho próprio mínimo: o corpo recebe a luz do mundo (antes 16% achatava o volume)
-	base.emission = skin * 0.05
+	base.emission = skin
+	base.emission_energy_multiplier = 0.035
+	base.metallic_specular = 0.22
+	base.vertex_color_use_as_albedo = true
 	body_mi.material_override = base
+	_anatomy = _face_marks(body_mi.mesh, _bind_names())
 	# sobrancelhas
 	var brow := skel.get_node_or_null("Eyebrows") as MeshInstance3D
 	if brow != null:
-		brow.mesh = _brow_mesh(gender, brow.mesh)
+		brow.mesh = _brow_mesh(_face_signature(), brow.mesh)
 		_brow_mi = brow
-		var bm := brow.mesh.surface_get_material(0).duplicate() as StandardMaterial3D
-		bm.albedo_texture = null
-		bm.albedo_color = (look.get("brow_color", hair_c) as Color).darkened(0.1)
+		var source := brow.mesh.surface_get_material(0) as StandardMaterial3D
+		var bm := ShaderMaterial.new()
+		bm.shader = preload("res://world3d/human_brows.gdshader")
+		bm.set_shader_parameter("brow_map", source.albedo_texture)
+		bm.set_shader_parameter("brow_color", look.get("brow_color", hair_c))
 		brow.material_override = bm
+	_customize_eyes()
 	# cabelo e barba
 	var hstyle: String = str(look.get("hair", "curto"))
 	if hstyle != "careca":
-		var key: String = HAIR_FILES.get(hstyle, "Hair_SimpleParted")
-		if female and key == "Hair_Buzzed":
-			key = "Hair_BuzzedFemale"
+		var key: String = HAIR_FILES.get(hstyle, "short01")
 		_attach_hair(key, hair_c)
 	var beard: String = str(look.get("beard", "none"))
 	var beard_c: Color = look.get("beard_color", hair_c)
-	# a malha de barba é cheia: bigodes e costeletas não aparecem de longe e ficam sem malha
-	if beard in ["stubble", "goatee", "full", "long", "short"] and not female and age >= 15:
-		_attach_hair("Hair_Beard", beard_c.darkened(0.1) if beard != "stubble" else skin.darkened(0.3))
+	# Barbas, bigodes e costeletas usam recortes próprios; barba por fazer é pigmento.
+	if beard in ["goatee", "full", "long", "short", "mustache", "mustache_thin", "sideburns"] and not female and age >= 18:
+		_build_beard(beard, beard_c)
 	# roupas
 	_dress(style, c1, c2, female, skin)
+	_hide_under_clothes(gender)
+	_build_individual_face(base)
+	_build_lashes(hair_c)
+	HumanFeatures.apply(self)
 	_add_blob()
 	# animações
 	var bank := AnimBank.bank_for(body_path, skel)
@@ -461,9 +461,95 @@ func _build() -> void:
 	ap.advance(randf() * 2.0)
 
 
-# Remodela a malha do corpo uma vez por gênero: cada vértice dos braços se aproxima do eixo do
-# osso (pelo peso de pele daquele osso), o peito estreita e a cintura alarga um pouco. Como só
-# as posições mudam, o esqueleto, os pesos e todas as animações continuam valendo.
+# Limita o cache de anatomia, sem guardar cores, roupa ou histórico do NPC.
+func _face_signature() -> String:
+	var values: Array = [_body_key, face_fx, look.get("marks", [])]
+	for key in ["jaw", "chin_w", "nose_w", "nose_len", "mouth_w", "lips", "hollow", "age", "cheek", "eye_size", "eye_h", "eye_tilt", "ear_size", "ear_out", "weathered", "rugas", "beard", "brow_y", "brow_w", "brow_shape", "eye_spacing", "nose_bridge", "chin_length", "forehead", "asymmetry"]:
+		values.append(look.get(key, null))
+	return str(values)
+
+
+func _build_individual_face(material: StandardMaterial3D) -> void:
+	if _anatomy.is_empty():
+		return
+	var parts := HumanStyle.split(body_mi.mesh, _body_key + "_outfit" + str(_outfit), _anatomy)
+	var signature := _face_signature()
+	var mesh: ArrayMesh = _face_meshes.get(signature)
+	if mesh == null:
+		var arr: Array = parts["head"].duplicate()
+		var verts: PackedVector3Array = (arr[Mesh.ARRAY_VERTEX] as PackedVector3Array).duplicate()
+		var colors := PackedColorArray()
+		colors.resize(verts.size())
+		for v in verts.size():
+			colors[v] = HumanStyle.pigment(verts[v], _anatomy, look)
+			var w: float = parts["face"]["head_w"][v]
+			verts[v] = verts[v].lerp(HumanStyle.sculpt(verts[v], _anatomy, look), smoothstep(0.4, 0.9, w))
+		arr[Mesh.ARRAY_VERTEX] = verts
+		arr[Mesh.ARRAY_COLOR] = colors
+		arr[Mesh.ARRAY_NORMAL] = HumanStyle.normals(verts, arr[Mesh.ARRAY_INDEX], arr[Mesh.ARRAY_NORMAL])
+		var f: Dictionary = parts["face"].duplicate()
+		for point in ["nose", "eye_l", "eye_r"]:
+			f[point] = HumanStyle.sculpt(f[point], _anatomy, look)
+		f["mouth_x"] *= float(look.get("mouth_w", 1.0))
+		mesh = ArrayMesh.new()
+		var bs: Array = []
+		if face_fx:
+			for fs in FACE_SHAPES:
+				mesh.add_blend_shape(fs)
+				bs.append(_shape_delta(arr, _face_shape(fs, arr, f, [])))
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr, bs, {}, int(parts["flags"]))
+		if _face_meshes.size() >= 96:
+			_face_meshes.clear()
+		_face_meshes[signature] = mesh
+	_face_mi = MeshInstance3D.new()
+	_face_mi.name = "HumanFace"
+	_face_mi.mesh = mesh
+	_face_mi.material_override = material
+	_face_mi.skin = body_mi.skin
+	skel.add_child(_face_mi)
+	_face_mi.skeleton = NodePath("..")
+	body_mi.mesh = parts["body"]
+
+
+func _customize_eyes() -> void:
+	var eyes := skel.get_node_or_null("Eyes") as MeshInstance3D
+	if eyes == null or _anatomy.is_empty():
+		return
+	var src: Mesh = eyes.mesh
+	_eye_mi = eyes
+	var signature := _face_signature()
+	var out: ArrayMesh = _eye_meshes.get(signature)
+	if out == null:
+		out = ArrayMesh.new()
+		out.add_blend_shape("fechar")
+		for surface in src.get_surface_count():
+			var arr := src.surface_get_arrays(surface)
+			var verts: PackedVector3Array = (arr[Mesh.ARRAY_VERTEX] as PackedVector3Array).duplicate()
+			for v in verts.size():
+				verts[v] = HumanStyle.sculpt(verts[v], _anatomy, look)
+			arr[Mesh.ARRAY_VERTEX] = verts
+			arr[Mesh.ARRAY_NORMAL] = HumanStyle.normals(verts, arr[Mesh.ARRAY_INDEX], arr[Mesh.ARRAY_NORMAL])
+			var closed := verts.duplicate()
+			for v in closed.size():
+				var ec: Vector3 = _anatomy["eye_l"] if verts[v].x < 0.0 else _anatomy["eye_r"]
+				ec = HumanStyle.sculpt(ec, _anatomy, look)
+				closed[v] = verts[v]
+			out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr, [_shape_delta(arr, closed)], {}, src.surface_get_format(surface) & ~Mesh.ARRAY_FLAG_COMPRESS_ATTRIBUTES)
+			out.surface_set_material(surface, src.surface_get_material(surface))
+		if _eye_meshes.size() >= 96:
+			_eye_meshes.clear()
+		_eye_meshes[signature] = out
+	eyes.mesh = out
+	# O globo mantém a textura do olho, com esclera menos branca e brilho contido.
+	var m := ShaderMaterial.new()
+	m.shader = preload("res://world3d/human_eyes.gdshader")
+	m.set_shader_parameter("eye_map", load("res://assets/humans/eyes.png"))
+	m.set_shader_parameter("iris_color", look.get("eye_color", Color("#5a3a22")))
+	m.set_shader_parameter("heterochromia", look.get("hetero", false))
+	eyes.material_override = m
+
+
+# Corpo e peças de roupa recebem a mesma deformação física, com pesos iguais.
 func _shaped_body(key: String) -> Mesh:
 	var gender := key
 	if _shaped.has(key):
@@ -481,121 +567,30 @@ func _shaped_body(key: String) -> Mesh:
 			return src
 	var parts := key.split("_")
 	var btype := int(parts[parts.size() - 1].substr(1))
-	var stage := "" if parts.size() < 3 else parts[1]
-	var sh: Dictionary = _shape_for(parts[0], stage, btype)
+	var stage := parts[1] if parts[1] in ["crianca", "adolescente"] else ""
+	var sh: Dictionary = _personal_shape(_shape_for(parts[0], stage, btype))
 	var out := ArrayMesh.new()
-	var face := _face_marks(src, names) if face_fx else {}
-	if face_fx:
-		for fs in FACE_SHAPES:
-			out.add_blend_shape(fs)
 	for s in src.get_surface_count():
 		var arr := src.surface_get_arrays(s)
 		if s == 0:
 			var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
 			var bones: PackedInt32Array = arr[Mesh.ARRAY_BONES]
 			var weights: PackedFloat32Array = arr[Mesh.ARRAY_WEIGHTS]
-			var per := bones.size() / maxi(verts.size(), 1)
+			var per: int = bones.size() / maxi(verts.size(), 1)
 			var axis_z := (float(joint.get("spine_01", Vector3.ZERO).z) + float(joint.get("spine_02", Vector3.ZERO).z) + float(joint.get("spine_03", Vector3.ZERO).z)) / 3.0
 			_reshape(verts, bones, weights, per, names, joint, sh, axis_z)
-			var norms: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
-			_smooth_torso(verts, bones, weights, per, names, float(sh.get("smooth", 0.0)), axis_z, norms, arr[Mesh.ARRAY_INDEX])
 			arr[Mesh.ARRAY_VERTEX] = verts
-			arr[Mesh.ARRAY_NORMAL] = norms
-		var bs: Array = []
-		if face_fx:
-			for fs in FACE_SHAPES:
-				var shaped: PackedVector3Array = _face_shape(fs, arr, face, names) if s == 0 and not face.is_empty() else arr[Mesh.ARRAY_VERTEX]
-				bs.append(_shape_delta(arr, shaped))
-		# mesmo formato da superfície original (8 pesos de osso, canais extras), sem compressão
-		# para as deformações do rosto
-		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr, bs, {}, src.surface_get_format(s) & ~Mesh.ARRAY_FLAG_COMPRESS_ATTRIBUTES)
+			arr[Mesh.ARRAY_NORMAL] = HumanStyle.normals(verts, arr[Mesh.ARRAY_INDEX], arr[Mesh.ARRAY_NORMAL])
+		# O corpo fica compartilhado; expressões só na cabeça compacta.
+		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr, [], {}, src.surface_get_format(s) & ~Mesh.ARRAY_FLAG_COMPRESS_ATTRIBUTES)
 		out.surface_set_material(s, src.surface_get_material(s))
+	if _shaped.size() >= 64:
+		_shaped.clear()
 	_shaped[key] = out
 	return out
 
 
-# O modelo base é de super-herói: peitoral, abdome e costas esculpidos. Aqui o relevo do tronco
-# é aplainado: em cada faixa de altura e setor ao redor do tronco, o raio do vértice se aproxima
-# da média dos vizinhos de cima e de baixo (sem músculos marcados; criança quase lisa).
-static func _smooth_torso(verts: PackedVector3Array, bones: PackedInt32Array, weights: PackedFloat32Array, per: int, names: Array, amount: float, axis_z: float, norms: PackedVector3Array, idx: PackedInt32Array) -> void:
-	if amount <= 0.0:
-		return
-	const BAND := 0.02
-	const SECT := 24
-	var torso := PackedInt32Array()
-	var tw := PackedFloat32Array()
-	for v in verts.size():
-		var wt := 0.0
-		var arm := 0.0
-		for kk in per:
-			var bn: String = names[bones[v * per + kk]]
-			var w: float = weights[v * per + kk]
-			if bn in ["spine_01", "spine_02", "spine_03"]:
-				wt += w
-			elif bn == "pelvis":
-				wt += w * 0.6
-			elif bn.begins_with("upperarm") or bn.begins_with("clavicle") or bn == "neck_01" or bn == "Head":
-				arm += w
-		if wt > 0.5 and arm < 0.15 and verts[v].y > 0.9:
-			torso.append(v)
-			tw.append(clampf((wt - 0.5) * 2.5, 0.0, 1.0) * (1.0 - arm * 6.0))
-	var wb := 3 + int(amount * 4.0)
-	var ws := 1 + int(amount * 1.5)
-	var rad := {}
-	var polar := []
-	for i in torso.size():
-		var p := verts[torso[i]]
-		var b := int(p.y / BAND)
-		var cx := 0.0
-		var cz := axis_z
-		var a := atan2(p.z - cz, p.x - cx)
-		var s := posmod(int(floor((a + PI) / TAU * SECT)), SECT)
-		var r := Vector2(p.x - cx, p.z - cz).length()
-		var key := b * 100 + s
-		var acc: Vector2 = rad.get(key, Vector2.ZERO)
-		rad[key] = acc + Vector2(r, 1.0)
-		polar.append([b, s, r, cx, cz, a])
-	for i in torso.size():
-		var pr: Array = polar[i]
-		var sum := 0.0
-		var n := 0.0
-		for db in range(-wb, wb + 1):
-			for ds in range(-ws, ws + 1):
-				var key: int = (int(pr[0]) + db) * 100 + posmod(int(pr[1]) + ds, SECT)
-				if rad.has(key):
-					var acc2: Vector2 = rad[key]
-					sum += acc2.x
-					n += acc2.y
-		if n <= 0.0:
-			continue
-		var target := sum / n
-		var r2: float = lerpf(float(pr[2]), target, amount * float(tw[i]))
-		var a2: float = pr[5]
-		var p2 := verts[torso[i]]
-		verts[torso[i]] = Vector3(float(pr[3]) + cos(a2) * r2, p2.y, float(pr[4]) + sin(a2) * r2)
-	# normais refeitas pela forma nova (soldando vértices na mesma posição), senão a luz continua
-	# desenhando os músculos que a geometria já não tem
-	var acc := {}
-	for t in range(0, idx.size(), 3):
-		var a3 := verts[idx[t]]
-		var b3 := verts[idx[t + 1]]
-		var c3 := verts[idx[t + 2]]
-		var fn := (b3 - a3).cross(c3 - a3)
-		for k in 3:
-			var key2 := Vector3i((verts[idx[t + k]] * 2000.0).round())
-			acc[key2] = acc.get(key2, Vector3.ZERO) + fn
-	for i in torso.size():
-		var v := torso[i]
-		var nn: Vector3 = acc.get(Vector3i((verts[v] * 2000.0).round()), Vector3.ZERO)
-		if nn.length_squared() < 1e-12:
-			continue
-		nn = nn.normalized()
-		if nn.dot(norms[v]) < 0.0:
-			nn = -nn
-		norms[v] = norms[v].lerp(nn, clampf(amount * 1.3, 0.0, 1.0) * float(tw[i])).normalized()
-
-
-# Blendshape relativo: a posição vai como diferença em relação à base.
+# Converte posições absolutas para deltas das expressões faciais.
 static func _shape_delta(arr: Array, shaped: PackedVector3Array) -> Array:
 	var base: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
 	var dv := PackedVector3Array()
@@ -619,7 +614,7 @@ func _face_marks(src: Mesh, names: Array) -> Dictionary:
 	var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
 	var bones: PackedInt32Array = arr[Mesh.ARRAY_BONES]
 	var weights: PackedFloat32Array = arr[Mesh.ARRAY_WEIGHTS]
-	var per := bones.size() / maxi(verts.size(), 1)
+	var per: int = bones.size() / maxi(verts.size(), 1)
 	var nose := Vector3(0, 0, -99)
 	var head_w := PackedFloat32Array()
 	head_w.resize(verts.size())
@@ -654,7 +649,7 @@ func _face_marks(src: Mesh, names: Array) -> Dictionary:
 	er /= nr
 	var eye_dx := (er.x - el.x) * 0.5
 	return {"nose": nose, "eye_l": Vector3(el.x, el.y, ez), "eye_r": Vector3(er.x, er.y, ez), "mouth_y": nose.y - 0.037,
-		"mouth_x": eye_dx * 0.68, "head_w": head_w}
+		"mouth_x": eye_dx * 0.74, "head_w": head_w}
 
 
 static func _bump(d: Vector2) -> float:
@@ -678,14 +673,31 @@ func _face_shape(name: String, arr: Array, f: Dictionary, _names: Array) -> Pack
 			continue
 		var d := Vector3.ZERO
 		match name:
+			"apertar_olhos":
+				for e in [f["eye_l"], f["eye_r"]]:
+					var ec: Vector3 = e
+					var w := _bump(Vector2((p.x - ec.x) / 0.029, (p.y - ec.y) / 0.022))
+					d.y -= maxf(0.0, p.y - ec.y) * w * 0.55
+					d.y += maxf(0.0, ec.y - p.y) * w * 0.2
+					d.z += 0.0015 * w
+			"tensao_boca":
+				var w := _bump(Vector2(p.x / (mx * 1.6), (p.y - my) / 0.017))
+				d = Vector3(-p.x * 0.065, -(p.y - my) * 0.3, -0.002) * w
+			"assimetria":
+				var w := _bump(Vector2((p.x - mx) / 0.026, (p.y - my) / 0.022))
+				d = Vector3(0.0015, 0.007, -0.0007) * w
+			"sobr_tensao":
+				var ey: float = (f["eye_l"].y + f["eye_r"].y) * 0.5
+				var w := _bump(Vector2(p.x / 0.028, (p.y - ey - 0.015) / 0.023))
+				d = Vector3(-p.x * 0.1, -0.0017, 0.0012) * w
 			"sorriso", "boca_triste":
 				for side in [-1.0, 1.0]:
 					var w := _bump(Vector2((p.x - side * mx) / 0.017, (p.y - my) / 0.013))
 					if name == "sorriso":
-						d += Vector3(side * 0.003, 0.0062, -0.0014) * w
+						d += Vector3(side * 0.003, 0.0085, -0.0014) * w
 						d += Vector3(0, 0.0018, 0.0008) * _bump(Vector2((p.x - side * (mx + 0.009)) / 0.016, (p.y - my - 0.017) / 0.014))
 					else:
-						d += Vector3(-side * 0.0008, -0.004, -0.0005) * w
+						d += Vector3(-side * 0.0008, -0.007, -0.0005) * w
 			"queixo":
 				var below := smoothstep(my + 0.001, my - 0.01, p.y)
 				var mid := 1.0 - smoothstep(0.022, 0.045, absf(p.x))
@@ -719,7 +731,19 @@ func _brow_mesh(gender: String, src: Mesh) -> Mesh:
 		out.add_blend_shape(bsn)
 	for s in src.get_surface_count():
 		var arr := src.surface_get_arrays(s)
-		var base: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		var base: PackedVector3Array = (arr[Mesh.ARRAY_VERTEX] as PackedVector3Array).duplicate()
+		if not _anatomy.is_empty():
+			var eye_y: float = (_anatomy["eye_l"].y + _anatomy["eye_r"].y) * 0.5
+			for v in base.size():
+				var p := base[v]
+				var bx := clampf((absf(p.x) - 0.012) / 0.053, 0.0, 1.0)
+				var shape := int(look.get("brow_shape", 0))
+				var arch: float = sin(bx * PI) * 0.004 * ([0.2, 0.0, 1.2, 1.7, -0.5, 0.55, 0.9][clampi(shape, 0, 6)])
+				var slope := (bx - 0.5) * (0.007 if shape == 4 else (-0.004 if shape == 6 else 0.0))
+				p.y = eye_y + 0.017 + (p.y - eye_y - 0.017) * clampf(float(look.get("brow_w", 1.0)), 0.3, 2.1) + float(look.get("brow_y", 0.0)) * 0.004 + arch + slope
+				base[v] = HumanStyle.sculpt(p, _anatomy, look)
+		arr[Mesh.ARRAY_VERTEX] = base
+		arr[Mesh.ARRAY_NORMAL] = HumanStyle.normals(base, arr[Mesh.ARRAY_INDEX], arr[Mesh.ARRAY_NORMAL])
 		var bs: Array = []
 		for bsn in BROW_SHAPES:
 			var nv := base.duplicate()
@@ -729,14 +753,16 @@ func _brow_mesh(gender: String, src: Mesh) -> Mesh:
 				var outer := smoothstep(0.03, 0.06, absf(p.x))
 				match bsn:
 					"sobr_cima":
-						nv[v] = p + Vector3(0, 0.004 + 0.001 * inner, 0.0005)
+						nv[v] = p + Vector3(0, 0.006 + 0.001 * inner, 0.0005)
 					"sobr_brava":
-						nv[v] = p + Vector3(-signf(p.x) * 0.0015 * inner, -0.0035 * inner + 0.0008 * outer, 0.0004 * inner)
+						nv[v] = p + Vector3(-signf(p.x) * 0.0015 * inner, -0.006 * inner + 0.001 * outer, 0.0004 * inner)
 					"sobr_triste":
-						nv[v] = p + Vector3(0, 0.004 * inner - 0.0012 * outer, 0)
+						nv[v] = p + Vector3(0, 0.006 * inner - 0.002 * outer, 0)
 			bs.append(_shape_delta(arr, nv))
 		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr, bs, {}, src.surface_get_format(s) & ~Mesh.ARRAY_FLAG_COMPRESS_ATTRIBUTES)
 		out.surface_set_material(s, src.surface_get_material(s))
+	if _brow_meshes.size() >= 64:
+		_brow_meshes.clear()
 	_brow_meshes[gender] = out
 	return out
 
@@ -820,30 +846,76 @@ func _fallback_body(c1: Color) -> void:
 	_add_blob()
 
 
-func _attach_hair(key: String, color: Color) -> void:
-	var path := "res://assets/chars/hair/%s.gltf" % key
-	var hs := _scene(path)
-	if hs == null:
+func _detail_face_mesh(src: Mesh) -> ArrayMesh:
+	var arr := src.surface_get_arrays(0)
+	var verts: PackedVector3Array = (arr[Mesh.ARRAY_VERTEX] as PackedVector3Array).duplicate()
+	for v in verts.size():
+		verts[v] = HumanStyle.sculpt(verts[v], _anatomy, look)
+	arr[Mesh.ARRAY_VERTEX] = verts
+	arr[Mesh.ARRAY_NORMAL] = HumanStyle.normals(verts, arr[Mesh.ARRAY_INDEX], arr[Mesh.ARRAY_NORMAL])
+	var f := _anatomy.duplicate()
+	var hw := PackedFloat32Array()
+	hw.resize(verts.size())
+	hw.fill(1.0)
+	f["head_w"] = hw
+	var out := ArrayMesh.new()
+	var shapes: Array = []
+	for fs in FACE_SHAPES:
+		out.add_blend_shape(fs)
+		shapes.append(_shape_delta(arr, _face_shape(fs, arr, f, [])))
+	out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr, shapes, {}, src.surface_get_format(0) & ~Mesh.ARRAY_FLAG_COMPRESS_ATTRIBUTES)
+	return out
+
+
+func _build_lashes(color: Color) -> void:
+	var mi: MeshInstance3D = _human_parts.get("Eyelashes")
+	if mi == null or _anatomy.is_empty():
 		return
-	var inst: Node = hs.instantiate()
-	var mi: Node = null
-	for c in inst.find_children("*", "MeshInstance3D", true, false):
-		mi = c
-	if mi == null or (mi as MeshInstance3D).mesh == null:
-		inst.queue_free()
+	var m := mi.mesh.surface_get_material(0).duplicate() as StandardMaterial3D
+	mi.mesh = _detail_face_mesh(mi.mesh)
+	m.albedo_color = color.darkened(0.15)
+	m.roughness = 0.85
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mi.material_override = m
+	_lash_mi = mi
+
+
+func _build_beard(style: String, color: Color) -> void:
+	if _anatomy.is_empty():
 		return
-	var par := mi.get_parent()
-	par.remove_child(mi)
-	mi.owner = null
+	var arr := HumanStyle.beard_arrays(body_mi.mesh.surface_get_arrays(0), _bind_names().find("Head"), _anatomy, style)
+	if arr.is_empty():
+		return
+	var source := ArrayMesh.new()
+	source.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	var mi := MeshInstance3D.new()
+	mi.mesh = _detail_face_mesh(source)
+	mi.skin = body_mi.skin
 	skel.add_child(mi)
-	(mi as MeshInstance3D).skeleton = NodePath("..")
-	inst.queue_free()
-	var m := (mi as MeshInstance3D).mesh.surface_get_material(0).duplicate() as StandardMaterial3D
-	m.albedo_color = color
-	m.albedo_texture = null
-	m.roughness = 0.6
-	_rim(m, 0.35)
-	(mi as MeshInstance3D).material_override = m
+	mi.skeleton = NodePath("..")
+	var m := StandardMaterial3D.new()
+	m.albedo_color = color.lightened(0.04)
+	m.roughness = 0.8
+	m.metallic_specular = 0.2
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mi.material_override = m
+	_beard_mi = mi
+
+
+func _attach_hair(key: String, color: Color) -> void:
+	var mi: MeshInstance3D = _human_parts.get("HumanHair_" + key)
+	if mi == null:
+		return
+	mi.visible = true
+	var m := mi.mesh.surface_get_material(0).duplicate() as StandardMaterial3D
+	m.albedo_color = color.lightened(0.08)
+	m.roughness = 0.72
+	m.metallic_specular = 0.25
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	m.alpha_scissor_threshold = 0.35
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mi.material_override = m
 
 
 # ---------- roupas ----------
@@ -865,26 +937,86 @@ func _pants_color(style: String, c1: Color, c2: Color) -> Color:
 	return p
 
 
-func _dress(style: String, c1: Color, c2: Color, female: bool, skin: Color) -> void:
-	var top_id: String = STYLE_TOP.get(style, "camiseta")
-	var top_col: Color = c1
-	if style == "jeans":
-		top_col = c1
-	if style == "jaleco":
-		top_col = c2
-	_add_cloth(top_id, top_col, 0.85)
-	if style != "vestido":
-		_add_cloth("bermuda" if style in ["academia", "havaiana"] else "calca", _pants_color(style, c1, c2), 0.9)
-	else:
-		_add_skirt(c1)
-	var shoe := Color("#252220")
-	if style in ["academia", "time"]:
-		shoe = Color("#e9e6e0")
-	elif style == "havaiana":
-		shoe = Color("#c9712c")
-	elif style in ["couro", "social", "terno", "farda", "batina", "uniforme"]:
-		shoe = Color("#18120f")
-	_add_cloth("sapato", shoe, 0.7)
+func _dress(style: String, c1: Color, c2: Color, _female: bool, _skin: Color) -> void:
+	var outfit := 0
+	if style in ["social", "terno", "couro", "jeans", "sobretudo", "jaleco", "batina", "vestido"]:
+		outfit = 1
+	elif style in ["academia", "regata", "havaiana", "farda", "uniforme", "macacao"]:
+		outfit = 2
+	_outfit = outfit
+	for name in ["HumanTop_" + str(outfit), "HumanPants_" + str(outfit), "HumanShoes"]:
+		var mi: MeshInstance3D = _human_parts.get(name)
+		if mi == null:
+			continue
+		var cache_key: String = _body_key + "_" + str(name)
+		if not _cloth_cache.has(cache_key):
+			_cloth_cache[cache_key] = _shape_piece(mi.mesh)
+		mi.mesh = _cloth_cache[cache_key]
+		mi.visible = true
+		var m := mi.mesh.surface_get_material(0).duplicate() as StandardMaterial3D
+		m.albedo_color = c1 if name.begins_with("HumanTop") else (_pants_color(style, c1, c2) if name.begins_with("HumanPants") else Color("#363331"))
+		m.roughness = 0.9
+		m.metallic_specular = 0.18
+		mi.material_override = m
+
+
+func _hide_under_clothes(gender: String) -> void:
+	var key := _body_key + "_covered" + str(_outfit)
+	if _cloth_cache.has(key):
+		body_mi.mesh = _cloth_cache[key]
+		return
+	var sex := "female" if gender == "mulher" else "male"
+	var age_suffix := "_child" if int(look.get("age", 30)) < 13 else ""
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://assets/humans/Human_" + sex + age_suffix + "_coverage.json"))
+	var hidden := {}
+	for index in data["outfits"][str(_outfit)]:
+		hidden[int(index)] = true
+	var arr := body_mi.mesh.surface_get_arrays(0)
+	var original: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
+	var indices := PackedInt32Array()
+	var encoded: PackedColorArray = arr[Mesh.ARRAY_COLOR]
+	for t in range(0, original.size(), 3):
+		var covered := true
+		for corner in 3:
+			var code := encoded[original[t + corner]]
+			var source_id := int(roundf(code.r * 255.0)) + int(roundf(code.g * 255.0)) * 256
+			if not hidden.has(source_id):
+				covered = false
+		if not covered:
+			for corner in 3:
+				indices.append(original[t + corner])
+	arr[Mesh.ARRAY_INDEX] = indices
+	var colors := PackedColorArray()
+	colors.resize(encoded.size())
+	colors.fill(Color.WHITE)
+	arr[Mesh.ARRAY_COLOR] = colors
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr, [], {}, body_mi.mesh.surface_get_format(0) & ~Mesh.ARRAY_FLAG_COMPRESS_ATTRIBUTES)
+	_cloth_cache[key] = mesh
+	body_mi.mesh = mesh
+
+
+func _shape_piece(src: Mesh) -> ArrayMesh:
+	var names := _bind_names()
+	var joint := {}
+	for i in body_mi.skin.get_bind_count():
+		joint[names[i]] = body_mi.skin.get_bind_pose(i).affine_inverse().origin
+	var parts := _body_key.split("_")
+	var btype := int(parts[parts.size() - 1].substr(1))
+	var stage := parts[1] if parts[1] in ["crianca", "adolescente"] else ""
+	var sh := _personal_shape(_shape_for(parts[0], stage, btype))
+	var axis_z: float = (joint["spine_01"].z + joint["spine_02"].z + joint["spine_03"].z) / 3.0
+	var out := ArrayMesh.new()
+	for surface in src.get_surface_count():
+		var arr := src.surface_get_arrays(surface)
+		var verts: PackedVector3Array = (arr[Mesh.ARRAY_VERTEX] as PackedVector3Array).duplicate()
+		var per: int = (arr[Mesh.ARRAY_BONES] as PackedInt32Array).size() / verts.size()
+		_reshape(verts, arr[Mesh.ARRAY_BONES], arr[Mesh.ARRAY_WEIGHTS], per, names, joint, sh, axis_z)
+		arr[Mesh.ARRAY_VERTEX] = verts
+		arr[Mesh.ARRAY_NORMAL] = HumanStyle.normals(verts, arr[Mesh.ARRAY_INDEX], arr[Mesh.ARRAY_NORMAL])
+		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr, [], {}, src.surface_get_format(surface) & ~Mesh.ARRAY_FLAG_COMPRESS_ATTRIBUTES)
+		out.surface_set_material(surface, src.surface_get_material(surface))
+	return out
 
 
 func _bind_names() -> Array:
@@ -898,269 +1030,7 @@ func _bind_names() -> Array:
 	return out
 
 
-func _add_cloth(recipe_id: String, color: Color, rough: float) -> void:
-	var key := _body_key + "_" + recipe_id
-	if not _cloth_cache.has(key):
-		_cloth_cache[key] = _make_cloth_mesh(RECIPES[recipe_id])
-	var mesh: ArrayMesh = _cloth_cache[key]
-	if mesh == null:
-		return
-	var mi := MeshInstance3D.new()
-	mi.mesh = mesh
-	var m := StandardMaterial3D.new()
-	m.albedo_color = color
-	m.roughness = rough
-	m.emission_enabled = true
-	m.emission = color * 0.05
-	# a malha da roupa traz barras, costuras e dobras na cor do vértice (tom × cor do tecido)
-	m.vertex_color_use_as_albedo = true
-	if recipe_id == "jaqueta" and str(look.get("clothes", "")) in ["couro", "jeans"]:
-		m.roughness = 0.45 if str(look.get("clothes", "")) == "couro" else 0.8
-		m.metallic_specular = 0.6 if str(look.get("clothes", "")) == "couro" else 0.3
-	else:
-		m.metallic_specular = 0.25
-	_rim(m, 0.42)
-	mi.material_override = m
-	skel.add_child(mi)
-	mi.skeleton = NodePath("..")
-	mi.skin = body_mi.skin
-
-
-func _make_cloth_mesh(rc: Dictionary) -> ArrayMesh:
-	var src: ArrayMesh = body_mi.mesh
-	var arr := src.surface_get_arrays(0)
-	var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
-	var norms: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
-	var bones: PackedInt32Array = arr[Mesh.ARRAY_BONES]
-	var weights: PackedFloat32Array = arr[Mesh.ARRAY_WEIGHTS]
-	var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
-	var per := bones.size() / maxi(verts.size(), 1)
-	var names := _bind_names()
-	var want: Dictionary = {}
-	for b in rc["bones"]:
-		want[b] = true
-	var ok := PackedByteArray()
-	ok.resize(verts.size())
-	var ymin: float = rc["ymin"]
-	var ymax: float = rc["ymax"]
-	var xmax: float = rc["xmax"]
-	for v in verts.size():
-		var p := verts[v]
-		if p.y < ymin or p.y > ymax or absf(p.x) > xmax:
-			continue
-		var sum := 0.0
-		for kk in per:
-			if want.has(names[bones[v * per + kk]]):
-				sum += weights[v * per + kk]
-		if sum >= 0.5:
-			ok[v] = 1
-	var new_idx := PackedInt32Array()
-	# triângulo de borda (2 dos 3 vértices dentro) entra se o vértice de fora estiver colado no
-	# recorte: fecha frestas e entalhes sem esfiapar a barra
-	var legs: bool = "thigh_l" in rc["bones"]
-	var near := func(v: int) -> bool:
-		var q := verts[v]
-		if not legs and absf(q.x) > 0.05:
-			return false
-		return q.y >= ymin - 0.025 and q.y <= ymax + 0.025 and absf(q.x) <= xmax + 0.03
-	for ti in range(0, idx.size(), 3):
-		var inside := ok[idx[ti]] + ok[idx[ti + 1]] + ok[idx[ti + 2]]
-		var take := inside == 3
-		if inside == 2:
-			for k in 3:
-				if ok[idx[ti + k]] == 0:
-					take = near.call(idx[ti + k])
-		if take:
-			new_idx.append(idx[ti])
-			new_idx.append(idx[ti + 1])
-			new_idx.append(idx[ti + 2])
-	if new_idx.is_empty():
-		return null
-	# Volume: a peça fica afastada do corpo (folga) e solta mais embaixo (caimento), em vez de
-	# colada na pele. Cor do vértice: barra e gola mais escuras, dobras suaves nas áreas soltas.
-	var off: float = rc["off"]
-	var loose: float = rc.get("loose", 0.0)
-	# vértices duplicados na costura da malha (mesma posição, normais diferentes) andam juntos;
-	# sem isso a roupa abre uma fenda na costura do meio
-	var weld := {}
-	var weld_p := {}
-	for v in verts.size():
-		if ok[v] == 0:
-			continue
-		var key := Vector3i((verts[v] * 450.0).round())
-		weld[key] = weld.get(key, Vector3.ZERO) + norms[v]
-		weld_p[key] = weld_p.get(key, Vector4.ZERO) + Vector4(verts[v].x, verts[v].y, verts[v].z, 1.0)
-	var nv := PackedVector3Array()
-	nv.resize(verts.size())
-	var cols := PackedColorArray()
-	cols.resize(verts.size())
-	for v in verts.size():
-		var p := verts[v]
-		var hang := 0.0
-		if loose > 0.0:
-			hang = loose * clampf((ymax - p.y) / maxf(ymax - ymin, 0.01), 0.0, 1.0)
-		var wk := Vector3i((p * 450.0).round())
-		var wn: Vector3 = weld.get(wk, norms[v])
-		wn = wn.normalized() if wn.length_squared() > 0.0001 else norms[v]
-		var wp: Vector4 = weld_p.get(wk, Vector4(p.x, p.y, p.z, 1.0))
-		var base := Vector3(wp.x, wp.y, wp.z) / maxf(wp.w, 1.0)
-		var extra := 0.0
-		if "thigh_l" in rc["bones"]:
-			# virilha: a dobra é côncava e a pele atravessaria o tecido
-			extra = 0.016 * smoothstep(0.11, 0.0, absf(base.x)) * smoothstep(0.66, 0.78, base.y) * smoothstep(1.02, 0.92, base.y)
-		nv[v] = base + wn * (off + hang + extra)
-	# barra e gola mais escuras, pintadas depois de alinhar a borda (senão a faixa segue o zigue-zague)
-	var hem := _straighten_hems(nv, new_idx, ymin, ymax, xmax)
-	for v in verts.size():
-		var p := nv[v]
-		var f := 1.0
-		var edge := 9.0
-		if not is_nan(hem.x):
-			edge = p.y - hem.x
-		if not is_nan(hem.y):
-			edge = minf(edge, hem.y - p.y)
-		if edge < 0.03:
-			f = 0.76
-		elif edge < 0.05:
-			f = 0.89
-		if loose > 0.0 and p.y < ymax - 0.15:
-			# dobras caindo na vertical (faixas horizontais pareciam músculos sob o tecido)
-			f *= 0.95 + 0.05 * sin(p.x * 46.0 + p.y * 9.0)
-		cols[v] = Color(f, f, f)
-	var na: Array = []
-	na.resize(Mesh.ARRAY_MAX)
-	na[Mesh.ARRAY_VERTEX] = nv
-	na[Mesh.ARRAY_NORMAL] = norms
-	na[Mesh.ARRAY_COLOR] = cols
-	na[Mesh.ARRAY_TEX_UV] = arr[Mesh.ARRAY_TEX_UV]
-	na[Mesh.ARRAY_BONES] = bones
-	na[Mesh.ARRAY_WEIGHTS] = weights
-	na[Mesh.ARRAY_INDEX] = new_idx
-	var out := ArrayMesh.new()
-	out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, na)
-	return out
-
-
-# A peça é recortada da malha do corpo triângulo a triângulo, e a borda sai em zigue-zague.
-# Aqui as bordas (barra embaixo, gola em cima, punhos nas mangas) viram uma linha reta.
-static func _straighten_hems(nv: PackedVector3Array, idx: PackedInt32Array, ymin: float, ymax: float, xmax: float) -> Vector2:
-	var count := {}
-	for t in range(0, idx.size(), 3):
-		for k in 3:
-			var a := idx[t + k]
-			var b := idx[t + (k + 1) % 3]
-			var key := Vector2i(mini(a, b), maxi(a, b))
-			count[key] = int(count.get(key, 0)) + 1
-	var border := {}
-	for key in count:
-		if int(count[key]) == 1:
-			border[key.x] = true
-			border[key.y] = true
-	# vizinhos de borda: suaviza o contorno (tira o zigue-zague mantendo a curva da gola e da cava)
-	# vértices da costura (mesma posição) são o mesmo ponto: a borda continua sem entalhe
-	var same := {}
-	for v in border:
-		var pk := Vector3i((nv[v] * 450.0).round())
-		if not same.has(pk):
-			same[pk] = []
-		same[pk].append(v)
-	var rep_of := {}
-	for pk in same:
-		for v in same[pk]:
-			rep_of[v] = same[pk][0]
-	var nbr := {}
-	for key in count:
-		if int(count[key]) == 1:
-			var ra: int = rep_of.get(key.x, key.x)
-			var rb: int = rep_of.get(key.y, key.y)
-			if ra == rb:
-				continue
-			if not nbr.has(ra):
-				nbr[ra] = []
-			if not nbr.has(rb):
-				nbr[rb] = []
-			if not rb in nbr[ra]:
-				nbr[ra].append(rb)
-			if not ra in nbr[rb]:
-				nbr[rb].append(ra)
-	for it in 5:
-		var moved := {}
-		for v in nbr:
-			var ns: Array = nbr[v]
-			if ns.size() < 2:
-				continue
-			var acc := Vector3.ZERO
-			for o in ns:
-				acc += nv[o]
-			moved[v] = nv[v].lerp(acc / ns.size(), 0.5)
-		for v in moved:
-			nv[v] = moved[v]
-	for pk in same:
-		var r0: int = same[pk][0]
-		for v in same[pk]:
-			nv[v] = nv[r0]
-	var groups := {"baixo": [], "cima": [], "punho_l": [], "punho_r": []}
-	for v in border:
-		var p := nv[v]
-		if p.y < ymin + 0.12:
-			groups["baixo"].append(v)
-		elif p.y > ymax - 0.07 and absf(p.x) < 0.16:
-			groups["cima"].append(v)
-		elif xmax < 5.0 and absf(p.x) > xmax - 0.07:
-			groups["punho_r" if p.x > 0.0 else "punho_l"].append(v)
-	var hem := Vector2(NAN, NAN)
-	for g in ["baixo", "cima"]:
-		var vs: Array = groups[g]
-		if vs.size() < 4:
-			continue
-		var avg := 0.0
-		for v in vs:
-			avg += nv[v].y
-		avg /= vs.size()
-		for v in vs:
-			var p2 := nv[v]
-			nv[v] = Vector3(p2.x, lerpf(p2.y, avg, 0.95 if g == "baixo" else 0.6), p2.z)
-		if g == "baixo":
-			hem.x = avg
-		else:
-			hem.y = avg
-	for g in ["punho_l", "punho_r"]:
-		var vs2: Array = groups[g]
-		if vs2.size() < 4:
-			continue
-		var ax := 0.0
-		for v in vs2:
-			ax += absf(nv[v].x)
-		ax /= vs2.size()
-		for v in vs2:
-			var p3 := nv[v]
-			nv[v] = Vector3(signf(p3.x) * lerpf(absf(p3.x), ax, 0.85), p3.y, p3.z)
-	return hem
-
-
-func _add_skirt(color: Color) -> void:
-	var att := BoneAttachment3D.new()
-	att.bone_name = "pelvis"
-	skel.add_child(att)
-	var sk := CylinderMesh.new()
-	sk.top_radius = 0.2
-	sk.bottom_radius = 0.4
-	sk.height = 0.58
-	sk.radial_segments = 20
-	var mi := MeshInstance3D.new()
-	mi.mesh = sk
-	var m := StandardMaterial3D.new()
-	m.albedo_color = color
-	m.roughness = 0.9
-	mi.material_override = m
-	mi.position = Vector3(0, -0.24, 0)
-	mi.scale = Vector3(1.0, 1.0, 0.95)
-	att.add_child(mi)
-
-
-# ---------- interface ----------
-
-func set_emotion(e: String, show_bubble: bool = true) -> void:
+func set_emotion(e: String, show_bubble: bool = false) -> void:
 	emotion = e
 	_show_bubble = show_bubble
 	_face_t = FACE_EXPR.get(e, {})
@@ -1210,6 +1080,7 @@ const ACT_ANIM := {"dancar": "Dance", "conversar": "Idle", "celular": "Idle", "o
 func _process(delta: float) -> void:
 	if skel == null or ap == null:
 		return
+	_restore_animation_pose()
 	t += delta
 	talk_left = maxf(0.0, talk_left - delta)
 	var gp := global_position
@@ -1237,6 +1108,8 @@ func _process(delta: float) -> void:
 	if busy_t > 0.0:
 		ap.speed_scale = 1.0
 		ap.advance(delta)
+		_save_animation_pose()
+		HumanMotion.apply(self, delta)
 		_apply_posture(delta)
 		_apply_hands(delta)
 		_apply_look(delta)
@@ -1251,7 +1124,7 @@ func _process(delta: float) -> void:
 	if spd > 0.35:
 		var walk_name := "Walk_Formal" if formal and ap.has_animation("Walk_Formal") else "Walk"
 		# a passada encolhe com o corpo (criança dá mais passos para a mesma velocidade)
-		var leg := clampf(scale.y, 0.4, 1.2)
+		var leg := clampf(scale.y, 0.4, 1.2) * float(HumanMotion.profile(int(look.get("age", 30)))["stride"])
 		var walk_v: float = float(speeds.get(walk_name, 1.4)) * leg
 		var jog_v: float = float(speeds.get("Jog_Fwd", 3.0)) * leg
 		var run_v: float = float(speeds.get("Sprint", 5.0)) * leg
@@ -1274,6 +1147,8 @@ func _process(delta: float) -> void:
 	_play(anim, 0.22 if activity != "agachar" else 0.35)
 	ap.speed_scale = scale_k
 	ap.advance(delta)
+	_save_animation_pose()
+	HumanMotion.apply(self, delta)
 	_apply_posture(delta)
 	_apply_hands(delta)
 	_apply_look(delta)
@@ -1282,7 +1157,7 @@ func _process(delta: float) -> void:
 		bubble.position.y = 2.2 + sin(t * 2.4) * 0.04
 
 
-# Postura por cima da animação: idoso curvado com a cabeça erguida para olhar à frente; tristeza
+# Postura discreta por cima da animação; tristeza
 # e cansaço baixam a cabeça; medo e alegria endireitam. A cabeça da criança fica maior.
 func _apply_posture(delta: float) -> void:
 	if not face_fx:
@@ -1290,9 +1165,9 @@ func _apply_posture(delta: float) -> void:
 	if _head >= 0 and _head_vec != Vector3.ONE:
 		skel.set_bone_pose_scale(_head, _head_vec)
 	var p: Array = POSTURE.get(emotion, [0.0, 0.0, 0.0])
-	var want := Vector3(p[0], p[1], p[2]) + Vector3(14.0, 10.0, -12.0) * _old
+	var want := Vector3(float(p[0]) * 0.12, float(p[1]) * 0.2, float(p[2]) * 0.35)
 	if hunched and not umbrella_on:
-		want += Vector3(7.0, 6.0, 6.0)
+		want += Vector3(0.4, 0.8, 1.2)
 	if activity == "sentar":
 		want *= 0.4
 	_pose_cur = _pose_cur.lerp(want, minf(delta * 3.0, 1.0))
@@ -1314,7 +1189,7 @@ func _apply_posture(delta: float) -> void:
 # Expressão do rosto 3D: pesos das deformações seguem a emoção; pisca de vez em quando e mexe o
 # queixo ao falar. Longe da câmera (LOD) o rosto fica parado e não custa nada.
 func _apply_face(delta: float) -> void:
-	if body_mi == null or not _lod_near or not face_fx:
+	if _face_mi == null or not _lod_near or not face_fx:
 		return
 	_next_blink -= delta
 	if _next_blink <= 0.0:
@@ -1322,6 +1197,10 @@ func _apply_face(delta: float) -> void:
 		_next_blink = randf_range(2.2, 5.5)
 	_blink = maxf(0.0, _blink - delta * 7.0)
 	var k := minf(delta * 8.0, 1.0)
+	if _eye_mi != null:
+		var eye_want := maxf(_blink, float(_face_t.get("apertar_olhos", 0.0)) * 0.7)
+		var eye_cur := _eye_mi.get_blend_shape_value(0)
+		_eye_mi.set_blend_shape_value(0, lerpf(eye_cur, eye_want, 1.0 if _blink > 0.0 else k))
 	for i in FACE_SHAPES.size():
 		var n: String = FACE_SHAPES[i]
 		var want: float = float(_face_t.get(n, 0.0))
@@ -1335,7 +1214,10 @@ func _apply_face(delta: float) -> void:
 			if want == 0.0 and nw < 0.004:
 				nw = 0.0
 			_face_w[n] = nw
-			body_mi.set_blend_shape_value(i, nw)
+			_face_mi.set_blend_shape_value(i, nw)
+			for extra in [_lash_mi, _beard_mi]:
+				if extra != null:
+					extra.set_blend_shape_value(i, nw)
 	if _brow_mi != null:
 		for i in BROW_SHAPES.size():
 			var n2: String = BROW_SHAPES[i]
@@ -1591,8 +1473,38 @@ func _aim_bone(bi: int, child: int, dir: Vector3, weight: float = 1.0) -> void:
 func _apply_hands(delta: float) -> void:
 	if skel == null:
 		return
+	gesture_left = maxf(0.0, gesture_left - delta)
+	if gesture_left > 0.0 and _speed < 0.35 and not lying and daily_action == "":
+		var weight := minf(1.0, minf(gesture_left * 3.0, (2.8 - gesture_left) * 3.0))
+		if social_gesture == "cumprimento":
+			_reach_hand("r", Vector3(-0.12, 1.02, 0.47), weight)
+		elif social_gesture == "abraco":
+			_reach_hand("r", Vector3(-0.22, 1.32, 0.42), weight)
+			_reach_hand("l", Vector3(0.22, 1.3, 0.42), weight)
+		elif social_gesture == "beijo":
+			_reach_hand("r", Vector3(-0.16, 1.43, 0.35), weight)
+			_rotate_local("Head", Vector3(0, 0.03, 0.035 * weight))
+		return
 	_wave_t = maxf(0.0, _wave_t - delta)
 	if not umbrella_on and not stroller_on and _wave_t <= 0.0:
+		if _speed < 0.15 and activity in ["", "conversar", "olhar"] and daily_action == "" and talk_left <= 0.0 and not lying:
+			for side in ["l", "r"]:
+				var arm := skel.find_bone("upperarm_" + side)
+				var forearm := skel.find_bone("lowerarm_" + side)
+				if arm >= 0 and forearm >= 0:
+					var sign_x := signf(skel.get_bone_global_pose(arm).origin.x)
+					_aim_bone(arm, forearm, Vector3(sign_x * 0.09, -1.0, 0.035), 0.9)
+					var hand := skel.find_bone("hand_" + side)
+					var middle := skel.find_bone("middle_01_" + side)
+					_aim_bone(forearm, hand, Vector3(sign_x * 0.04, -1.0, 0.07), 0.9)
+					_aim_bone(hand, middle, Vector3(sign_x * 0.02, -1.0, 0.01), 0.85)
+				for finger in ["thumb", "index", "middle", "ring", "pinky"]:
+					for segment in [1, 2, 3]:
+						var joint := skel.find_bone("%s_%02d_%s" % [finger, segment, side])
+						if joint >= 0:
+							skel.set_bone_pose_rotation(joint, Quaternion.IDENTITY.slerp(skel.get_bone_pose_rotation(joint), 0.16))
+				_aim_bone(skel.find_bone("thigh_" + side), skel.find_bone("calf_" + side), Vector3(0, -1, 0), 0.85)
+				_aim_bone(skel.find_bone("calf_" + side), skel.find_bone("foot_" + side), Vector3(0, -1, 0.015), 0.75)
 		return
 	if _arm_bones.is_empty():
 		for bn in ["upperarm_r", "lowerarm_r", "hand_r", "upperarm_l", "lowerarm_l", "hand_l"]:
@@ -1628,3 +1540,59 @@ func _apply_hands(delta: float) -> void:
 		var k2 := global_transform.basis.get_scale().y
 		_umbrella.global_transform = Transform3D(Basis().scaled(Vector3.ONE * k2), hp)
 		_umbrella.visible = visible and not lying
+
+
+func _personal_shape(shape: Dictionary) -> Dictionary:
+	shape["chest_x"] *= float(look.get("chest", 1.0))
+	shape["chest_z"] *= lerpf(1.0, float(look.get("chest", 1.0)), 0.65)
+	shape["waist_x"] *= float(look.get("waist", 1.0))
+	shape["hip_x"] *= float(look.get("hips", 1.0))
+	for k in ["arm", "forearm", "thigh", "calf"]:
+		shape[k] *= float(look.get("limbs", 1.0))
+	shape["belly"] = maxf(0.0, float(shape["belly"]) + float(look.get("abdomen", 0.0)))
+	return shape
+
+
+func gesture(kind: String) -> void:
+	social_gesture = kind
+	gesture_left = 2.8
+
+
+func _save_animation_pose() -> void:
+	_animation_pose.clear()
+	for i in skel.get_bone_count():
+		_animation_pose.append(skel.get_bone_pose_rotation(i))
+
+
+func _restore_animation_pose() -> void:
+	for i in mini(_animation_pose.size(), skel.get_bone_count()):
+		skel.set_bone_pose_rotation(i, _animation_pose[i])
+
+
+func _rotate_local(bone: String, angles: Vector3) -> void:
+	var i := skel.find_bone(bone)
+	if i >= 0:
+		skel.set_bone_pose_rotation(i, skel.get_bone_pose_rotation(i) * Quaternion.from_euler(angles))
+
+
+# Solução de dois segmentos: cotovelo acompanha o alcance, sem esticar o braço.
+func _reach_hand(side: String, target: Vector3, weight: float) -> void:
+	var arm := skel.find_bone("upperarm_" + side)
+	var elbow := skel.find_bone("lowerarm_" + side)
+	var hand := skel.find_bone("hand_" + side)
+	if arm < 0 or elbow < 0 or hand < 0:
+		return
+	var a := skel.get_bone_global_pose(arm).origin
+	var e := skel.get_bone_global_pose(elbow).origin
+	var h := skel.get_bone_global_pose(hand).origin
+	var upper := a.distance_to(e)
+	var lower := e.distance_to(h)
+	var toward := (target - a).normalized()
+	var distance := clampf(a.distance_to(target), absf(upper - lower) + 0.01, upper + lower - 0.01)
+	var projection := (upper * upper - lower * lower + distance * distance) / (2.0 * distance)
+	var pole := Vector3(signf(a.x) * 0.55, -1.0, 0.1)
+	pole = (pole - toward * pole.dot(toward)).normalized()
+	var joint := a + toward * projection + pole * sqrt(maxf(0.0, upper * upper - projection * projection))
+	_aim_bone(arm, elbow, joint - a, weight)
+	e = skel.get_bone_global_pose(elbow).origin
+	_aim_bone(elbow, hand, target - e, weight)

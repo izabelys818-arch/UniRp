@@ -24,6 +24,7 @@ const BONES := {
 }
 
 static var _ual: Node
+static var rebuild: bool = false
 static var _libs: Dictionary = {}      # caminho do corpo -> {"lib": AnimationLibrary, "speed": {nome: m/s}}
 
 
@@ -64,6 +65,12 @@ static func _bone_pairs(us: Skeleton3D, cs: Skeleton3D) -> Dictionary:
 static func bank_for(body_path: String, cs: Skeleton3D) -> Dictionary:
 	if _libs.has(body_path):
 		return _libs[body_path]
+	var prepared := body_path.get_basename() + "_motion.res"
+	if not rebuild and ResourceLoader.exists(prepared):
+		var library := load(prepared) as AnimationLibrary
+		var ready_bank := {"lib": library, "speed": library.get_meta("speeds", {})}
+		_libs[body_path] = ready_bank
+		return ready_bank
 	var nodes := _ual_nodes()
 	var us: Skeleton3D = nodes[0]
 	var ap: AnimationPlayer = nodes[1]
@@ -80,6 +87,7 @@ static func bank_for(body_path: String, cs: Skeleton3D) -> Dictionary:
 		if res["speed"] > 0.0:
 			speeds[name] = res["speed"]
 	var bank := {"lib": lib, "speed": speeds}
+	lib.set_meta("speeds", speeds)
 	_libs[body_path] = bank
 	return bank
 
@@ -133,6 +141,9 @@ static func _bake(src: Animation, us: Skeleton3D, cs: Skeleton3D, pair: Dictiona
 	var feet_prev := [Vector3.ZERO, Vector3.ZERO]
 	var dist_sum := 0.0
 	var dist_n := 0
+	var inv_pair := {}
+	for ui in pair:
+		inv_pair[pair[ui]] = ui
 	for f in frames:
 		var time := minf(float(f) / FPS, src.length)
 		# pose global do esqueleto original
@@ -152,9 +163,6 @@ static func _bake(src: Animation, us: Skeleton3D, cs: Skeleton3D, pair: Dictiona
 		# aplica ao esqueleto de destino
 		var gc: Array = []
 		gc.resize(cb_count)
-		var inv_pair := {}
-		for ui in pair:
-			inv_pair[pair[ui]] = ui
 		for j in cb_count:
 			var par2 := cs.get_bone_parent(j)
 			var rest2: Transform3D = rest_c[j]
