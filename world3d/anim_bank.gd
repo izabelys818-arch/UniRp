@@ -10,7 +10,9 @@ const FPS := 30.0
 const SKEL_PATH := "Armature/Skeleton3D"
 
 const WANTED := ["Idle", "Idle_Talking", "Walk", "Walk_Formal", "Jog_Fwd", "Sprint", "Death01", "Sitting_Idle", "Sitting_Enter", "Sitting_Exit", "Sitting_Talking",
-	"Hit_Chest", "Hit_Head", "Punch_Jab", "Punch_Cross", "Interact", "PickUp_Table", "Crouch_Idle", "Crouch_Fwd", "Dance", "Push", "Jump_Start", "Jump", "Jump_Land", "Roll", "Idle_Torch"]
+	"Hit_Chest", "Hit_Head", "Punch_Jab", "Punch_Cross", "Interact", "PickUp_Table", "Crouch_Idle", "Crouch_Fwd", "Dance", "Push", "Jump_Start", "Jump", "Jump_Land", "Roll", "Idle_Torch", "Fixing_Kneeling"]
+# posturas que duram (ficar sentado, agachado, ajoelhado, andar) precisam repetir sem parar
+const LOOPED := ["Idle", "Idle_Talking", "Walk", "Walk_Formal", "Jog_Fwd", "Sprint", "Sitting_Idle", "Sitting_Talking", "Crouch_Idle", "Crouch_Fwd", "Fixing_Kneeling", "Dance", "Idle_Torch"]
 
 const BONES := {
 	"root": "root", "DEF-hips": "pelvis", "DEF-spine.001": "spine_01", "DEF-spine.002": "spine_02", "DEF-spine.003": "spine_03",
@@ -23,6 +25,14 @@ const BONES := {
 
 static var _ual: Node
 static var _libs: Dictionary = {}      # caminho do corpo -> {"lib": AnimationLibrary, "speed": {nome: m/s}}
+
+
+# Solta o que fica guardado em variáveis estáticas, para o Godot não acusar recurso vazado ao fechar.
+static func cleanup() -> void:
+	if _ual != null and is_instance_valid(_ual):
+		_ual.free()
+	_ual = null
+	_libs.clear()
 
 
 static func _ual_nodes() -> Array:
@@ -64,7 +74,9 @@ static func bank_for(body_path: String, cs: Skeleton3D) -> Dictionary:
 		if not ap.has_animation(name):
 			continue
 		var res := _bake(ap.get_animation(name), us, cs, pair, name in ["Walk", "Walk_Formal", "Jog_Fwd", "Sprint", "Crouch_Fwd"])
-		lib.add_animation(name, res["anim"])
+		var baked: Animation = res["anim"]
+		baked.loop_mode = Animation.LOOP_LINEAR if name in LOOPED else Animation.LOOP_NONE
+		lib.add_animation(name, baked)
 		if res["speed"] > 0.0:
 			speeds[name] = res["speed"]
 	var bank := {"lib": lib, "speed": speeds}

@@ -19,6 +19,8 @@ func owned() -> bool:
 
 
 func open_business() -> void:
+	if GameState.refuse_minor("contrato"):
+		return
 	GameState.player["biz"] = {"stock": {}, "preco": 1.0, "cash": 0.0, "aberto": false, "reputacao": 1.0,
 		"vendas_hoje": 0.0, "ontem": 0.0, "total": 0.0, "dia": TimeManager.day(), "clientes": 0}
 	changed.emit()

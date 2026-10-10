@@ -1,0 +1,189 @@
+extends Node
+
+# Ações com o corpo na casa do jogador e o hospital como protótipo de interior vivo.
+# Confere a ordem aproximar → alinhar → animar → efeito real, o cancelamento e a ocupação.
+# Uso: godot --path . res://tests/life_actions.tscn
+
+const UITheme = preload("res://ui/ui_theme.gd")
+var fails := 0
+var wv
+var screen
+
+
+func check(ok: bool, what: String) -> void:
+	print(("OK     " if ok else "FALHOU ") + what)
+	if not ok:
+		fails += 1
+
+
+func _wait(sec: float) -> void:
+	var t0 := Time.get_ticks_msec()
+	while Time.get_ticks_msec() - t0 < int(sec * 1000.0):
+		await get_tree().process_frame
+
+
+func _shot(name: String) -> void:
+	await RenderingServer.frame_post_draw
+	var path := OS.get_user_data_dir() + "/acao_%s.png" % name
+	get_viewport().get_texture().get_image().save_png(path)
+	print("SHOT ", path)
+
+
+func _stage() -> String:
+	return "" if wv._act.is_empty() else str(wv._act["stage"])
+
+
+# espera a ação chegar a um estágio (ou acabar), registrando a ordem
+func _follow(order: Array, max_sec: float) -> void:
+	var t0 := Time.get_ticks_msec()
+	while Time.get_ticks_msec() - t0 < int(max_sec * 1000.0):
+		var st := _stage()
+		if order.is_empty() or order.back() != st:
+			order.append(st)
+		if st == "":
+			return
+		await get_tree().process_frame
+
+
+func _put_player(p: Vector2, loc: String) -> void:
+	wv.player.position = Vector3(p.x, 0.25, p.y)
+	wv.cam_target = wv.player.position
+	GameState.player["location"] = loc
+	World.location_changed.emit(loc)
+	for i in 20:
+		await get_tree().process_frame
+
+
+func _ready() -> void:
+	preload("res://world3d/world_view.gd").realtime = false
+	WorldEvents.random_enabled = false
+	SaveManager.path = "user://acoes_save.json"
+	var origin := World.get_origin("morador_antigo")
+	GameState.new_game({
+		"name": "Rafa", "age": 30, "gender": "homem", "appearance": "x",
+		"look": {"pele": 2, "cabelo": 0, "cor_cabelo": 0, "barba": 1, "roupa": 2, "marcas": []},
+		"appearance_extra": "", "backstory": "", "traits": [], "cenario": "porto_cinza",
+		"origin": origin["id"], "money": 400, "location": "apartamento", "home": "apartamento", "inventory": {"pao": 1}, "alive": true,
+	})
+	TimeManager.total_minutes = 1440 + 21 * 60
+	NeedsSystem.reset({})
+	NPCManager.reset_state(origin)
+	var root := Control.new()
+	root.theme = UITheme.build()
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(root)
+	screen = preload("res://ui/game_screen.gd").new()
+	screen.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.add_child(screen)
+	await get_tree().process_frame
+	wv = screen.world_view
+	for i in 40:
+		await get_tree().process_frame
+	var home := "apartamento"
+	var b: Rect2 = wv.layout.lots[home]["building"]
+	check(wv.city.use_points.has(home) and wv.city.use_points[home].has("cama") and wv.city.use_points[home].has("chuveiro"), "casa tem pontos de uso (cama e chuveiro)")
+	await _put_player(b.get_center() + Vector2(0, 2.5), home)
+	wv.zoom = 9.0
+	wv.camera.size = 9.0
+	# --- dormir ---
+	NeedsSystem.apply({"energia": -60})
+	var e0 := NeedsSystem.get_value("energia")
+	var m0 := TimeManager.total_minutes
+	screen._do_action("dormir_casa")
+	check(not wv._act.is_empty(), "dormir: ação começou (não foi instantânea)")
+	check(TimeManager.total_minutes == m0, "dormir: o tempo ainda não pulou ao começar")
+	var order: Array = []
+	var t0 := Time.get_ticks_msec()
+	while _stage() != "animar" and Time.get_ticks_msec() - t0 < 15000:
+		if order.is_empty() or order.back() != _stage():
+			order.append(_stage())
+		await get_tree().process_frame
+	order.append("animar")
+	check(NeedsSystem.get_value("energia") == e0, "dormir: energia não muda antes de deitar")
+	await _wait(0.9)
+	check(absf(wv.player_fig.rotation.x) > 1.0, "dormir: personagem deitado na cama")
+	await _shot("dormir")
+	await _follow(order, 8.0)
+	print("ORDEM dormir: ", order)
+	check(order.slice(0, 4) == ["ir", "alinhar", "animar", "fim"], "dormir: ordem ir → alinhar → animar → efeito/fim")
+	check(NeedsSystem.get_value("energia") > e0, "dormir: energia restaurada depois (%.0f → %.0f)" % [e0, NeedsSystem.get_value("energia")])
+	check(TimeManager.total_minutes >= m0 + 400, "dormir: o tempo passou (8 h)")
+	check(absf(wv.player_fig.rotation.x) < 0.01 and wv.player_fig.position == Vector3.ZERO, "dormir: levantou (pose neutra)")
+	# --- banho ---
+	NeedsSystem.apply({"higiene": -70})
+	var h0 := NeedsSystem.get_value("higiene")
+	screen._do_action("banho_casa")
+	var t1 := Time.get_ticks_msec()
+	while _stage() != "animar" and Time.get_ticks_msec() - t1 < 15000:
+		await get_tree().process_frame
+	await _wait(1.0)
+	check(NeedsSystem.get_value("higiene") == h0, "banho: higiene só muda no fim")
+	await _shot("banho")
+	await _follow([], 6.0)
+	check(NeedsSystem.get_value("higiene") > h0 + 50.0, "banho: higiene subiu depois (%.0f → %.0f)" % [h0, NeedsSystem.get_value("higiene")])
+	# --- comer sentado à mesa ---
+	var s0 := NeedsSystem.get_value("saciedade")
+	check(screen._use_item_animated("pao"), "comer: começou pela bolsa")
+	check(GameState.player["inventory"].has("pao"), "comer: o pão ainda está na bolsa enquanto ele vai sentar")
+	var t2 := Time.get_ticks_msec()
+	while _stage() != "animar" and Time.get_ticks_msec() - t2 < 15000:
+		await get_tree().process_frame
+	await _wait(1.6)
+	check(wv.player_fig.activity == "sentar", "comer: sentou para comer")
+	var seat_taken := false
+	for k in wv.seat_used:
+		if str(wv.seat_used[k]) == "jogador":
+			seat_taken = true
+	check(seat_taken, "comer: cadeira marcada como ocupada (ninguém senta junto)")
+	await _shot("comer")
+	await _follow([], 6.0)
+	check(not GameState.player["inventory"].has("pao"), "comer: o pão saiu da bolsa no fim")
+	check(NeedsSystem.get_value("saciedade") > s0, "comer: saciedade subiu (%.0f → %.0f)" % [s0, NeedsSystem.get_value("saciedade")])
+	var still_taken := false
+	for k in wv.seat_used:
+		if str(wv.seat_used[k]) == "jogador":
+			still_taken = true
+	check(not still_taken, "comer: cadeira liberada no fim")
+	# --- interromper ---
+	NeedsSystem.apply({"energia": -50})
+	var e1 := NeedsSystem.get_value("energia")
+	var m1 := TimeManager.total_minutes
+	screen._do_action("dormir_casa")
+	var t3 := Time.get_ticks_msec()
+	while _stage() != "animar" and Time.get_ticks_msec() - t3 < 15000:
+		await get_tree().process_frame
+	await _wait(0.4)
+	var ev := InputEventKey.new()
+	ev.physical_keycode = KEY_W
+	ev.keycode = KEY_W
+	ev.pressed = true
+	Input.parse_input_event(ev)
+	await _wait(0.3)
+	ev = ev.duplicate()
+	ev.pressed = false
+	Input.parse_input_event(ev)
+	await _wait(0.3)
+	check(wv._act.is_empty(), "interromper: ação cancelada ao andar")
+	check(absf(wv.player_fig.rotation.x) < 0.01, "interromper: não ficou preso deitado")
+	check(absf(NeedsSystem.get_value("energia") - e1) < 1.0 and TimeManager.total_minutes - m1 < 60, "interromper: nenhum efeito aplicado (energia %.2f → %.2f, +%d min)" % [e1, NeedsSystem.get_value("energia"), TimeManager.total_minutes - m1])
+	# --- hospital ---
+	var hb: Rect2 = wv.layout.lots["hospital"]["building"]
+	var beds := 0
+	for bd in wv.city.beds:
+		if wv.layout.lot_at(bd["p"]) == "hospital":
+			beds += 1
+	check(beds >= 4, "hospital: leitos para pacientes (%d)" % beds)
+	await _put_player(hb.get_center() + Vector2(0, 3.0), "hospital")
+	wv.zoom = 15.0
+	wv.camera.size = 15.0
+	TimeManager.total_minutes = 3 * 1440 + 10 * 60
+	await _wait(25.0)
+	var lying := 0
+	for id in wv.npcs:
+		if str(wv.npcs[id].get("act", "")) == "deitado":
+			lying += 1
+	print("HOSPITAL pessoas deitadas: ", lying)
+	await _shot("hospital")
+	print("RESULTADO ACOES: ", "OK" if fails == 0 else "%d falha(s)" % fails)
+	SaveManager.delete_save()
+	get_tree().quit()

@@ -90,7 +90,11 @@ func is_open(loc_id: String, h: int = -1) -> bool:
 	var loc: Dictionary = locations[loc_id]
 	if CrimeSystem.fire_at(loc_id):
 		return false
-	return hour_in_range(h, int(loc["abre"]), int(loc["fecha"]))
+	# feriado: comércio fechado ou em horário reduzido, como na vida real
+	var hrs: Array = Holidays.hours_for(loc_id, int(loc["abre"]), int(loc["fecha"])) if GameState.active else [int(loc["abre"]), int(loc["fecha"])]
+	if hrs.is_empty():
+		return false
+	return hour_in_range(h, int(hrs[0]), int(hrs[1]))
 
 
 static func hour_in_range(h: int, from: int, to: int) -> bool:
@@ -214,7 +218,8 @@ func travel_options(to_id: String) -> Array:
 		{"mode": "uber", "label": "Uber", "minutes": int(6 + d * 0.18), "cost": uber_price, "ok": GameState.money() >= uber_price, "note": "" if GameState.money() >= uber_price else "sem dinheiro"},
 	]
 	if car != "":
-		opts.append({"mode": "carro", "label": car, "minutes": int(3 + d * 0.15), "cost": 0, "ok": true, "note": "seu carro"})
+		var minor := GameState.is_minor()
+		opts.append({"mode": "carro", "label": car, "minutes": int(3 + d * 0.15), "cost": 0, "ok": not minor, "note": "menor não dirige" if minor else "seu carro"})
 	return opts
 
 

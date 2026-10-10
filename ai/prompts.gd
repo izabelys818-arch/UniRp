@@ -2,7 +2,12 @@ extends RefCounted
 
 
 static func player_visible_description(p: Dictionary) -> String:
-	var parts: Array = ["%s, aparentando uns %d anos" % [p["gender"], int(p["age"])]]
+	var age := int(p["age"])
+	var parts: Array = ["%s, aparentando uns %d anos" % [p["gender"], age]]
+	if age < 13:
+		parts = ["uma criança de uns %d anos" % age]
+	elif age < 18:
+		parts = ["adolescente (%s) de uns %d anos" % [p["gender"], age]]
 	if str(p.get("appearance", "")) != "":
 		parts.append(p["appearance"])
 	if str(p.get("appearance_extra", "")) != "":
@@ -56,6 +61,17 @@ static func npc_system(npc_id: String, chan: String = "presencial") -> String:
 	var status: Array = []
 	if st.get("namoro", false):
 		status.append("vocês estão NAMORANDO")
+	elif st.get("ex", false):
+		status.append("vocês já namoraram e terminaram")
+	var hol := Holidays.today()
+	if not hol.is_empty():
+		status.append("hoje é %s" % str(hol["nome"]))
+	if SocialSystem.is_birthday(npc_id):
+		status.append("HOJE É O SEU ANIVERSÁRIO (%d anos)" % int(n.get("idade", 30)))
+	if AgingSystem.days_until_birthday("") == 0 and PhoneSystem.has_contact(npc_id):
+		status.append("hoje é aniversário do jogador")
+	if n.has("bebe"):
+		status.append("você está com seu bebê, %s (%d meses), no carrinho" % [str(n["bebe"]["nome"]), int(n["bebe"]["meses"])])
 	status.append("o jogador TEM seu número de celular" if PhoneSystem.has_contact(npc_id) else "o jogador NÃO tem seu número de celular")
 	var services := ""
 	var paid := int(st.get("pago", 0))
@@ -122,6 +138,7 @@ SUA FICHA:
 SITUAÇÃO:
 """ % [n["nome"], GameState.city(), n["nome"], int(n["idade"]), n["profissao"], n["aparencia"], n["personalidade"], n["jeito_de_falar"], hidden, n["segredo"], n["objetivo"], int(st["dinheiro"])]
 	text += "- Tom do mundo: " + str(World.scenario()["tom"]) + "\n"
+	text += minor_rules(int(GameState.player.get("age", 30)), int(n["idade"]))
 	text += _situation(npc_id, chan)
 	text += """
 - Nome do jogador: %s
@@ -171,11 +188,25 @@ static func spontaneous_instruction() -> String:
 	return """[EVENTO DO JOGO, não é fala do jogador] Agora você decidiu, por iniciativa própria, mandar uma mensagem de celular para o jogador. Escreva algo coerente com sua personalidade, seu objetivo, seu segredo, a relação e as memórias: pode ser convite, cobrança, fofoca, pedido de ajuda, ameaça velada, flerte, saudade, aviso ou só puxar assunto. Se não fizer sentido mandar nada agora, use "responder": false."""
 
 
+# Regras que valem acima de qualquer personalidade quando o jogador (ou o NPC) é menor de idade.
+static func minor_rules(player_age: int, npc_age: int) -> String:
+	var out := ""
+	if player_age < 18:
+		out += """- O JOGADOR É MENOR DE IDADE (%d anos, %s). Trate-o como a criança ou adolescente que ele é, do seu jeito (gente boa protege, gente ruim é fria e manda embora), mas SEMPRE: nunca flerte, nunca namore, nunca seduza nem fale de sexo com ele; nunca ofereça, venda ou dê bebida alcoólica, cigarro, droga ou arma; nunca o chame para crime nem para trabalho de adulto; nunca use as ações "comecar_namoro", "contratar" ou "alugar_quarto" com ele.
+""" % [player_age, "criança" if player_age < 13 else "adolescente"]
+	if npc_age < 18:
+		out += """- VOCÊ É MENOR DE IDADE (%d anos). Fale e aja como alguém da sua idade. Nada de romance, sexo, bebida, droga ou crime.
+""" % npc_age
+	return out
+
+
 static func opening_messages(p: Dictionary, origin: Dictionary) -> Array:
 	var traits := ", ".join(p["traits"].map(func(t): return World.trait_name(t)))
 	var sys := """Você é o narrador de um RPG de texto realista e sombrio ambientado na cidade fictícia de %s, no Brasil. Tom do mundo: %s.
 Escreva a cena de abertura em segunda pessoa ("você"), em português brasileiro, com 2 parágrafos curtos, tom literário e tenso, detalhes sensoriais.
 Não decida ações pelo jogador além do ponto de partida. Não use títulos nem listas. Termine deixando o jogador livre para agir.""" % [GameState.city(), World.scenario()["tom"]]
+	if int(p["age"]) < 18:
+		sys += "\nO personagem é menor de idade (%d anos): a cena é sobre a realidade dele na idade dele; nada de sexo, romance, álcool, drogas ou crime envolvendo ele." % int(p["age"])
 	var user := """Personagem: %s, %d anos, %s.
 Aparência: %s
 Traços: %s

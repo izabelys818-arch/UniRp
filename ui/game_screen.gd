@@ -3,7 +3,7 @@ extends Control
 signal navigate(screen: String, args: Dictionary)
 
 const UI = preload("res://ui/ui_theme.gd")
-const FaceRig = preload("res://ui/face/face_rig.gd")
+const FaceRig = preload("res://ui/face/face_paint.gd")  # retrato pintado (opção B)
 const LookBuilder = preload("res://ui/face/look_builder.gd")
 const PhonePanel = preload("res://ui/phone/phone_panel.gd")
 const SceneView = preload("res://ui/game/scene_view.gd")
@@ -26,6 +26,7 @@ const PoliceLights = preload("res://ui/game/police_lights.gd")
 
 const MENU_TALK := 0
 const MENU_ACTIONS := {
+	8: "Feliz aniversário! Parabéns!",
 	1: "Desculpa, qual é o seu nome?",
 	2: "Me passa seu número de celular?",
 	3: "*faz um elogio sincero*",
@@ -59,6 +60,7 @@ var money_chip: PanelContainer
 var meters: Dictionary = {}
 var player_portrait: FaceRig
 var player_state: Label
+var player_age_label: Label
 var side_box: VBoxContainer
 var dialogue: DialogueBox
 var buttons: Dictionary = {}
@@ -80,6 +82,16 @@ var money_panel: MoneyPanel
 var toast_label: Label
 var toast_panel: PanelContainer
 var toast_tween: Tween
+# menu de pausa (Esc)
+var pause_layer: Control
+var pause_box: PanelContainer
+var pause_sub: Label
+var pause_status: Label
+var pause_confirm: VBoxContainer
+var pause_confirm_text: Label
+var pause_buttons: VBoxContainer
+var _pause_tween: Tween
+var _confirm_action: Callable
 var refresh_queued := false
 var narrating := false
 var shown_scene := ""
@@ -89,6 +101,7 @@ func _ready() -> void:
 	_build()
 	GameState.log_added.connect(_on_log)
 	GameState.player_changed.connect(_queue_refresh)
+	AgingSystem.birthday.connect(_on_birthday)
 	GameState.game_over.connect(_on_game_over)
 	NeedsSystem.needs_changed.connect(_queue_refresh)
 	TimeManager.time_advanced.connect(_queue_refresh.unbind(2))
@@ -134,7 +147,7 @@ func _build() -> void:
 	world_view.npc_menu.connect(_open_context)
 	world_view.toast.connect(_toast)
 	world_view.pause_check = func() -> bool:
-		return phone.visible or bag.visible or map_panel.visible or shop.visible or history.visible or money_panel.visible or choice_panel.visible or business_panel.visible
+		return phone.visible or bag.visible or map_panel.visible or shop.visible or history.visible or money_panel.visible or choice_panel.visible or business_panel.visible or (pause_layer != null and pause_layer.visible)
 	add_child(world_view)
 	grade = FilmFx.new()
 	grade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -197,7 +210,7 @@ func _build() -> void:
 	bar_panel.offset_right = -18
 	bar_panel.offset_top = 16
 	add_child(bar_panel)
-	for spec in [["map", "Mapa (M)", _open_map], ["bag", "Bolsa (B)", _open_bag], ["phone", "Celular (C)", _open_phone], ["book", "Histórico (H)", _open_history], ["save", "Salvar", _save], ["gear", "Configurações", _settings], ["close", "Sair para o menu", _to_menu]]:
+	for spec in [["map", "Mapa (M)", _open_map], ["bag", "Bolsa (B)", _open_bag], ["phone", "Celular (C)", _open_phone], ["book", "Histórico (H)", _open_history], ["save", "Salvar", _save], ["gear", "Configurações", _settings], ["close", "Menu do jogo (Esc)", open_pause]]:
 		var b := IconButton.new(spec[0], spec[1], 50)
 		b.pressed.connect(spec[2])
 		bar.add_child(b)
@@ -226,7 +239,8 @@ func _build() -> void:
 	ch.add_child(nv)
 	var pname := UI.title(str(p.get("name", "")), 19)
 	nv.add_child(pname)
-	nv.add_child(UI.label("%d anos" % int(p.get("age", 0)), 13, UI.MUTED))
+	player_age_label = UI.label("%d anos" % int(p.get("age", 0)), 13, UI.MUTED)
+	nv.add_child(player_age_label)
 	player_state = UI.label("", 13, UI.ACCENT)
 	nv.add_child(player_state)
 	var icon_for := {"saude": "saude", "saciedade": "saciedade", "hidratacao": "hidratacao", "energia": "energia", "higiene": "higiene_need", "sanidade": "sanidade"}
@@ -248,27 +262,36 @@ func _build() -> void:
 	side_box = UI.vbox(8)
 	side.add_child(UI.scroll(side_box))
 
-	# Caixa de diálogo
+	# Caixa de conversa: escondida até haver interação (ver dialogue_box.gd)
 	dialogue = DialogueBox.new()
 	_anchor(dialogue, 0.5, 1, 0.5, 1)
-	dialogue.offset_left = -390
-	dialogue.offset_right = 390
-	dialogue.offset_top = -250
+	dialogue.offset_left = -400
+	dialogue.offset_right = 400
 	dialogue.offset_bottom = -16
+	dialogue.offset_top = -260
 	add_child(dialogue)
 	dialogue.submitted.connect(_on_submit)
 	dialogue.end_pressed.connect(NPCManager.end_conversation)
 	dialogue.expression.connect(_on_speech_expression)
 	dialogue.speaking_pulse.connect(_on_speaking_pulse)
 	dialogue.speech_finished.connect(_on_speech_finished)
+	dialogue.action_chosen.connect(func(mid: int) -> void:
+		context_target = NPCManager.talking_to
+		_on_context(mid))
+	dialogue.more_pressed.connect(func() -> void:
+		if NPCManager.talking_to != "":
+			_open_context(NPCManager.talking_to))
+	resized.connect(_layout_dialogue)
 
 	context_menu = PopupMenu.new()
 	context_menu.id_pressed.connect(_on_context)
 	add_child(context_menu)
 
 	toast_panel = PanelContainer.new()
-	toast_panel.add_theme_stylebox_override("panel", UI.glass(12, 12, Color(0.06, 0.25, 0.2, 0.95)))
-	toast_label = UI.label("", 16, Color.WHITE)
+	var tsb := UI.glass(12, 12)
+	tsb.border_color = Color(UI.ACCENT, 0.7)
+	toast_panel.add_theme_stylebox_override("panel", tsb)
+	toast_label = UI.label("", 16, UI.TEXT)
 	toast_label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	toast_panel.add_child(toast_label)
 	_anchor(toast_panel, 0.5, 0, 0.5, 0)
@@ -279,6 +302,7 @@ func _build() -> void:
 	add_child(toast_panel)
 
 	bag = BagPanel.new()
+	bag.use_hook = _use_item_animated
 	add_child(bag)
 	shop = ShopPanel.new()
 	add_child(shop)
@@ -294,6 +318,16 @@ func _build() -> void:
 	add_child(business_panel)
 	choice_panel = ChoicePanel.new()
 	add_child(choice_panel)
+	_build_pause()
+
+
+# A caixa de conversa fica entre o cartão do jogador (esquerda) e o painel do lugar (direita).
+func _layout_dialogue() -> void:
+	var free_w := size.x - 292.0 - 286.0
+	var half := clampf(free_w / 2.0, 300.0, 500.0)
+	var cx := (292.0 + size.x - 286.0) / 2.0 - size.x / 2.0
+	dialogue.offset_left = cx - half
+	dialogue.offset_right = cx + half
 
 
 # ---------- atores (pessoas no cenário) ----------
@@ -303,82 +337,54 @@ func _actor_ids() -> Array:
 	return [t] if t != "" and GameState.active else []
 
 
+# Quem fala aparece como retrato dentro da caixa de conversa (como em Stardew Valley),
+# não mais como um rosto gigante sobre a cidade escurecida.
 func _sync_actors() -> void:
 	var ids := _actor_ids()
 	for id in actors.keys():
 		if not id in ids:
 			actors[id].queue_free()
 			actors.erase(id)
+	if ids.is_empty():
+		dialogue.end_conversation()
+		return
 	for id in ids:
 		if actors.has(id):
 			continue
 		var n: Dictionary = NPCManager.npcs[id]
 		var a := FaceRig.new()
-		a.actor_mode = true
 		a.show_emote = true
+		a.scene = FaceRig.scene_for_location(World.current_id(), str(World.current().get("tipo", "")))
 		a.mouse_filter = Control.MOUSE_FILTER_STOP
-		a.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		a.tooltip_text = "Botão direito: mais ações"
 		a.set_look(LookBuilder.build(World.npc_looks.get(id, {}), int(n["idade"]), n["genero"]))
 		a.set_emotion(str(NPCManager.state[id]["emocao"]), true)
 		a.gui_input.connect(_on_actor_input.bind(id))
-		a.mouse_entered.connect(func(): a.highlight = 1.0)
-		a.mouse_exited.connect(func(): a.highlight = 0.0)
-		var tag := UI.chip("", UI.TEXT, 14)
-		tag.name = "Tag"
-		tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		tag.hide()
-		a.add_child(tag)
-		stage.add_child(a)
 		actors[id] = a
-		a.modulate.a = 0.0
-		create_tween().tween_property(a, "modulate:a", 1.0, 0.35)
+		dialogue.begin_conversation(_speaker_name(id), NPCManager.relation_label(id), a)
 	_layout_actors()
 
 
+func _speaker_name(id: String) -> String:
+	return NPCManager.display_name(id) + ("  •  ligação" if NPCManager.channel == NPCManager.LIGACAO else "")
+
+
 func _layout_actors() -> void:
-	var ids: Array = actors.keys()
-	if ids.is_empty():
-		return
 	var focus := NPCManager.talking_to
-	var h := size.y * 0.8
-	var w := h * 0.75
-	var s := h / 400.0
-	var top := (size.y - 262.0) - 252.0 * s
-	var x0 := 290.0 + w * 0.35
-	var x1 := size.x - 290.0 - w * 0.35
-	var n := ids.size()
-	var ordered: Array = ids.filter(func(i): return i != focus)
-	if focus in ids:
-		ordered.insert(int(ordered.size() / 2.0), focus)
-	for i in n:
-		var id: String = ordered[i]
-		var a: FaceRig = actors[id]
-		var cx := (x0 + x1) / 2.0 if n == 1 else lerpf(x0, x1, float(i) / (n - 1))
-		var is_focus := id == focus or focus == ""
-		var sc := 1.0 if id == focus else (0.9 if focus != "" else 0.94)
-		a.size = Vector2(w, h)
-		a.pivot_offset = Vector2(w / 2.0, h)
-		a.position = Vector2(cx - w / 2.0, top)
-		a.scale = Vector2(sc, sc)
-		var on_call := id == focus and NPCManager.channel == NPCManager.LIGACAO
-		a.modulate = Color(0.75, 0.88, 1.0) if on_call else (Color.WHITE if is_focus else Color(0.58, 0.58, 0.64))
-		var tag: PanelContainer = a.get_node("Tag")
-		var label: Label = tag.get_child(0)
-		label.text = NPCManager.display_name(id) + ("  •  em ligação" if on_call else "")
-		tag.position = Vector2(w / 2.0 - tag.get_combined_minimum_size().x / 2.0 - 30.0 * s, 50.0 * s)
-		var st: Dictionary = NPCManager.state[id]
-		var want_emo: String = str(speech_emotion.get(id, st["emocao"]))
-		if want_emo != a.emotion:
-			a.set_emotion(want_emo)
-	if focus != "" and actors.has(focus):
-		stage.move_child(actors[focus], -1)
+	if focus == "" or not actors.has(focus):
+		return
+	var a: FaceRig = actors[focus]
+	a.modulate = Color(0.78, 0.9, 1.0) if NPCManager.channel == NPCManager.LIGACAO else Color.WHITE
+	var st: Dictionary = NPCManager.state[focus]
+	var want_emo: String = str(speech_emotion.get(focus, st["emocao"]))
+	if want_emo != a.emotion:
+		a.set_emotion(want_emo)
 
 
 func _update_mode() -> void:
-	# No mundo aberto o rosto grande só aparece durante a conversa, sobre a cidade escurecida.
-	var talking := NPCManager.talking_to != ""
-	stage.visible = talking
-	dim.visible = talking
+	# a cidade continua visível durante a conversa; nada de escurecer a tela inteira
+	stage.visible = false
+	dim.visible = false
 
 
 func _on_walk_npc(id: String) -> void:
@@ -425,19 +431,26 @@ func _open_context(id: String) -> void:
 	context_menu.clear()
 	context_menu.add_separator(NPCManager.display_name(id))
 	context_menu.add_item("Conversar", MENU_TALK)
+	if SocialSystem.is_birthday(id):
+		context_menu.add_item("Dar parabéns (é aniversário!)", 8)
 	context_menu.add_item("Perguntar o nome", 1)
 	context_menu.add_item("Pedir o número", 2)
 	context_menu.add_item("Elogiar", 3)
-	context_menu.add_item("Flertar", 4)
+	# com criança ou adolescente: nada de flerte, ameaça, empurrão nem violência
+	var target_minor := int(NPCManager.npcs[id].get("idade", 30)) < 18
+	if not GameState.is_minor() and not target_minor:
+		context_menu.add_item("Flertar", 4)
 	context_menu.add_item("Provocar", 5)
-	context_menu.add_item("Ameaçar", 6)
-	context_menu.add_item("Empurrar", 7)
-	context_menu.add_separator("Violência e crime")
-	context_menu.add_item("Dar um soco", MENU_PUNCH)
-	var weapon := CrimeSystem.best_weapon()
-	if weapon != "":
-		context_menu.add_item("Atacar com %s" % World.item_name(weapon).to_lower(), MENU_WEAPON)
-	context_menu.add_item("Roubar a carteira", MENU_PICKPOCKET)
+	if not target_minor:
+		context_menu.add_item("Ameaçar", 6)
+		context_menu.add_item("Empurrar", 7)
+	if not GameState.is_minor() and not target_minor:
+		context_menu.add_separator("Violência e crime")
+		context_menu.add_item("Dar um soco", MENU_PUNCH)
+		var weapon := CrimeSystem.best_weapon()
+		if weapon != "":
+			context_menu.add_item("Atacar com %s" % World.item_name(weapon).to_lower(), MENU_WEAPON)
+		context_menu.add_item("Roubar a carteira", MENU_PICKPOCKET)
 	context_menu.add_separator()
 	context_menu.add_item("Dar dinheiro...", MENU_MONEY)
 	context_menu.add_item("Dar um item...", MENU_ITEM)
@@ -462,6 +475,11 @@ func _on_context(menu_id: int) -> void:
 	var id := context_target
 	if menu_id == MENU_END:
 		NPCManager.end_conversation()
+		return
+	if menu_id in [MENU_PUNCH, MENU_WEAPON, MENU_PICKPOCKET] and GameState.refuse_minor("crime"):
+		return
+	if menu_id in [MENU_PUNCH, MENU_WEAPON, MENU_PICKPOCKET, 4, 6, 7] and int(NPCManager.npcs[id].get("idade", 30)) < 18:
+		GameState.add_log("Não. É uma criança. (bloqueado)", "info")
 		return
 	if menu_id == MENU_PUNCH:
 		CrimeSystem.player_attack(id)
@@ -508,14 +526,17 @@ func _refresh() -> void:
 		var street := world_view.current_street()
 		if street != "":
 			place_title.text = street
-	place_sub.text = "Dia %d • %s • %02d:%02d • %s" % [TimeManager.day(), TimeManager.weekday(), TimeManager.hour(), TimeManager.minute(), TimeManager.period()]
+	place_sub.text = "%s • %02d:%02d • %s" % [TimeManager.short_date_str(), TimeManager.hour(), TimeManager.minute(), TimeManager.period()]
 	(money_chip.get_child(0) as Label).text = "R$ %d" % GameState.money()
 	stars_view.set_stars(CrimeSystem.wanted())
-	var ev_sig := ",".join(WorldEvents.labels())
+	var hol := Holidays.label_today()
+	var ev_sig := ",".join(WorldEvents.labels()) + "|" + hol
 	if ev_sig != _ev_sig:
 		_ev_sig = ev_sig
 		for c in events_box.get_children():
 			c.queue_free()
+		if hol != "":
+			events_box.add_child(UI.chip(hol, Color("#7fd18b"), 13))
 		for label_text in WorldEvents.labels():
 			events_box.add_child(UI.chip(str(label_text), Color("#ff9f43"), 13))
 	var job := JobSystem.job()
@@ -527,6 +548,9 @@ func _refresh() -> void:
 	var pemo := player_emotion()
 	if pemo != player_portrait.emotion:
 		player_portrait.set_emotion(pemo)
+	# o corpo 3D do jogador também mostra o estado (rosto e postura), sem balão por cima
+	if world_view and world_view.player_fig and world_view.player_fig.emotion != pemo:
+		world_view.player_fig.set_emotion(pemo, false)
 	player_state.text = "" if pemo == "neutro" else World.emotions[pemo]["pt"].capitalize()
 	if GameState.active:
 		buttons["phone"].set_badge(PhoneSystem.unread())
@@ -536,6 +560,35 @@ func _refresh() -> void:
 	_update_mode()
 	_refresh_dialogue_state()
 	_refresh_side()
+
+
+# Ações de casa com o corpo: o personagem vai até a cama/chuveiro, faz a ação e só então o
+# efeito real (HomeSystem/Economy, como sempre) é aplicado. Sem ponto de uso, segue direto.
+func _do_action(id: String) -> void:
+	var kind := ""
+	match id:
+		"dormir_casa", "dormir_quarto":
+			kind = "dormir"
+		"banho_casa":
+			if bool(HomeSystem.utils(World.current_id()).get("agua", true)):
+				kind = "banho"
+	if kind != "" and world_view.start_action(kind, World.current_id(), func() -> void: Economy.do_action(id)):
+		return
+	Economy.do_action(id)
+
+
+# Comer e beber da bolsa: senta num lugar livre (ou come em pé), com o item na mão, e só no fim
+# o item sai do inventário e a necessidade muda (Economy.use_item).
+func _use_item_animated(item_id: String) -> bool:
+	var tipo := str(World.items.get(item_id, {}).get("tipo", ""))
+	var kind := ""
+	if tipo == "comida":
+		kind = "comer"
+	elif tipo in ["bebida", "cafe", "lata", "garrafa", "dose"]:
+		kind = "beber"
+	if kind == "" or not GameState.player.get("inventory", {}).has(item_id):
+		return false
+	return world_view.start_action(kind, World.current_id(), func() -> void: Economy.use_item(item_id), item_id)
 
 
 func _on_ui_request(panel: String) -> void:
@@ -561,10 +614,9 @@ func _refresh_dialogue_state() -> void:
 	var id := NPCManager.talking_to
 	var can_act := GameState.active and not NPCManager.busy and not narrating
 	if id == "":
-		dialogue.set_input(false, "Clique em alguém para conversar  •  botão direito para mais opções", false)
 		return
 	var on_call := NPCManager.channel == NPCManager.LIGACAO
-	dialogue.set_speaker(NPCManager.display_name(id), NPCManager.relation_label(id))
+	dialogue.set_speaker(_speaker_name(id), NPCManager.relation_label(id))
 	dialogue.set_input(can_act, "Fale ao telefone..." if on_call else "Diga algo...  (use *asteriscos* para ações, ex: *ofereço um cigarro*)", true, "Desligar" if on_call else "Encerrar")
 
 
@@ -593,7 +645,7 @@ func _refresh_side() -> void:
 		buy.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		side_box.add_child(buy)
 	for a in Economy.available_actions():
-		var b := UI.button(a["label"], Economy.do_action.bind(a["id"]))
+		var b := UI.button(a["label"], _do_action.bind(a["id"]))
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		b.disabled = not can_act
@@ -623,17 +675,18 @@ func _on_log(e: Dictionary) -> void:
 	if kind == "system":
 		_toast(str(e.get("text", "")))
 		return
-	match kind:
-		"npc":
-			var id := NPCManager.talking_to
-			dialogue.set_speaker(str(e.get("speaker", "")), NPCManager.relation_label(id) if id != "" else "")
-		"player":
-			dialogue.set_speaker("Você")
-		"narration":
-			dialogue.set_speaker("Narrador")
-		_:
-			dialogue.set_speaker("")
-	dialogue.show_entry(e)
+	var id := NPCManager.talking_to
+	if id != "":
+		# conversa em andamento: tudo aparece na caixa, sob o retrato de quem fala
+		dialogue.set_speaker(_speaker_name(id), NPCManager.relation_label(id))
+		dialogue.show_entry(e)
+		return
+	# fora de conversa: avisos curtos viram balão no topo; a história abre a caixa para ler
+	if kind in ["info", "error", "phone"]:
+		_toast(str(e.get("text", "")).replace("*", ""))
+		return
+	var who := {"narration": "Narrador", "event": "Na cidade", "danger": "Atenção", "death": "", "npc": str(e.get("speaker", "")), "player": "Você"}
+	dialogue.push_message(e, str(who.get(kind, "")))
 
 
 func _on_submit(text: String) -> void:
@@ -641,7 +694,9 @@ func _on_submit(text: String) -> void:
 
 
 func _on_npc_thinking(npc_id: String, thinking: bool) -> void:
-	dialogue.set_thinking(("%s está pensando" % NPCManager.display_name(npc_id)) if thinking else "")
+	# só na conversa ao vivo (mensagens de celular têm o próprio painel)
+	if NPCManager.talking_to == npc_id or not thinking:
+		dialogue.set_thinking(("%s está pensando" % NPCManager.display_name(npc_id)) if thinking else "")
 	_queue_refresh()
 	if not thinking:
 		dialogue.input.grab_focus.call_deferred()
@@ -673,6 +728,21 @@ func _toast(text: String) -> void:
 
 func _unhandled_key_input(e: InputEvent) -> void:
 	if not (e is InputEventKey and e.pressed and not e.echo):
+		return
+	if e.keycode == KEY_ESCAPE:
+		if pause_layer.visible:
+			close_pause()
+		elif phone.visible or bag.visible or map_panel.visible or shop.visible or history.visible or money_panel.visible or choice_panel.visible or business_panel.visible:
+			return
+		elif help_panel != null and help_panel.visible:
+			help_panel.hide()
+		elif NPCManager.talking_to != "" and not NPCManager.busy:
+			NPCManager.end_conversation()
+		else:
+			open_pause()
+		get_viewport().set_input_as_handled()
+		return
+	if pause_layer.visible:
 		return
 	if phone.visible or bag.visible or map_panel.visible or shop.visible or history.visible or money_panel.visible:
 		return
@@ -750,7 +820,8 @@ func _open_shop() -> void:
 
 
 func _save() -> void:
-	SaveManager.save_game()
+	if not SaveManager.save_game():
+		_toast("Não foi possível salvar o jogo. Verifique o espaço em disco e tente de novo.")
 
 
 func _settings() -> void:
@@ -781,5 +852,169 @@ func _on_game_over(reason: String) -> void:
 
 
 func _to_menu() -> void:
-	SaveManager.save_game()
+	open_pause()
+
+
+# ---------- menu de pausa ----------
+
+func _build_pause() -> void:
+	pause_layer = Control.new()
+	pause_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	pause_layer.mouse_filter = Control.MOUSE_FILTER_STOP
+	pause_layer.hide()
+	add_child(pause_layer)
+	var shade := ColorRect.new()
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	shade.color = Color(0.03, 0.02, 0.015, 0.62)
+	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pause_layer.add_child(shade)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pause_layer.add_child(center)
+	pause_box = PanelContainer.new()
+	pause_box.add_theme_stylebox_override("panel", UI.glass(16, 26))
+	pause_box.custom_minimum_size = Vector2(400, 0)
+	center.add_child(pause_box)
+	var v := UI.vbox(10)
+	pause_box.add_child(v)
+	var t := UI.title("Pausa", 32)
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(t)
+	pause_sub = UI.label("", 15, UI.MUTED)
+	pause_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(pause_sub)
+	v.add_child(HSeparator.new())
+	pause_buttons = UI.vbox(8)
+	v.add_child(pause_buttons)
+	var specs := [
+		["Continuar", close_pause, "accent"],
+		["Salvar jogo", _pause_save, ""],
+		["Configurações", func() -> void: close_pause(); _settings(), ""],
+		["Como jogar  (F1)", func() -> void: close_pause(); _toggle_help(), ""],
+		["Salvar e sair para o início", _save_and_exit, ""],
+		["Sair sem salvar", _ask_exit_no_save, "danger"],
+	]
+	for sp in specs:
+		var b: Button = UI.accent_button(sp[0], sp[1]) if sp[2] == "accent" else UI.button(sp[0], sp[1])
+		b.custom_minimum_size = Vector2(0, 44)
+		b.add_theme_font_size_override("font_size", 17)
+		if sp[2] == "danger":
+			b.add_theme_color_override("font_color", UI.DANGER.lightened(0.15))
+			b.add_theme_color_override("font_hover_color", UI.DANGER.lightened(0.3))
+		pause_buttons.add_child(b)
+	pause_status = UI.label("", 14, UI.TEAL)
+	pause_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	pause_status.hide()
+	v.add_child(pause_status)
+	# confirmação (sair sem salvar, ou sair mesmo com falha ao salvar)
+	pause_confirm = UI.vbox(8)
+	pause_confirm.hide()
+	v.add_child(pause_confirm)
+	pause_confirm_text = UI.label("", 15, UI.TEXT)
+	pause_confirm_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	pause_confirm.add_child(pause_confirm_text)
+	var crow := UI.hbox(8)
+	crow.alignment = BoxContainer.ALIGNMENT_CENTER
+	pause_confirm.add_child(crow)
+	var yes := UI.button("Sim, sair", func() -> void: if _confirm_action.is_valid(): _confirm_action.call())
+	yes.add_theme_color_override("font_color", UI.DANGER.lightened(0.15))
+	yes.custom_minimum_size = Vector2(150, 40)
+	crow.add_child(yes)
+	var no := UI.accent_button("Voltar", _cancel_confirm)
+	no.custom_minimum_size = Vector2(150, 40)
+	crow.add_child(no)
+
+
+# Aniversário do jogador: retrato, idade no cartão e corpo 3D acompanham a idade nova.
+func _on_birthday(id: String, _age: int) -> void:
+	if id != "":
+		return
+	var p := GameState.player
+	player_portrait.set_look(LookBuilder.build(p.get("look", {}), int(p.get("age", 30)), str(p.get("gender", "homem"))))
+	player_age_label.text = "%d anos" % int(p.get("age", 0))
+
+
+func open_pause() -> void:
+	if pause_layer.visible:
+		return
+	pause_sub.text = "%s  •  %s, %s  •  %02d:%02d" % [place_title.text, TimeManager.weekday(), TimeManager.date_str(), TimeManager.hour(), TimeManager.minute()]
+	pause_status.hide()
+	_cancel_confirm()
+	pause_layer.show()
+	pause_layer.modulate.a = 0.0
+	pause_box.scale = Vector2(0.96, 0.96)
+	pause_box.pivot_offset = pause_box.size / 2.0
+	if _pause_tween:
+		_pause_tween.kill()
+	_pause_tween = create_tween().set_parallel(true).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_pause_tween.tween_property(pause_layer, "modulate:a", 1.0, 0.16)
+	_pause_tween.tween_property(pause_box, "scale", Vector2.ONE, 0.2)
+
+
+func close_pause() -> void:
+	if not pause_layer.visible:
+		return
+	if _pause_tween:
+		_pause_tween.kill()
+	_pause_tween = create_tween()
+	_pause_tween.tween_property(pause_layer, "modulate:a", 0.0, 0.12)
+	_pause_tween.tween_callback(pause_layer.hide)
+
+
+func _pause_say(text: String, ok: bool) -> void:
+	pause_status.text = text
+	pause_status.add_theme_color_override("font_color", UI.TEAL if ok else UI.DANGER)
+	pause_status.show()
+
+
+func _pause_save() -> void:
+	if not GameState.active:
+		_pause_say("Não há jogo em andamento para salvar.", false)
+	elif SaveManager.save_game():
+		_pause_say("Jogo salvo  •  %s, %02d:%02d" % [TimeManager.date_str(), TimeManager.hour(), TimeManager.minute()], true)
+	else:
+		_pause_say("Não foi possível salvar. Verifique o espaço em disco.", false)
+
+
+# Salva com o sistema de sempre e volta para a tela inicial. Se o save falhar, não sai.
+func _save_and_exit() -> void:
+	if not GameState.active:
+		_leave_to_title()
+		return
+	if NPCManager.talking_to != "":
+		NPCManager.end_conversation()
+	if SaveManager.save_game():
+		_pause_say("Jogo salvo. Voltando para o início...", true)
+		for b in pause_buttons.get_children():
+			(b as Button).disabled = true
+		await get_tree().create_timer(0.5).timeout
+		_leave_to_title()
+	else:
+		_pause_say("Não foi possível salvar. O jogo continua aberto.", false)
+		_ask_confirm("Sair mesmo assim, sem salvar?", _leave_to_title)
+
+
+func _ask_exit_no_save() -> void:
+	_ask_confirm("Sair sem salvar? Tudo o que aconteceu desde o último salvamento será perdido.", _leave_to_title)
+
+
+func _ask_confirm(text: String, action: Callable) -> void:
+	_confirm_action = action
+	pause_confirm_text.text = text
+	pause_buttons.hide()
+	pause_confirm.show()
+
+
+func _cancel_confirm() -> void:
+	pause_confirm.hide()
+	pause_buttons.show()
+	for b in pause_buttons.get_children():
+		(b as Button).disabled = false
+
+
+func _leave_to_title() -> void:
+	if NPCManager.talking_to != "":
+		NPCManager.end_conversation()
+	pause_layer.hide()
 	navigate.emit("menu", {})

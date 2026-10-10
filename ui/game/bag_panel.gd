@@ -102,7 +102,14 @@ func _fill_detail() -> void:
 	detail.add_child(UI.button("Jogar fora", _discard))
 
 
+# Quem abriu a bolsa pode tratar o uso (ex.: comer/beber com animação no mundo). Se tratar, fecha a bolsa.
+var use_hook: Callable
+
+
 func _use() -> void:
+	if use_hook.is_valid() and bool(use_hook.call(selected)):
+		close()
+		return
 	Economy.use_item(selected)
 	_refresh()
 

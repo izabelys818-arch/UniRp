@@ -69,7 +69,9 @@ var actor_mode: bool = false
 var show_emote: bool = false
 var emote_t: float = 1.0
 var highlight: float = 0.0
+var _redraw_t: float = 0.0
 var dim: float = 0.0
+var body_lift: float = 0.0  # sobe o corpo (pescoço mais curto), usado pelas idades no retrato pintado
 
 const UI_FONT = preload("res://ui/ui_theme.gd")
 
@@ -132,7 +134,20 @@ func _process(delta: float) -> void:
 		dart = Vector2(randf_range(-0.5, 0.5), randf_range(-0.2, 0.2)) * (1.6 if nervous else 0.6)
 		next_dart = randf_range(0.3, 0.9) if nervous else randf_range(1.5, 4.0)
 	talk_left = maxf(0.0, talk_left - delta)
-	queue_redraw()
+	# Redesenhar o rosto inteiro custa caro (dezenas de polígonos por script). Quando ele está
+	# quieto, a respiração anda a ~15 quadros por segundo; ao falar, piscar ou mudar de expressão,
+	# redesenha todo quadro. Escondido, não redesenha.
+	if not is_visible_in_tree():
+		return
+	var settling := false
+	for p in cur:
+		if absf(float(cur[p]) - float(target[p])) > 0.004:
+			settling = true
+			break
+	_redraw_t -= delta
+	if settling or blink > 0.0 or talk_left > 0.0 or emote_t < 1.0 or highlight > 0.01 or _redraw_t <= 0.0:
+		_redraw_t = 1.0 / 15.0
+		queue_redraw()
 
 
 # ---------- helpers ----------
@@ -239,7 +254,7 @@ func _draw() -> void:
 		_draw_back_hair()
 		var shoulders := float(_l("shoulders", 1.0))
 		draw_set_transform_matrix(Transform2D(0.0, origin + body_off * s).scaled_local(Vector2(s, s)) \
-			.translated_local(Vector2(150, 0)).scaled_local(Vector2(shoulders, 1.0)).translated_local(Vector2(-150, 0)))
+			.translated_local(Vector2(150, -body_lift)).scaled_local(Vector2(shoulders, 1.0)).translated_local(Vector2(-150, 0)))
 		_draw_body()
 		draw_set_transform_matrix(head_xf)
 		_draw_head()

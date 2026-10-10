@@ -170,6 +170,13 @@ const LINES := {
 		"amigavel": ["Ai, {jog}, você vai me deixar sem graça!", "Que coisa boa de ouvir. Obrigado(a), de coração.", "Você sempre sabe o que dizer, hein?"],
 		"intimo": ["Você é um perigo. Fala assim e eu esqueço do mundo.", "Obrigado(a), meu bem. Vindo de você, vale o dobro."],
 	},
+	"flerte_menor": {
+		"hostil": ["Sai pra lá, moleque. Vai pra casa.", "Que conversa é essa? Você é uma criança."],
+		"frio": ["Não. Você é muito novo(a) pra isso.", "Hm. Vai brincar, vai."],
+		"neutro": ["Opa, opa. Você tem idade pra estar falando assim? Não.", "Haha, não. Isso não é conversa pra sua idade."],
+		"amigavel": ["Ah, {jog}, que fofo... mas não. Você é novo(a) demais. Bora falar de outra coisa?", "Para com isso, criança. Seus pais sabem que você tá aqui?"],
+		"intimo": ["Escuta: você é muito novo(a). Eu gosto de você, mas como amigo(a), tá?"],
+	},
 	"flerte": {
 		"hostil": ["Some daqui com essa conversa.", "Nem se você fosse o último(a) do mundo.", "Tá louco(a)? Respeita."],
 		"frio": ["Não estou interessado(a).", "Não vem com essa pra cima de mim.", "Hm. Não."],

@@ -124,6 +124,13 @@ func _deliver(id: String, data: Dictionary) -> void:
 		GameState.add_log("Nova mensagem de %s no celular." % NPCManager.display_name(id), "phone")
 
 
+# Mensagem que chega sem passar pela IA (convites, cobranças, parabéns).
+func receive(id: String, text: String) -> void:
+	if not GameState.active or not has_contact(id):
+		return
+	_deliver(id, {"fala": text})
+
+
 func send_pix(id: String, amount: int) -> bool:
 	if amount <= 0 or GameState.money() < amount or not has_contact(id) or not can_reach(id):
 		return false

@@ -163,6 +163,9 @@ static func _parse_line(line: String) -> Array:
 
 
 static func _pick_line(intent: String, tone: String, ctx: Dictionary, st: Dictionary) -> String:
+	if intent == "flerte" and GameState.is_minor():
+		# ninguém corresponde a flerte de menor de idade
+		intent = "flerte_menor"
 	var table: Dictionary = Data.LINES.get(intent, {})
 	var chain: Array = [tone]
 	match tone:

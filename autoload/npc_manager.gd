@@ -83,9 +83,19 @@ func location_of(npc_id: String, h: int = -1) -> String:
 			return party
 	if h < 0:
 		h = TimeManager.hour()
+	if not st.is_empty():
+		var bday := SocialSystem.party_location(npc_id, h)
+		if bday != "":
+			return bday
 	for slot in npcs[npc_id]["rotina"]:
 		if World.hour_in_range(h, int(slot["de"]), int(slot["ate"])):
-			return "" if CrimeSystem.fire_at(slot["local"]) else slot["local"]
+			var where: String = slot["local"]
+			if CrimeSystem.fire_at(where):
+				return ""
+			# feriado: com o lugar fechado, a pessoa passeia na praça de dia ou fica em casa
+			if GameState.active and not Holidays.today().is_empty() and not World.is_open(where, h):
+				return "praca" if h >= 9 and h < 20 else ""
+			return where
 	return ""
 
 
@@ -156,6 +166,8 @@ func relation_label(npc_id: String) -> String:
 		return "Te bloqueou"
 	var trust := int(st["confianca"])
 	var love := int(st["afeto"])
+	if st.get("ex", false) and love < 35:
+		return "Ex-namorado(a)"
 	if trust <= -40 or love <= -40:
 		return "Inimigo(a)"
 	if love >= 65 and trust >= 45:
@@ -164,6 +176,8 @@ func relation_label(npc_id: String) -> String:
 		return "Amigo(a)"
 	if love <= -15 or trust <= -15:
 		return "Não gosta de você"
+	if int(st.get("suspeita", 0)) >= 60:
+		return "Desconfia de você"
 	if st.get("conheceu", false):
 		return "Conhecido(a)"
 	return "Desconhecido(a)"
@@ -241,6 +255,21 @@ func talk(text: String, raw: bool = false) -> void:
 	GameState.add_log(text, "player", GameState.player["name"])
 	st["historico"].append({"role": "user", "content": ("[ao telefone] " if chan == LIGACAO else "") + text})
 	TimeManager.advance(3)
+	SocialSystem.on_player_speech(id, text, chan)
+	SocialSystem.note_contact(id)
+	# repetir a mesma coisa irrita; parabéns no dia do aniversário alegra (respostas locais, na hora)
+	var special := {} if raw else SocialSystem.repeat_reply(id, text)
+	if special.is_empty():
+		special = SocialSystem.congrats_reply(id, text)
+	if not special.is_empty():
+		npc_thinking.emit(id, true)
+		await get_tree().create_timer(randf_range(0.35, 0.8)).timeout
+		npc_thinking.emit(id, false)
+		busy = false
+		if state[id].get("vivo", true) and talking_to == id:
+			st["historico"].append({"role": "assistant", "content": JSON.stringify({"fala": special["fala"], "emocao": special["emocao"]})})
+			_apply_reply(id, special, chan)
+		return
 	npc_thinking.emit(id, true)
 	# respostas rápidas locais: não gastam IA e saem na hora
 	if not raw and Settings.local_dialogue:
@@ -266,6 +295,15 @@ func talk(text: String, raw: bool = false) -> void:
 func text_reply(id: String, player_text: String) -> Dictionary:
 	var st: Dictionary = state[id]
 	st["historico"].append({"role": "user", "content": "[mensagem de celular] " + player_text})
+	SocialSystem.on_player_speech(id, player_text, MENSAGEM)
+	SocialSystem.note_contact(id)
+	var special := SocialSystem.repeat_reply(id, player_text)
+	if special.is_empty():
+		special = SocialSystem.congrats_reply(id, player_text)
+	if not special.is_empty():
+		st["historico"].append({"role": "assistant", "content": JSON.stringify({"fala": special["fala"], "emocao": special["emocao"]})})
+		_apply_reply(id, special, MENSAGEM)
+		return {"ok": true, "data": special}
 	if Settings.local_dialogue:
 		var local := LocalDialogue.try_reply(id, player_text, MENSAGEM)
 		if not local.is_empty():
@@ -307,6 +345,8 @@ func give_item(item_id: String) -> void:
 		return
 	if not GameState.remove_item(item_id):
 		return
+	SocialSystem.gift_bonus(talking_to, item_id)
+	SocialSystem.note_contact(talking_to, true)
 	talk("*entrega %s*" % World.item_name(item_id).to_lower(), true)
 
 
@@ -333,6 +373,7 @@ func _apply_reply(id: String, data: Dictionary, chan: String = PRESENCIAL) -> vo
 		line += speech
 		GameState.add_log(line.strip_edges(), "npc", display_name(id) + (" (ao telefone)" if chan == LIGACAO else ""))
 
+	var label_before := relation_label(id)
 	var rel = data.get("relacao", {})
 	if typeof(rel) == TYPE_DICTIONARY:
 		for k in REL_KEYS:
@@ -352,6 +393,7 @@ func _apply_reply(id: String, data: Dictionary, chan: String = PRESENCIAL) -> vo
 		for a in acts:
 			if typeof(a) == TYPE_DICTIONARY:
 				_apply_action(id, a, chan)
+	SocialSystem.notify_relation(id, label_before, relation_label(id))
 
 	npc_replied.emit(id, data)
 
@@ -372,6 +414,8 @@ func _apply_action(id: String, a: Dictionary, chan: String) -> void:
 					GameState.add_log("PIX recebido de %s: R$ %d." % [who, v], "phone")
 		"dar_item":
 			var item := str(a.get("item", ""))
+			if GameState.is_minor() and GameState.MINOR_ITEMS.has(item):
+				return
 			if World.items.has(item) and chan == PRESENCIAL:
 				GameState.add_item(item)
 				GameState.add_log("%s te deu: %s." % [who, World.item_name(item)], "event")
@@ -391,8 +435,11 @@ func _apply_action(id: String, a: Dictionary, chan: String) -> void:
 				PhoneSystem.add_contact(id)
 				GameState.add_log("%s te passou o número de celular." % display_name(id), "phone")
 		"comecar_namoro":
+			if GameState.is_minor() or int(npcs[id].get("idade", 30)) < 18:
+				return
 			if not st.get("namoro", false) and int(st["afeto"]) >= 40:
 				st["namoro"] = true
+				st["ex"] = false
 				GameState.add_log("Você e %s estão namorando." % who, "event")
 		"terminar_namoro":
 			if st.get("namoro", false):
@@ -435,6 +482,8 @@ func _rent_room(id: String) -> void:
 	var svc: Dictionary = npcs[id].get("servicos", {}).get("alugar_quarto", {})
 	if svc.is_empty() or location_of(id) != World.current_id():
 		return
+	if GameState.refuse_minor("contrato"):
+		return
 	var price := int(svc["preco"])
 	var paid := int(st.get("pago", 0))
 	if paid < price:
@@ -456,6 +505,8 @@ func _sell(id: String, item_id: String) -> void:
 	var own_goods: Array = npcs[id].get("vende_itens", [])
 	var shop_ok: bool = npcs[id].get("vende", false) and item_id in here.get("loja", [])
 	if not World.items.has(item_id) or not (shop_ok or item_id in own_goods):
+		return
+	if GameState.refuse_item_for_minor(item_id):
 		return
 	var price := World.item_price(item_id, location_of(id))
 	if int(st.get("pago", 0)) < price:
@@ -480,6 +531,9 @@ func from_dict(d: Dictionary) -> void:
 	state = d["state"]
 	for id in state:
 		var st: Dictionary = state[id]
+		# idade que mudou com os aniversários (o elenco fixo volta do arquivo de dados com a original)
+		if st.has("idade") and npcs.has(id):
+			npcs[id]["idade"] = int(st["idade"])
 		for k in ["namoro", "bloqueado"]:
 			if not st.has(k):
 				st[k] = false

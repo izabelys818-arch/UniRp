@@ -90,6 +90,9 @@ func player_attack(id: String, weapon: String = "") -> void:
 		return
 	if weapon != "" and GameState.item_count(weapon) <= 0:
 		weapon = ""
+	if int(NPCManager.npcs[id].get("idade", 30)) < 18:
+		GameState.add_log("Não. É uma criança. (bloqueado)", "info")
+		return
 	var st: Dictionary = NPCManager.state[id]
 	var who := NPCManager.display_name(id)
 	var strong := GameState.has_trait("forte")
@@ -133,6 +136,11 @@ func kill_npc(id: String, how: String) -> void:
 
 func pickpocket(id: String) -> void:
 	if NPCManager.busy or not GameState.active or NPCManager.location_of(id) != World.current_id():
+		return
+	if GameState.refuse_minor("crime"):
+		return
+	if int(NPCManager.npcs[id].get("idade", 30)) < 18:
+		GameState.add_log("Não. É uma criança. (bloqueado)", "info")
 		return
 	var st: Dictionary = NPCManager.state[id]
 	var who := NPCManager.display_name(id)
@@ -259,6 +267,8 @@ func burglary_actions() -> Array:
 
 
 func break_into_shop(shop_id: String = "") -> void:
+	if GameState.refuse_minor("crime"):
+		return
 	var id := shop_id if shop_id != "" else World.current_id()
 	var loc: Dictionary = World.locations[id]
 	var info: Dictionary = loc.get("arrombavel", {})
@@ -299,6 +309,8 @@ func _alarm(place: String) -> void:
 
 
 func invade_house(casa_id: String) -> void:
+	if GameState.refuse_minor("crime"):
+		return
 	var casa: Dictionary = {}
 	for c in World.current().get("casas", []):
 		if c["id"] == casa_id:

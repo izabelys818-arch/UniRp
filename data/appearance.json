@@ -92,7 +92,10 @@
 			["cavanhaque", "goatee"],
 			["bigode", "thick mustache"],
 			["barba cheia", "full beard"],
-			["barba longa", "long untamed beard"]
+			["barba longa", "long untamed beard"],
+			["bigode fino", "thin mustache"],
+			["barba curta aparada", "short trimmed beard"],
+			["costeletas compridas", "long sideburns"]
 		]},
 		{"id": "roupa", "nome": "Roupa", "opcoes": [
 			["camiseta simples", "wearing a plain t-shirt"],

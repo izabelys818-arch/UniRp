@@ -97,6 +97,13 @@ func _make_cars() -> void:
 		var ti := MeshInstance3D.new()
 		ti.mesh = tail.commit(Kit.vertex_material())
 		car.add_child(ti)
+		# sombra de contato: o carro roda no asfalto, não flutua (sobretudo à noite e na chuva)
+		var sk := Kit.new()
+		sk.disc(Vector3(0, -0.004, 0), 1.15, 2.5, Color(0.02, 0.02, 0.04, 0.6), 0.0, 18, 0.0, 0.8, 0.85)
+		var si := MeshInstance3D.new()
+		si.mesh = sk.commit(Kit.shadow_material())
+		si.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		car.add_child(si)
 		add_child(car)
 		var node := Vector2i(rng.randi_range(1, Layout.GRID - 1), rng.randi_range(1, Layout.GRID - 1))
 		var dirs: Array = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
@@ -280,11 +287,18 @@ func _update_peds(delta: float, night: bool, raining: bool) -> void:
 				e["wait"] = rng.randf_range(2.0, 8.0)
 			continue
 		var want: float = float(e["speed"]) * (1.35 if raining else 1.0)
+		fig.set_umbrella(raining and e["kind"] == "walk" and (int(e.get("u", -1)) if e.has("u") else _set_u(e)) == 1)
+		fig.hunched = raining
 		e["cur"] = move_toward(float(e["cur"]), want, 3.5 * delta)
 		var step := d.normalized() * minf(float(e["cur"]) * delta, d.length())
 		fig.position.x += step.x
 		fig.position.z += step.y
 		fig.rotation.y = lerp_angle(fig.rotation.y, atan2(step.x, step.y), minf(delta * 6.0, 1.0))
+
+
+func _set_u(e: Dictionary) -> int:
+	e["u"] = 1 if rng.randf() < 0.75 else 0
+	return int(e["u"])
 
 
 # ---------- cachorros ----------

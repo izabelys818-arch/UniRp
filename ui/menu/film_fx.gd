@@ -72,7 +72,8 @@ func setup_game(grade: Dictionary) -> void:
 	mat.set_shader_parameter("grain", float(grade.get("grain", 0.03)))
 	mat.set_shader_parameter("vignette", 0.5)
 	mat.set_shader_parameter("aberration", 0.0006)
-	mat.set_shader_parameter("glow", 0.32)
+	# brilho só nas luzes mais fortes, curto: janelas e postes sem auréola exagerada
+	mat.set_shader_parameter("glow", 0.22)
 	mat.set_shader_parameter("breathe", 0.0)
 
 

@@ -79,6 +79,7 @@ func _sb(body: StaticBody3D, rect: Rect2, h: float, y: float = 0.0) -> Collision
 
 func _mesh(k: Kit, parent: Node3D, m: Material = null) -> MeshInstance3D:
 	var mesh := k.commit(m if m else city.mat)
+	city._add_shadow(k, parent)
 	if mesh == null:
 		return null
 	var mi := MeshInstance3D.new()
@@ -156,6 +157,10 @@ func build(c: Node3D, lot: Dictionary) -> Dictionary:
 	var kc := Kit.new()
 	var kw := Kit.new()
 	var kl := Kit.new()
+	var kcw := Kit.new()       # vidro das janelas visto de dentro, na versão aberta
+	kw.vary_glass = true
+	kl.vary_lit = true
+	kcw.vary_glass = true
 	var wall: Color = st["wall"]
 	var trim: Color = st["trim"]
 	var x0 := -w / 2.0
@@ -192,23 +197,49 @@ func build(c: Node3D, lot: Dictionary) -> Dictionary:
 	# --- paredes (inteiras e cortadas) com vão da porta ---
 	var gap0 := dx - door_w / 2.0
 	var gap1 := dx + door_w / 2.0
-	for g in [[kf, H], [kc, CUT_H]]:
+	# Versão aberta (jogador dentro): como no The Sims, só as paredes viradas para a câmera e o
+	# telhado baixam; as do fundo continuam inteiras. Câmera fica do lado +x/+z do mundo; a casa do
+	# lado norte da rua está girada 180°, então o "fundo" dela são as paredes z1/x1 locais.
+	var high := Y0 + H
+	for g in [[kf, true], [kc, false]]:
 		var k: Kit = g[0]
-		var hh: float = g[1]
-		var top: float = Y0 + hh
-		k.box_ab(Vector3(x0, Y0, z0), Vector3(x1, top, z0 + T), wall)
-		k.box_ab(Vector3(x0, Y0, z0), Vector3(x0 + T, top, z1), wall)
-		k.box_ab(Vector3(x1 - T, Y0, z0), Vector3(x1, top, z1), wall)
-		k.box_ab(Vector3(x0, Y0, z1 - T), Vector3(gap0, top, z1), wall)
-		k.box_ab(Vector3(gap1, Y0, z1 - T), Vector3(x1, top, z1), wall)
+		var whole: bool = g[1]
+		var low := Y0 + CUT_H
+		var t_z0: float = high if (whole or not north) else low
+		var t_z1: float = high if (whole or north) else low
+		var t_x0: float = high if (whole or not north) else low
+		var t_x1: float = high if (whole or north) else low
+		k.box_ab(Vector3(x0, Y0, z0), Vector3(x1, t_z0, z0 + T), wall)
+		k.box_ab(Vector3(x0, Y0, z0), Vector3(x0 + T, t_x0, z1), wall)
+		k.box_ab(Vector3(x1 - T, Y0, z0), Vector3(x1, t_x1, z1), wall)
+		k.box_ab(Vector3(x0, Y0, z1 - T), Vector3(gap0, t_z1, z1), wall)
+		k.box_ab(Vector3(gap1, Y0, z1 - T), Vector3(x1, t_z1, z1), wall)
 		# batentes
-		k.box_ab(Vector3(gap0 - 0.07, Y0, z1 - T - 0.02), Vector3(gap0, top if hh > 2.0 else Y0 + hh, z1 + 0.03), trim)
-		k.box_ab(Vector3(gap1, Y0, z1 - T - 0.02), Vector3(gap1 + 0.07, top if hh > 2.0 else Y0 + hh, z1 + 0.03), trim)
-		# cantos e rodapé externo
+		k.box_ab(Vector3(gap0 - 0.07, Y0, z1 - T - 0.02), Vector3(gap0, minf(t_z1, Y0 + 2.2) if t_z1 < high else t_z1, z1 + 0.03), trim)
+		k.box_ab(Vector3(gap1, Y0, z1 - T - 0.02), Vector3(gap1 + 0.07, minf(t_z1, Y0 + 2.2) if t_z1 < high else t_z1, z1 + 0.03), trim)
+		# cantos: inteiros se encostam numa parede do fundo
 		for cx in [x0, x1]:
 			for cz in [z0, z1]:
-				k.box_ab(Vector3(cx - 0.09, Y0, cz - 0.09), Vector3(cx + 0.09, top, cz + 0.09), trim)
+				var tall: bool = whole or (cx == x0 and not north) or (cx == x1 and north) or (cz == z0 and not north) or (cz == z1 and north)
+				k.box_ab(Vector3(cx - 0.09, Y0, cz - 0.09), Vector3(cx + 0.09, high if tall else low, cz + 0.09), trim)
 	kf.box_ab(Vector3(gap0, Y0 + 2.15, z1 - T), Vector3(gap1, Y0 + H, z1), wall)
+	if north:
+		kc.box_ab(Vector3(gap0, Y0 + 2.15, z1 - T), Vector3(gap1, Y0 + H, z1), wall)
+	# acabamento interno das paredes do fundo (pintura clara e rodapé), visto com a casa aberta
+	var lining := wall.lerp(Color("#e6dcc8"), 0.6)
+	var base_c := lining.darkened(0.35)
+	if not north:
+		kc.box_ab(Vector3(x0 + T, Y0, z0 + T), Vector3(x1 - T, high - 0.02, z0 + T + 0.02), lining)
+		kc.box_ab(Vector3(x0 + T, Y0, z0 + T), Vector3(x1 - T, Y0 + 0.16, z0 + T + 0.045), base_c)
+		kc.box_ab(Vector3(x0 + T, Y0, z0 + T), Vector3(x0 + T + 0.02, high - 0.02, z1 - T), lining)
+		kc.box_ab(Vector3(x0 + T, Y0, z0 + T), Vector3(x0 + T + 0.045, Y0 + 0.16, z1 - T), base_c)
+	else:
+		for seg in [[x0 + T, gap0], [gap1, x1 - T]]:
+			kc.box_ab(Vector3(seg[0], Y0, z1 - T - 0.02), Vector3(seg[1], high - 0.02, z1 - T), lining)
+			kc.box_ab(Vector3(seg[0], Y0, z1 - T - 0.045), Vector3(seg[1], Y0 + 0.16, z1 - T), base_c)
+		kc.box_ab(Vector3(gap0, Y0 + 2.2, z1 - T - 0.02), Vector3(gap1, high - 0.02, z1 - T), lining)
+		kc.box_ab(Vector3(x1 - T - 0.02, Y0, z0 + T), Vector3(x1 - T, high - 0.02, z1 - T), lining)
+		kc.box_ab(Vector3(x1 - T - 0.045, Y0, z0 + T), Vector3(x1 - T, Y0 + 0.16, z1 - T), base_c)
 	_weather(kf, st, x0, x1, z0, z1, gap0, gap1)
 	kf.box_ab(Vector3(gap0 - 0.07, Y0 + 2.1, z1 - T - 0.02), Vector3(gap1 + 0.07, Y0 + 2.2, z1 + 0.03), trim)
 	# friso de topo
@@ -242,6 +273,13 @@ func build(c: Node3D, lot: Dictionary) -> Dictionary:
 		kl.add("box", Transform3D(cm * Basis.from_scale(Vector3(1.06, 1.16, 0.05)), wc + n * 0.1), Color.WHITE)
 		kf.add("box", Transform3D(cm * Basis.from_scale(Vector3(0.05, 1.2, 0.07)), wc + n * 0.11), trim)
 		kf.add("box", Transform3D(cm * Basis.from_scale(Vector3(1.4, 0.08, 0.26)), wc + n * 0.1 + Vector3(0, -0.78, 0)), trim.darkened(0.08))
+		# janela das paredes do fundo vista de dentro (vidro + moldura), com a casa aberta
+		var on_back: bool = (not north and (absf(yaw - PI) < 0.01 or absf(yaw + PI / 2.0) < 0.01)) or (north and (absf(yaw) < 0.01 or absf(yaw - PI / 2.0) < 0.01))
+		if on_back:
+			var wi := wc - n * (T + 0.03)
+			kcw.add("box", Transform3D(cm * Basis.from_scale(Vector3(1.06, 1.16, 0.02)), wi), Color.WHITE)
+			kc.add("box", Transform3D(cm * Basis.from_scale(Vector3(1.24, 1.34, 0.015)), wi + n * 0.006), trim)
+			kc.add("box", Transform3D(cm * Basis.from_scale(Vector3(1.3, 0.06, 0.12)), wi - n * 0.05 + Vector3(0, -0.62, 0)), trim.darkened(0.06))
 		if st["bars"] and absf(yaw) < 0.1:
 			var bar_c := Color("#2c2d2f") if rng.randf() < 0.7 else Color("#e4e0d6")
 			for bi in 6:
@@ -365,6 +403,7 @@ func build(c: Node3D, lot: Dictionary) -> Dictionary:
 	_mesh(ka, root)
 	_mesh(kf, full)
 	_mesh(kc, cut)
+	_mesh(kcw, cut, city.glass_mat)
 	_mesh(kw, full, city.glass_mat)
 	var lit_mi := _mesh(kl, lit, city.lit_mat)
 	var dc_mi := _mesh(door_closed, root)
@@ -775,8 +814,37 @@ func build_interior(s: Dictionary) -> Node3D:
 const KM := "res://assets/furniture_k/Models/%s.fbx"
 
 
+# Móveis dos interiores entram numa fila e são colocados aos poucos (place_pending),
+# porque instanciar vários modelos no mesmo quadro fazia o jogo engasgar ao chegar perto das casas.
+var pending: Array = []
+
+
 func _m(parent: Node3D, name: String, x: float, z: float, yaw: float, up: float = 0.0, scale_k: float = 0.2) -> Node3D:
-	return Furn.place(parent, KM % name, Vector3(x, Y0 + 0.075 + up, z), yaw, scale_k)
+	pending.append([parent, KM % name, Vector3(x, Y0 + 0.075 + up, z), yaw, scale_k])
+	return null
+
+
+# Coloca na hora os móveis de um interior específico (o jogador acabou de entrar nele).
+func place_now(node: Node) -> void:
+	if node == null:
+		return
+	var keep: Array = []
+	for it in pending:
+		var par: Node = it[0]
+		if is_instance_valid(par) and (par == node or node.is_ancestor_of(par)):
+			Furn.place(it[0], it[1], it[2], it[3], it[4])
+		else:
+			keep.append(it)
+	pending = keep
+
+
+# Coloca móveis da fila até gastar o orçamento de tempo do quadro (em microssegundos).
+func place_pending(budget_usec: int) -> void:
+	var t0 := Time.get_ticks_usec()
+	while not pending.is_empty() and Time.get_ticks_usec() - t0 < budget_usec:
+		var it: Array = pending.pop_front()
+		if is_instance_valid(it[0]) and not (it[0] as Node).is_queued_for_deletion():
+			Furn.place(it[0], it[1], it[2], it[3], it[4])
 
 
 func _furnish_models(node: Node3D, rooms: Array, st: Dictionary, w: float, d: float, zdiv: float, xs: float, ab: bool) -> void:

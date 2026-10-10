@@ -55,6 +55,31 @@ const SEGREDOS := [
 	["herdeiro disfarçado", "Tem muito dinheiro de família, mas finge ser pobre para ver quem se aproxima por interesse.", "Descobrir em quem pode confiar de verdade."],
 ]
 
+# Crianças e adolescentes (gerados por sorteio, nunca pela IA): manhã na escola (fora do mapa),
+# tarde brincando na praça ou no parque. [rótulo m, rótulo f, idade mín, idade máx, rotina, dinheiro, roupas]
+const JOVENS := [
+	["menino", "menina", 6, 9, [[14, 18, "praca"]], 0, 10, [9, 0, 1]],
+	["garoto", "garota", 9, 12, [[13, 17, "parque"], [17, 19, "praca"]], 2, 20, [9, 1, 0]],
+	["adolescente", "adolescente", 13, 17, [[14, 18, "praca"], [18, 21, "lanchonete"]], 5, 60, [1, 9, 11, 0]],
+]
+const PERSONALIDADES_JOVENS := [
+	["curioso e falador, pergunta tudo", "fala muito, pergunta 'por quê?' o tempo todo"],
+	["tímido, se esconde atrás dos adultos", "fala baixinho, responde com uma palavra"],
+	["bagunceiro e engraçado, vive aprontando", "ri de tudo, faz piada"],
+	["sério e responsável demais para a idade", "fala como gente grande"],
+	["emburrado, acha tudo chato", "responde com 'tanto faz', revira os olhos"],
+]
+const SEGREDOS_JOVENS := [
+	["quebrou a janela", "Quebrou a janela do vizinho com a bola e ninguém sabe que foi ele.", "Juntar dinheiro para pagar a janela escondido."],
+	["nota baixa", "Tirou nota vermelha e escondeu o boletim dos pais.", "Recuperar a nota antes que descubram."],
+	["cachorro", "Está escondendo um cachorro de rua no quintal.", "Convencer a família a ficar com o cachorro."],
+	["saudade", "Os pais se separaram e sente muita falta de um deles.", "Ver a mãe (ou o pai) de novo no fim de semana."],
+	["bicicleta", "Junta moedas há meses para comprar uma bicicleta.", "Comprar a bicicleta antes do aniversário."],
+]
+const NOMES_BEBE := ["Miguel", "Arthur", "Theo", "Helena", "Alice", "Laura", "Davi", "Cecília", "Gael", "Maitê", "Ravi", "Liz"]
+# cerca de um em cada quatro moradores novos é criança ou adolescente
+const CHANCE_JOVEM := 0.28
+
 var _busy: bool = false
 
 
@@ -126,6 +151,10 @@ func nickname(female: bool, age: int, spec: Dictionary) -> String:
 	var base := "Mulher" if female else "Homem"
 	if age >= 60:
 		base = "Senhora" if female else "Senhor"
+	elif age < 13:
+		base = "Menina" if female else "Menino"
+	elif age < 18:
+		base = "Adolescente"
 	elif age <= 24:
 		base = "Moça" if female else "Rapaz"
 	var cats: Array = World.appearance["categorias"]
@@ -139,7 +168,31 @@ func nickname(female: bool, age: int, spec: Dictionary) -> String:
 	return "%s%s, %s" % [base, feature, clothes_text]
 
 
+func generate_young() -> Dictionary:
+	var female := randf() < 0.5
+	var prof: Array = _pick(JOVENS)
+	var age := randi_range(int(prof[2]), int(prof[3]))
+	var first: String = _pick(NOMES_F if female else NOMES_M)
+	var surname: String = _pick(SOBRENOMES)
+	var pers: Array = _pick(PERSONALIDADES_JOVENS)
+	var sec: Array = _pick(SEGREDOS_JOVENS)
+	var look := random_look(female, prof[7])
+	look["barba"] = 0
+	look["marcas"] = [6] if randf() < 0.25 else []
+	var rotina: Array = []
+	for slot in prof[4]:
+		rotina.append({"de": int(slot[0]), "ate": int(slot[1]), "local": str(slot[2])})
+	return _finalize({
+		"nome": "%s %s" % [first, surname], "genero": "mulher" if female else "homem", "idade": age,
+		"profissao": str(prof[1] if female else prof[0]) + " (estuda de manhã)", "personalidade": str(pers[0]), "jeito_de_falar": str(pers[1]),
+		"tracos_ocultos": [str(sec[0])], "segredo": str(sec[1]), "objetivo": str(sec[2]),
+		"dinheiro": randi_range(int(prof[5]), int(prof[6])), "rotina": rotina, "visual": look,
+	})
+
+
 func generate_procedural() -> Dictionary:
+	if randf() < CHANCE_JOVEM:
+		return generate_young()
 	var female := randf() < 0.5
 	var prof: Array = _pick(PROFISSOES)
 	var age := randi_range(int(prof[2]), int(prof[3]))
@@ -151,7 +204,11 @@ func generate_procedural() -> Dictionary:
 	var rotina: Array = []
 	for slot in prof[4]:
 		rotina.append({"de": int(slot[0]), "ate": int(slot[1]), "local": str(slot[2])})
+	var baby := {}
+	if age >= 20 and age <= 42 and randf() < 0.3:
+		baby = {"nome": _pick(NOMES_BEBE), "meses": randi_range(2, 20)}
 	return _finalize({
+		"bebe": baby,
 		"nome": name_full, "genero": "mulher" if female else "homem", "idade": age,
 		"profissao": str(prof[1] if female else prof[0]), "personalidade": str(pers[0]), "jeito_de_falar": str(pers[1]),
 		"tracos_ocultos": [str(sec[0])], "segredo": str(sec[1]), "objetivo": str(sec[2]),
@@ -243,6 +300,9 @@ func _finalize(base: Dictionary) -> Dictionary:
 		"cor": "#" + Color.from_hsv(randf(), randf_range(0.25, 0.5), randf_range(0.45, 0.7)).to_html(false),
 		"rotina": base["rotina"],
 	}
+	if not base.get("bebe", {}).is_empty():
+		npc["bebe"] = base["bebe"]
+		npc["aparencia"] += ", empurrando um carrinho de bebê"
 	return {"npc": npc, "look": look}
 
 
@@ -260,11 +320,19 @@ func add_resident(entry: Dictionary, arrived: bool) -> String:
 	return id
 
 
+# Começo de jogo: o primeiro morador é criança ou adolescente e o segundo sai com o bebê,
+# para a cidade ter todas as idades desde o início.
 func populate(n: int) -> void:
 	for i in n:
 		if count() >= MAX_RESIDENTS:
 			return
-		add_resident(generate_procedural(), false)
+		var entry := generate_young() if i == 0 else generate_procedural()
+		if i == 1:
+			var npc: Dictionary = entry["npc"]
+			if int(npc["idade"]) >= 20 and int(npc["idade"]) <= 45 and not npc.has("bebe"):
+				npc["bebe"] = {"nome": _pick(NOMES_BEBE), "meses": randi_range(3, 14)}
+				npc["aparencia"] += ", empurrando um carrinho de bebê"
+		add_resident(entry, false)
 
 
 func arrive() -> void:

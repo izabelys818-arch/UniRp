@@ -17,6 +17,9 @@ var ready_city: bool = false
 var motes: CPUParticles3D
 var lamps: Array = []
 var _shake: float = 0.0
+# sombras de nuvens atravessando a cidade e fumaça de chaminés: o plano de abertura respira
+var clouds: Array = []
+var sun_base := Vector3.ZERO
 
 
 func _ready() -> void:
@@ -44,7 +47,7 @@ func _environment() -> void:
 	var env := Environment.new()
 	var sky_mat := ProceduralSkyMaterial.new()
 	sky_mat.sky_top_color = Color("#1c2a45")
-	sky_mat.sky_horizon_color = Color("#e08a55")
+	sky_mat.sky_horizon_color = Color("#c08068")
 	sky_mat.ground_horizon_color = Color("#6b4a45")
 	sky_mat.ground_bottom_color = Color("#1a1618")
 	sky_mat.sky_curve = 0.18
@@ -59,8 +62,8 @@ func _environment() -> void:
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	env.tonemap_exposure = 1.0
 	env.fog_enabled = true
-	env.fog_light_color = Color("#a8765e")
-	env.fog_density = 0.0055
+	env.fog_light_color = Color("#7e6c74")
+	env.fog_density = 0.0045
 	env.fog_sky_affect = 0.25
 	env.glow_enabled = true
 	env.glow_intensity = 0.8
@@ -71,7 +74,7 @@ func _environment() -> void:
 	vp.add_child(we)
 	sun = DirectionalLight3D.new()
 	sun.rotation = Vector3(-deg_to_rad(11.0), deg_to_rad(-58.0), 0.0)
-	sun.light_color = Color("#ffb070")
+	sun.light_color = Color("#ffbd88")
 	sun.light_energy = 1.7
 	sun.shadow_enabled = true
 	sun.directional_shadow_max_distance = 220.0
@@ -86,7 +89,7 @@ func _build_later() -> void:
 	city = CityBuilder.new()
 	vp.add_child(city)
 	city.build(layout)
-	city.lit_mat.emission_energy_multiplier = 2.4
+	city.lit_mat.albedo_color = Color(1.0, 0.97, 0.92)
 	# chão até o horizonte, para a cidade não terminar numa borda
 	var ground := MeshInstance3D.new()
 	var pm := PlaneMesh.new()
@@ -135,7 +138,59 @@ func _build_later() -> void:
 	qm.material = mm
 	motes.mesh = qm
 	vp.add_child(motes)
+	_add_clouds()
+	_add_smoke()
+	sun_base = sun.rotation
 	ready_city = true
+
+
+func _add_clouds() -> void:
+	var k := preload("res://world3d/mesh_kit.gd").new()
+	k.disc(Vector3.ZERO, 0.5, 0.5, Color(0.04, 0.03, 0.06, 0.32), 0.0, 24, 0.25, 0.45, 0.6)
+	var mesh := k.commit(preload("res://world3d/mesh_kit.gd").shadow_material())
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 404
+	for i in 7:
+		var mi := MeshInstance3D.new()
+		mi.mesh = mesh
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var sz := rng.randf_range(38.0, 70.0)
+		mi.scale = Vector3(sz * rng.randf_range(1.2, 1.8), 1.0, sz)
+		mi.rotation.y = rng.randf() * PI
+		mi.position = Vector3(rng.randf_range(-60.0, Layout.SIZE + 60.0), 9.0, rng.randf_range(-60.0, Layout.SIZE + 60.0))
+		vp.add_child(mi)
+		clouds.append(mi)
+
+
+func _add_smoke() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 77
+	var houses: Array = city.structures.filter(func(s): return s.has("lot"))
+	for i in mini(9, houses.size()):
+		var s: Dictionary = houses[rng.randi() % houses.size()]
+		var c: Vector2 = (s["rect"] as Rect2).get_center()
+		var sm := CPUParticles3D.new()
+		sm.amount = 18
+		sm.lifetime = 5.0
+		sm.preprocess = 5.0
+		sm.direction = Vector3(0.3, 1, 0.1)
+		sm.spread = 12.0
+		sm.gravity = Vector3(0.25, 0.15, 0.05)
+		sm.initial_velocity_min = 0.5
+		sm.initial_velocity_max = 0.9
+		sm.scale_amount_min = 1.0
+		sm.scale_amount_max = 2.6
+		var qm := QuadMesh.new()
+		qm.size = Vector2(0.9, 0.9)
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.albedo_color = Color(0.72, 0.68, 0.7, 0.16)
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+		qm.material = m
+		sm.mesh = qm
+		sm.position = Vector3(c.x + rng.randf_range(-2, 2), 6.2, c.y + rng.randf_range(-2, 2))
+		vp.add_child(sm)
 
 
 func _process(delta: float) -> void:
@@ -155,5 +210,17 @@ func _process(delta: float) -> void:
 	cam.look_at(look, Vector3.UP)
 	cam.rotation.z += sin(t * 0.5) * 0.006 + _shake * 0.002
 	motes.position = p + Vector3(0, -2, 0)
+	# nuvens passando (as sombras andam com o vento) e o sol descendo devagar
+	for c in clouds:
+		var cl: Node3D = c
+		cl.position.x += delta * 3.2
+		cl.position.z += delta * 1.1
+		if cl.position.x > Layout.SIZE + 120.0:
+			cl.position.x = -120.0
+		if cl.position.z > Layout.SIZE + 120.0:
+			cl.position.z = -120.0
+	sun.rotation = sun_base + Vector3(sin(t * 0.02) * 0.04, t * 0.004, 0.0)
+	# as janelas vão acendendo conforme o céu escurece
+	city.lit_mat.albedo_color = Color(0.55, 0.52, 0.5).lerp(Color(1.0, 0.97, 0.92), clampf(t / 20.0, 0.0, 1.0))
 	life.update(delta, Vector2(p.x, p.z), false, false)
 	life.update_slow(true)

@@ -133,6 +133,7 @@ func _go(to_screen: String, arg: String = "") -> void:
 		"bills": _bills()
 		"homes": _homes()
 		"shop": _shop()
+		"calendar": _calendar(arg)
 
 
 func _app_button(label: String, color: Color, badge: int, target: String) -> Control:
@@ -158,7 +159,7 @@ func _home() -> void:
 	var big := UI.title("%02d:%02d" % [TimeManager.hour(), TimeManager.minute()], 56)
 	big.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	body.add_child(big)
-	var date := UI.label("Dia %d • %s • %s" % [TimeManager.day(), TimeManager.weekday(), GameState.city()], 14, UI.MUTED)
+	var date := UI.label("%s, %s • %s" % [TimeManager.weekday(), TimeManager.date_str({}, false), GameState.city()], 14, UI.MUTED)
 	date.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	body.add_child(date)
 	body.add_child(Control.new())
@@ -176,6 +177,7 @@ func _home() -> void:
 	grid.add_child(_app_button("Imóveis", Color("#2a8a9a"), 0, "homes"))
 	grid.add_child(_app_button("Compras", Color("#a84a8a"), 0, "shop"))
 	grid.add_child(_app_button("Jornal", Color("#6b7280"), 0, "news"))
+	grid.add_child(_app_button("Calendário", Color("#c0563a"), 1 if AgingSystem.days_until_birthday("") == 0 else 0, "calendar"))
 	grid.add_child(_app_button("Emergência", Color("#b83a3a"), 0, "emergency"))
 
 
@@ -393,6 +395,132 @@ func _card(list: VBoxContainer, tint: Color = Color(1, 1, 1, 0.05)) -> VBoxConta
 	return v
 
 
+# ---------- calendário ----------
+
+const CAL_BDAY := Color("#d9668f")
+const CAL_BILL := Color("#d9922e")
+const CAL_HOLIDAY := Color("#6fbf7a")
+
+
+# Eventos de cada dia do calendário (índice absoluto do dia → lista de textos).
+func _cal_events(year: int) -> Dictionary:
+	var ev := {}
+	var add := func(idx: int, text: String, kind: String):
+		if not ev.has(idx):
+			ev[idx] = []
+		ev[idx].append([text, kind])
+	var who: Array = [""]
+	for id in NPCManager.npcs:
+		if PhoneSystem.has_contact(id) and NPCManager.state.get(id, {}).get("vivo", true):
+			who.append(id)
+	for id in who:
+		var md: Vector2i = AgingSystem.birthday_md(id)
+		var name := "Seu aniversário" if id == "" else "Aniversário de %s" % str(NPCManager.npcs[id].get("nome", id))
+		add.call(TimeManager.index_of_date(year, md.x, md.y), name, "bday")
+	for b in HomeSystem.unpaid():
+		var gd := int(b["venc"]) / 1440 + 1
+		add.call(TimeManager.cal_index_of(gd), "Vence: %s (R$ %d)" % [HomeSystem.bill_label(b), int(b["valor"])], "bill")
+	for h in Holidays.LIST:
+		var md := Holidays.date_of(str(h["id"]))
+		if md.x >= 0:
+			var kind: String = {"feriado": "feriado", "vespera": "véspera: comércio fecha cedo", "festa": "festa: comércio fecha cedo", "data": "data comemorativa"}.get(str(h["tipo"]), "")
+			add.call(TimeManager.index_of_date(year, md.x, md.y), "%s (%s)" % [str(h["nome"]), kind], "holiday")
+	return ev
+
+
+func _calendar(arg: String = "") -> void:
+	title_label.text = "Calendário"
+	var list := UI.vbox(8)
+	body.add_child(UI.scroll(list))
+	var today := TimeManager.date()
+	var today_idx := TimeManager.cal_index_of(TimeManager.day())
+	var dpm := TimeManager.days_per_month
+	var hc := _card(list, Color(1, 1, 1, 0.06))
+	hc.add_child(UI.title("%s, %s" % [TimeManager.WEEKDAYS_LONG[TimeManager.weekday_of(TimeManager.day())].capitalize(), TimeManager.date_str()], 17))
+	var stage: String = AgingSystem.STAGE_NAMES.get(GameState.age_stage(), "")
+	hc.add_child(UI.label("Você: %d anos (%s)  •  aniversário em %s" % [GameState.age(), stage, AgingSystem.birthday_str("")], 12, UI.MUTED))
+	var year := int(today["y"])
+	var sel := today_idx if arg == "" else int(arg)
+	var ev := _cal_events(year)
+	# Meses curtos (até 7 dias): o ano inteiro numa grade, um mês por linha.
+	var months: Array = range(12) if dpm <= 7 else [int(TimeManager.date_of_index(sel)["m"])]
+	if dpm > 7:
+		var nav := UI.hbox(6)
+		var m_now := int(TimeManager.date_of_index(sel)["m"])
+		var prev := TimeManager.index_of_date(year, posmod(m_now - 1, 12), 1)
+		var next := TimeManager.index_of_date(year, (m_now + 1) % 12, 1)
+		nav.add_child(UI.button("<", _go.bind("calendar", str(prev))))
+		var ml := UI.title(TimeManager.MONTHS[m_now].capitalize(), 16)
+		ml.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		ml.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		nav.add_child(ml)
+		nav.add_child(UI.button(">", _go.bind("calendar", str(next))))
+		list.add_child(nav)
+	var grid := GridContainer.new()
+	grid.columns = (mini(dpm, 7) + 1)
+	grid.add_theme_constant_override("h_separation", 4)
+	grid.add_theme_constant_override("v_separation", 4)
+	list.add_child(grid)
+	for m in months:
+		for d in dpm:
+			if d % 7 == 0:
+				var lab := UI.label(TimeManager.MONTHS_SHORT[m] if d == 0 else "", 12, UI.ACCENT if m == int(today["m"]) else UI.MUTED)
+				lab.custom_minimum_size = Vector2(34, 0)
+				grid.add_child(lab)
+			var idx := TimeManager.index_of_date(year, m, d + 1)
+			var b := Button.new()
+			b.text = str(d + 1)
+			b.custom_minimum_size = Vector2(36, 30)
+			b.add_theme_font_size_override("font_size", 12)
+			var bg := Color(1, 1, 1, 0.04)
+			var border := Color(0, 0, 0, 0)
+			var kinds: Array = ev.get(idx, []).map(func(e): return e[1])
+			if "holiday" in kinds:
+				border = CAL_HOLIDAY
+			if "bill" in kinds:
+				border = CAL_BILL
+			if "bday" in kinds:
+				border = CAL_BDAY
+			if idx == today_idx:
+				bg = Color(UI.ACCENT, 0.85)
+			elif idx < today_idx:
+				b.add_theme_color_override("font_color", Color(UI.MUTED, 0.5))
+			var sb := UI._box(bg, 8, 0)
+			sb.set_border_width_all(2 if border.a > 0.0 else 0)
+			sb.border_color = border
+			for st in ["normal", "hover", "pressed"]:
+				b.add_theme_stylebox_override(st, sb if st != "hover" else UI._box(bg.lightened(0.2), 8, 0))
+			if idx == sel:
+				var ss := sb.duplicate() as StyleBoxFlat
+				ss.set_border_width_all(2)
+				ss.border_color = Color.WHITE
+				b.add_theme_stylebox_override("normal", ss)
+			b.pressed.connect(_go.bind("calendar", str(idx)))
+			grid.add_child(b)
+	var legend := UI.label("Rosa: aniversário  •  Verde: feriado e datas  •  Laranja: conta vencendo  •  Destaque: hoje", 11, UI.MUTED)
+	legend.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	list.add_child(legend)
+	var sd := TimeManager.date_of_index(sel)
+	list.add_child(UI.label(("HOJE" if sel == today_idx else "%d DE %s" % [sd["d"], str(TimeManager.MONTHS[sd["m"]]).to_upper()]), 12, UI.MUTED))
+	var day_ev: Array = ev.get(sel, [])
+	if day_ev.is_empty():
+		list.add_child(UI.label("Nada marcado.", 13, UI.MUTED))
+	for e in day_ev:
+		var tint: Color = {"bday": CAL_BDAY, "bill": CAL_BILL, "holiday": CAL_HOLIDAY}.get(str(e[1]), UI.MUTED)
+		var c := _card(list, Color(tint, 0.14))
+		c.add_child(UI.label(str(e[0]), 14))
+	list.add_child(UI.label("PRÓXIMOS ANIVERSÁRIOS", 12, UI.MUTED))
+	for u in AgingSystem.upcoming(6):
+		var days := int(u["dias"])
+		var when := "hoje!" if days == 0 else ("amanhã" if days == 1 else "em %d dias" % days)
+		var row := _card(list)
+		row.add_child(UI.label("%s  •  %s  (%s)" % [str(u["nome"]), AgingSystem.birthday_str(str(u["id"])), when], 13, CAL_BDAY if days == 0 else UI.TEXT))
+		if days == 0 and str(u["id"]) != "" and PhoneSystem.can_reach(str(u["id"])):
+			row.add_child(UI.button("Mandar parabéns", func():
+				PhoneSystem.send_message(str(u["id"]), "Feliz aniversário! Muitas felicidades pra você!")
+				_go("thread", str(u["id"]))))
+
+
 func _bills() -> void:
 	title_label.text = "Contas e trabalho"
 	var list := UI.vbox(8)
@@ -437,8 +565,10 @@ func _pay_bill(bill_id: int) -> void:
 
 func _homes() -> void:
 	title_label.text = "Imóveis"
+	HomeSystem.list_city_houses()
 	var list := UI.vbox(8)
 	body.add_child(UI.scroll(list))
+	list.add_child(UI.label("Anúncios das imobiliárias da cidade: kitnets, apartamentos, casas vazias e casas para reformar.", 12, UI.MUTED))
 	for loc_id in HomeSystem.imoveis:
 		var p: Dictionary = HomeSystem.imoveis[loc_id]
 		var c := _card(list)

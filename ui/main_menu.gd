@@ -9,9 +9,9 @@ const UI = preload("res://ui/ui_theme.gd")
 const Backdrop = preload("res://ui/menu/menu_backdrop.gd")
 const FilmFx = preload("res://ui/menu/film_fx.gd")
 
-const INK := Color("#ece6d8")
-const DIM := Color("#8d8a82")
-const AMBER := Color("#e8ad4f")
+const INK := Color("#f3e9d4")
+const DIM := Color("#b3a48c")
+const AMBER := Color("#f0b04a")
 
 var args: Dictionary = {}
 var backdrop: Backdrop
@@ -64,6 +64,9 @@ func _ready() -> void:
 	fx = FilmFx.new()
 	fx.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(fx)
+	# vinheta e grão mais suaves: a cidade de fundo respira, sem bordas pretas pesadas
+	fx.mat.set_shader_parameter("vignette", 0.55)
+	fx.mat.set_shader_parameter("grain", 0.05)
 	_build_shade()
 	_build_title()
 	_build_menu()
@@ -88,9 +91,9 @@ func _build_shade() -> void:
 		var w := shade.size.x
 		var h := shade.size.y
 		shade.draw_polygon(PackedVector2Array([Vector2(0, 0), Vector2(w * 0.58, 0), Vector2(w * 0.58, h), Vector2(0, h)]),
-			PackedColorArray([Color(0.02, 0.02, 0.03, 0.82), Color(0.02, 0.02, 0.03, 0.0), Color(0.02, 0.02, 0.03, 0.0), Color(0.02, 0.02, 0.03, 0.82)]))
+			PackedColorArray([Color(0.06, 0.04, 0.025, 0.86), Color(0.06, 0.04, 0.025, 0.0), Color(0.06, 0.04, 0.025, 0.0), Color(0.06, 0.04, 0.025, 0.86)]))
 		shade.draw_polygon(PackedVector2Array([Vector2(0, h * 0.72), Vector2(w, h * 0.72), Vector2(w, h), Vector2(0, h)]),
-			PackedColorArray([Color(0, 0, 0, 0.0), Color(0, 0, 0, 0.0), Color(0, 0, 0, 0.55), Color(0, 0, 0, 0.55)])))
+			PackedColorArray([Color(0.05, 0.03, 0.02, 0.0), Color(0.05, 0.03, 0.02, 0.0), Color(0.05, 0.03, 0.02, 0.6), Color(0.05, 0.03, 0.02, 0.6)])))
 	add_child(shade)
 
 
@@ -147,8 +150,9 @@ func _build_menu() -> void:
 		row.mouse_filter = Control.MOUSE_FILTER_STOP
 		var bg := TextureRect.new()
 		var grad := Gradient.new()
-		grad.set_color(0, Color(1, 1, 1, 0.13))
-		grad.set_color(1, Color(1, 1, 1, 0.0))
+		# destaque do item escolhido: faixa de madeira dourada que se apaga para a direita
+		grad.set_color(0, Color(0.94, 0.69, 0.29, 0.26))
+		grad.set_color(1, Color(0.54, 0.4, 0.26, 0.0))
 		var gt := GradientTexture2D.new()
 		gt.gradient = grad
 		gt.fill_from = Vector2(0, 0.5)
@@ -196,7 +200,7 @@ func _save_line() -> String:
 	if _preview.is_empty():
 		return ""
 	var loc: String = World.locations.get(str(_preview.get("location", "")), {}).get("nome", "")
-	return "%s   •   Dia %d   •   %s   •   R$ %d" % [str(_preview.get("name", "")), int(_preview.get("day", 1)), loc if loc != "" else "Porto Cinza", int(_preview.get("money", 0))]
+	return "%s   •   %s   •   %s   •   R$ %d" % [str(_preview.get("name", "")), str(_preview.get("date", "Dia %d" % int(_preview.get("day", 1)))), loc if loc != "" else "Porto Cinza", int(_preview.get("money", 0))]
 
 
 func _build_footer() -> void:
@@ -206,7 +210,7 @@ func _build_footer() -> void:
 	var h := _label("↑ ↓   NAVEGAR          ENTER   SELECIONAR", 12, Color(DIM, 0.8), _font(400, 4))
 	h.name = "Hint"
 	_hint.add_child(h)
-	var v := _label("v0.7   •   Godot 4   •   modelos 3D CC0 de Quaternius e Kenney", 12, Color(DIM, 0.6), _font(400, 2))
+	var v := _label("v0.8 (10/out)   •   Godot 4   •   modelos 3D CC0 de Quaternius e Kenney", 12, Color(DIM, 0.6), _font(400, 2))
 	v.name = "Ver"
 	_hint.add_child(v)
 
@@ -248,7 +252,7 @@ func _set_focus(i: int, animate: bool = true) -> void:
 		t.tween_property(r["marker"], "scale:y", 1.0 if on else 0.0, dur)
 		t.tween_property(r["label"], "position:x", 36.0 if on else 22.0, dur).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 		var base: Color = INK if r["on"] else Color(DIM, 0.45)
-		t.tween_property(r["label"], "theme_override_colors/font_color", (Color.WHITE if on else (base if r["on"] else base)), dur)
+		t.tween_property(r["label"], "theme_override_colors/font_color", (Color("#fff4dc") if on else base), dur)
 		if r["sub"] != null:
 			t.tween_property(r["sub"], "position:x", 38.0 if on else 24.0, dur)
 

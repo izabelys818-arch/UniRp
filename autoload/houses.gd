@@ -65,6 +65,8 @@ func has_key(id: String) -> bool:
 func locked(id: String) -> bool:
 	if not is_house(id):
 		return false
+	if HomeSystem.has_access(id):
+		return false
 	return str(st(id)["lock"]) == "locked" and not has_key(id)
 
 
@@ -78,7 +80,7 @@ func force_open(id: String, hours: float) -> void:
 
 # Alguém está em casa agora? (muda a luz nas janelas e o risco de arrombar)
 func resident_home(id: String) -> bool:
-	if not is_house(id) or not st(id)["ocupada"]:
+	if not is_house(id) or not st(id)["ocupada"] or HomeSystem.has_access(id):
 		return false
 	var h := TimeManager.hour()
 	var r := RandomNumberGenerator.new()
@@ -115,6 +117,10 @@ func inside_actions() -> Array:
 	if not is_house(id):
 		return []
 	var out: Array = []
+	if HomeSystem.has_access(id):
+		# a casa é sua (alugada ou comprada na imobiliária)
+		out.append({"id": "casa_g:dormir", "label": "Dormir na sua cama (8h)"})
+		return out
 	if int(st(id)["busca"]) != TimeManager.day():
 		out.append({"id": "casa_g:vasculhar", "label": "Vasculhar os cômodos (30 min)"})
 	out.append({"id": "casa_g:dormir", "label": "Deitar numa cama e dormir (8h)"})
@@ -253,6 +259,9 @@ func _search(id: String) -> void:
 
 
 func _sleep(id: String) -> void:
+	if HomeSystem.has_access(id):
+		HomeSystem.sleep_home()
+		return
 	if not has_key(id) and resident_home(id) and randf() < 0.35:
 		GameState.add_log("Você mal se deita quando ouve a chave na porta. Alguém voltou para casa.", "danger")
 		_resident_wakes(id)

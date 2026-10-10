@@ -624,9 +624,10 @@ func _ready() -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
 	check(screen.side_box.get_child_count() > 4, "tela do jogo montou painel do local")
-	check(screen.actors.has("marina"), "Marina aparece de pé no cenário")
+	check(screen.actors.has("marina"), "Marina aparece na conversa")
 	var actor = screen.actors.get("marina")
-	check(actor != null and actor.actor_mode and actor.show_emote, "personagem em modo ator com balão de emoção")
+	check(actor != null and actor.show_emote and actor.get_parent() == screen.dialogue.portrait_slot, "retrato de quem fala dentro da caixa, com balão de emoção")
+	check(screen.dialogue.visible and screen.dialogue.mode == "conversa", "caixa de conversa aberta durante a conversa")
 	check(actor != null and actor.emotion == "chorando", "balão/rosto mostram a emoção da IA")
 	check(screen.scene_view.scene == "comida", "cenário da lanchonete em tela cheia")
 	check(not screen.player_portrait.look.is_empty(), "rosto do jogador desenhado")
@@ -668,11 +669,11 @@ func _ready() -> void:
 	var creator = preload("res://ui/character_creation.gd").new()
 	add_child(creator)
 	await get_tree().process_frame
-	for i in creator.TABS.size():
-		creator._show_tab(i)
+	for i in creator.CATEGORIES.size():
+		creator._show_cat(i)
 		await get_tree().process_frame
-		check(creator.content.get_child_count() > 1, "aba %s montada" % creator.TABS[i])
-	creator._randomize_look()
+		check(creator.content.get_child_count() > 1, "categoria %s montada" % creator.CATEGORIES[i][1])
+	creator._randomize_all()
 	creator.player_name = "Joana"
 	creator.gender = 1
 	creator.spec["cabelo"] = 1

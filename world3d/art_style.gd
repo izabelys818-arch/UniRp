@@ -20,7 +20,7 @@ const PROFILES := {
 		"fill": [["predio", 0.12], ["terreno", 0.05], ["estacionamento", 0.04], ["verde", 0.06], ["comercio", 0.07], ["casas", 1.0]],
 		"tower_floors": [3, 6], "flowers": 0.25, "decay": 0.35, "abandon": 0.12, "bars": 0.45, "tank": 0.55, "street_trees": 0.75,
 		"fence_weights": {"muro": 4, "wood": 1, "chain": 2, "hedge": 1, "none": 1},
-		"grade": {"sat": 0.78, "contrast": 1.06, "shadow": [0.9, 0.97, 1.1], "high": [1.06, 1.0, 0.9], "grain": 0.03},
+		"grade": {"sat": 0.78, "contrast": 1.06, "shadow": [0.9, 0.97, 1.1], "high": [1.04, 1.0, 0.95], "grain": 0.03},
 	},
 	"vale_sereno": {
 		# cidadezinha: casas baixas e coloridas de interior, quintais grandes, muita árvore, comércio de esquina
@@ -36,7 +36,7 @@ const PROFILES := {
 		"fill": [["predio", 0.03], ["terreno", 0.09], ["estacionamento", 0.02], ["verde", 0.16], ["comercio", 0.06], ["casas", 1.0]],
 		"tower_floors": [2, 3], "flowers": 0.7, "verge": true, "decay": 0.25, "abandon": 0.08, "bars": 0.2, "tank": 0.7, "street_trees": 1.0,
 		"fence_weights": {"muro": 2, "wood": 3, "chain": 1, "hedge": 3, "none": 2},
-		"grade": {"sat": 0.86, "contrast": 1.04, "shadow": [0.94, 0.98, 1.05], "high": [1.07, 1.02, 0.9], "grain": 0.025},
+		"grade": {"sat": 0.86, "contrast": 1.04, "shadow": [0.94, 0.98, 1.05], "high": [1.05, 1.01, 0.94], "grain": 0.025},
 	},
 	"nova_aurora": {
 		# metrópole: torres de concreto e vidro, prédios residenciais com varandas, contraste entre bairro nobre e popular
@@ -52,7 +52,7 @@ const PROFILES := {
 		"fill": [["predio", 0.34], ["terreno", 0.03], ["estacionamento", 0.07], ["verde", 0.04], ["comercio", 0.17], ["casas", 1.0]],
 		"tower_floors": [6, 13], "flowers": 0.15, "decay": 0.3, "abandon": 0.1, "bars": 0.55, "tank": 0.35, "street_trees": 0.6,
 		"fence_weights": {"muro": 5, "wood": 0, "chain": 2, "hedge": 1, "none": 1},
-		"grade": {"sat": 0.74, "contrast": 1.08, "shadow": [0.88, 0.96, 1.12], "high": [1.05, 1.0, 0.94], "grain": 0.03},
+		"grade": {"sat": 0.74, "contrast": 1.08, "shadow": [0.88, 0.96, 1.12], "high": [1.03, 1.0, 0.97], "grain": 0.03},
 	},
 	"colapso": {
 		# pós-crise: a mesma Porto Cinza, mas com reparos improvisados, portas protegidas, lojas fechadas, poeira
@@ -76,18 +76,19 @@ const PROFILES := {
 # Manhã nublada e azulada, meio-dia neutro e apagado, fim de tarde dourado com sombras longas,
 # crepúsculo lilás, noite azul profunda (as janelas quentes fazem o contraste).
 const LIGHT_KEYS := [
-	[0.0, "#5a6b9a", 0.12, "#2c3b60", 0.66],
-	[4.5, "#5a6b9a", 0.12, "#2d3c62", 0.66],
-	[6.0, "#e8a88a", 0.32, "#56607a", 0.38],
+	# luz quente × sombra fria dão volume; noite azul legível (lê-se tudo, sem perder o clima)
+	[0.0, "#6a7cb0", 0.18, "#34446e", 0.74],
+	[4.5, "#6a7cb0", 0.18, "#35466f", 0.74],
+	[6.0, "#e8a88a", 0.32, "#56607a", 0.4],
 	[7.5, "#d9dce0", 0.55, "#8e9aac", 0.34],
 	[10.0, "#f1ede4", 0.72, "#aeb6c2", 0.32],
 	[13.0, "#f4efe4", 0.78, "#b4bac4", 0.32],
-	[16.0, "#f6dcb0", 0.74, "#a8acb4", 0.32],
-	[17.6, "#ffb877", 0.80, "#9a8e8e", 0.34],
-	[18.6, "#ff8f5c", 0.48, "#6a5f78", 0.36],
-	[19.6, "#8a7aa8", 0.16, "#3a4266", 0.58],
-	[21.0, "#5a6b9a", 0.12, "#2e3d62", 0.66],
-	[24.0, "#5a6b9a", 0.12, "#2c3b60", 0.66],
+	[16.0, "#f6dcb0", 0.74, "#a4aab8", 0.33],
+	[17.6, "#f5c08c", 0.72, "#8a90a6", 0.37],
+	[18.6, "#ec9474", 0.44, "#686490", 0.44],
+	[19.6, "#8a7aa8", 0.18, "#3e4876", 0.62],
+	[21.0, "#6a7cb0", 0.18, "#34446e", 0.74],
+	[24.0, "#6a7cb0", 0.18, "#34446e", 0.74],
 ]
 
 

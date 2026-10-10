@@ -5,7 +5,11 @@ const SKIN := ["#f3d9c6", "#e8bf9c", "#cf9f74", "#a8744c", "#6f4a32", "#4a2f22"]
 const HAIR_COLORS := ["#1a1412", "#3b2516", "#7a5434", "#d8b56a", "#a8432a", "#8a8a88", "#e8e6e0", "#2f5fb3", "#d46aa0", "#3f9a5a", "#ebe4cc"]
 const EYE_COLORS := ["#5a3a22", "#1e1410", "#4f7a3a", "#4a78a8", "#a07a3a", "#7a8288", "#5a3a22"]
 const HAIR := ["curto", "careca", "raspado", "medio", "longo", "cacheado", "black_power", "trancas", "dreads", "moicano", "coque", "rabo", "franja", "desgrenhado"]
-const BEARD := ["none", "stubble", "goatee", "mustache", "full", "long"]
+const BEARD := ["none", "stubble", "goatee", "mustache", "full", "long", "mustache_thin", "short", "sideburns"]
+# Tons de pele do criador (do mais claro ao mais escuro). O índice "pele" (6 opções, usado na
+# descrição para a IA) fica no tom mais próximo; a cor exata vai em "pele_cor".
+const SKIN_TONES := ["#f6e1d3", "#f0d2bb", "#e8bf9c", "#dcab84", "#cf9f74", "#bb8659", "#a8744c", "#8d5e3c", "#6f4a32", "#5a3a28", "#4a2f22", "#3a241b"]
+const HEIGHTS := [1.0, 0.94, 1.05, 1.1]
 const CLOTHES := ["camiseta", "moletom", "couro", "jeans", "social", "terno", "regata", "vestido", "blusa", "time", "uniforme", "academia", "rasgada", "sobretudo"]
 const CLOTHES_COLORS := {
 	"camiseta": ["#4a5260", "#dddddd"], "moletom": ["#3a3f4a", "#dddddd"], "couro": ["#18181a", "#2e2e33"],
@@ -41,8 +45,10 @@ const TRAITS := [[1.0, 0.0, 1.05, 1.05], [1.0, 0.0, 0.92, 0.9], [1.05, 0.0, 1.3,
 const RANGES := {
 	"face_w": 0.14, "face_len": 0.12, "cheek": 0.1, "jaw": 0.14, "chin_w": 0.12,
 	"nose_w": 0.35, "nose_len": 0.25, "lips": 0.4, "eye_size": 0.2, "eye_tilt": 0.4,
-	"brow_w": 0.5, "brow_y": 1.0,
+	"brow_w": 0.5, "brow_y": 1.0, "eye_h": 0.25, "mouth_w": 0.2, "ear_size": 0.3, "ear_out": 0.5, "rugas": 1.0,
 }
+# Ajustes que somam direto (sem multiplicar pelo valor base)
+const ADDITIVE := ["eye_tilt", "brow_y", "rugas"]
 
 
 static func _idx(spec: Dictionary, key: String, n: int) -> int:
@@ -89,14 +95,19 @@ static func build(spec: Dictionary, age: int, gender: String) -> Dictionary:
 		"brow_y": 0.5 if female else (-0.5 if male else 0.0),
 		"clothes": style,
 		"clothes_color": Color(spec.get("cor_roupa", colors[0])),
-		"clothes_color2": Color(colors[1]),
+		"clothes_color2": Color(spec.get("cor_roupa2", colors[1])),
+		"height": float(HEIGHTS[_idx(spec, "altura", HEIGHTS.size())]),
+		"mouth_w": 1.0, "ear_size": 1.0, "ear_out": 1.0, "rugas": 0.0,
 		"marks": spec.get("marcas", []).map(func(m): return int(m)),
 		"extras": spec.get("extras", []),
 		"age": age,
 		"gender": gender,
+		"body_type": _idx(spec, "corpo", BODY.size()),
 	}
 	if spec.has("sobrancelha_cor"):
 		look["brow_color"] = Color(spec["sobrancelha_cor"])
+	if spec.has("barba_cor"):
+		look["beard_color"] = Color(spec["barba_cor"])
 	if female:
 		look["lip_color"] = skin.darkened(0.15).lerp(Color(0.72, 0.24, 0.3), 0.5)
 	elif male:
@@ -104,5 +115,5 @@ static func build(spec: Dictionary, age: int, gender: String) -> Dictionary:
 	var adj: Dictionary = spec.get("ajustes", {})
 	for k in adj:
 		if RANGES.has(k):
-			look[k] = float(look.get(k, 0.0)) + float(adj[k]) * float(RANGES[k]) * (1.0 if k in ["eye_tilt", "brow_y"] else float(look.get(k, 1.0)))
+			look[k] = float(look.get(k, 0.0)) + float(adj[k]) * float(RANGES[k]) * (1.0 if k in ADDITIVE else float(look.get(k, 1.0)))
 	return look

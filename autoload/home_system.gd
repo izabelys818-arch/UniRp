@@ -186,6 +186,43 @@ func evict(loc_id: String) -> void:
 
 # ---------- imóveis ----------
 
+# Imobiliária: casas vazias da cidade (das ruas do mapa 3D) entram no anúncio com preço próprio,
+# sempre as mesmas para a mesma cidade. Nenhum prédio novo: são as casas que já existem.
+const AGENCIES := ["Imobiliária Chave Certa", "Lar Doce Lar Imóveis", "Porto Seguro Imóveis"]
+const MAX_LISTINGS := 9
+
+
+func list_city_houses() -> void:
+	var ids: Array = []
+	for id in World.locations:
+		if World.locations[id].get("casa_generica", false):
+			ids.append(id)
+	ids.sort()
+	var listed := 0
+	for id in ids:
+		if listed >= MAX_LISTINGS:
+			break
+		if imoveis.has(id):
+			listed += 1
+			continue
+		var st: Dictionary = Houses.st(id)
+		var mine := contracts().has(id)
+		if bool(st["ocupada"]) and not mine:
+			continue
+		var r := RandomNumberGenerator.new()
+		r.seed = int(World.locations[id].get("seed", hash(id))) + 77
+		var rooms := r.randi_range(1, 3)
+		var agency: String = AGENCIES[r.randi() % AGENCIES.size()]
+		var street := str(World.locations[id]["nome"])
+		if str(st["tipo"]) == "abandonada":
+			imoveis[id] = {"tipo": "compra", "compra": r.randi_range(9, 16) * 1000,
+				"resumo": "%s. Casa abandonada para reformar: telhado com goteira, mas é sua por pouco. (%s)" % [street, agency]}
+		else:
+			var rent := 380 + rooms * 160 + r.randi_range(0, 6) * 30
+			imoveis[id] = {"tipo": "aluguel_compra", "aluguel": rent, "deposito": rent * 2, "compra": rent * r.randi_range(60, 78),
+				"resumo": "%s. Casa de %d quarto(s) com quintal, desocupada. Aluga ou vende. (%s)" % [street, rooms, agency]}
+		listed += 1
+
 func rent_cost(loc_id: String) -> int:
 	var p: Dictionary = imoveis[loc_id]
 	return int(p.get("deposito", 0)) + int(p.get("aluguel", 0)) + int(p.get("abertura", 0))
@@ -210,7 +247,7 @@ func _sign(loc_id: String, tipo: String, rent: int) -> void:
 
 
 func rent(loc_id: String) -> bool:
-	if not can_rent(loc_id):
+	if not can_rent(loc_id) or GameState.refuse_minor("contrato"):
 		return false
 	var p: Dictionary = imoveis[loc_id]
 	var cost := rent_cost(loc_id)
@@ -225,7 +262,7 @@ func rent(loc_id: String) -> bool:
 
 
 func buy(loc_id: String) -> bool:
-	if not can_buy(loc_id):
+	if not can_buy(loc_id) or GameState.refuse_minor("contrato"):
 		return false
 	var price := int(imoveis[loc_id]["compra"])
 	GameState.add_money(-price)
@@ -365,6 +402,8 @@ func do(id: String) -> void:
 
 func sleep_home() -> void:
 	var loc_id := World.current_id()
+	if not contracts().has(loc_id) and home_id() != "":
+		loc_id = home_id()
 	GameState.add_log("Você deita na cama e apaga a luz.", "info")
 	var bonus := {"sanidade": 10}
 	if has_furn("cama_boa", loc_id):

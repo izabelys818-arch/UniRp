@@ -29,6 +29,8 @@ func hire(npc_id: String) -> void:
 	var st: Dictionary = NPCManager.state[npc_id]
 	if svc.is_empty() or NPCManager.location_of(npc_id) != World.current_id():
 		return
+	if GameState.refuse_minor("trabalho"):
+		return
 	if has_job():
 		GameState.add_log("Você já trabalha como %s. Peça demissão antes de aceitar outro emprego." % str(job()["cargo"]).to_lower(), "info")
 		return
@@ -113,7 +115,8 @@ func _on_time_advanced(_minutes: int, _sleeping: bool) -> void:
 	var day := int(j["ultimo_check"]) + 0
 	while day < today and has_job():
 		var is_sunday := (day - 1) % 7 == 6
-		if day >= int(j["desde_dia"]) and not is_sunday:
+		var holiday := str(Holidays.of_day(day).get("tipo", "")) == "feriado"
+		if day >= int(j["desde_dia"]) and not is_sunday and not holiday:
 			if int(j["trabalhou_dia"]) == day:
 				j["faltas"] = 0
 			else:

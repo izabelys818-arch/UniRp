@@ -71,7 +71,7 @@ func _ready() -> void:
 		await RenderingServer.frame_post_draw
 		var path := OS.get_user_data_dir() + "/scen_%s_%s.png" % [scen, str(sh[0])]
 		get_viewport().get_texture().get_image().save_png(path)
-		print("SHOT ", path, ")
+		print("SHOT ", path)
 	SaveManager.delete_save()
 	get_tree().quit()
 

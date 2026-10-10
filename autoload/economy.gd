@@ -57,11 +57,26 @@ func available_actions() -> Array:
 				out.append({"id": s, "label": "Atendimento particular (R$ %d)" % HOSPITAL_CARE})
 			"rezar":
 				out.append({"id": s, "label": "Sentar e rezar em silêncio"})
+	if GameState.is_minor():
+		out = out.filter(func(a): return _minor_kind(str(a["id"])) == "" or GameState.minor_block(_minor_kind(str(a["id"]))) == "")
 	return out
+
+
+# Que tipo de bloqueio de idade vale para uma ação da lista ("" = livre).
+func _minor_kind(id: String) -> String:
+	if id in ["arrombar", "porta:arrombar", "casa_g:vasculhar"] or id.begins_with("invadir:"):
+		return "crime"
+	if id == "bico":
+		return "bico"
+	if id.begins_with("biz:"):
+		return "contrato"
+	return ""
 
 
 func do_action(id: String) -> void:
 	if not GameState.active or NPCManager.busy:
+		return
+	if GameState.refuse_minor(_minor_kind(id)):
 		return
 	NPCManager.end_conversation()
 	if id.begins_with("entrar:"):
@@ -132,6 +147,8 @@ func buy(item_id: String) -> void:
 		return
 	if not item_id in World.current().get("loja", []) or not World.shop_open():
 		return
+	if GameState.refuse_item_for_minor(item_id):
+		return
 	var price := World.item_price(item_id)
 	if _pay(price):
 		TimeManager.advance(2)
@@ -141,6 +158,8 @@ func buy(item_id: String) -> void:
 
 func use_item(item_id: String) -> void:
 	if not GameState.active or NPCManager.busy:
+		return
+	if GameState.refuse_item_for_minor(item_id):
 		return
 	if not GameState.remove_item(item_id):
 		return

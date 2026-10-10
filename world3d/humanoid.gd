@@ -119,6 +119,14 @@ var _lod_near: bool = true
 var _gaze: Vector2 = Vector2.ZERO
 
 
+static func cleanup() -> void:
+	_mats.clear()
+	_toon = null
+	_outline = null
+	_meshes.clear()
+	_shadow_mat = null
+
+
 static func mat(c: Color, shine: float = 0.0) -> ShaderMaterial:
 	var key := "%s_%s" % [c.to_html(), shine]
 	if _mats.has(key):

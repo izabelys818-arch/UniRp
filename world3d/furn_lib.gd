@@ -9,6 +9,7 @@ const K_SCALE := 0.2
 
 static var _scenes: Dictionary = {}
 static var _info: Dictionary = {}
+static var _shadow_mesh: ArrayMesh
 
 
 static func available() -> bool:
@@ -27,6 +28,12 @@ static func _collect(n: Node, xf: Transform3D, acc: Array) -> void:
 
 # Devolve um nó posicionado no chão em "pos", virado "yaw", com o modelo centralizado.
 # size_m: tamanho final em metros (x, y, z antes de girar). Se um eixo for 0, mantém a proporção.
+static func cleanup() -> void:
+	_scenes.clear()
+	_info.clear()
+	_shadow_mesh = null
+
+
 static func place(parent: Node3D, path: String, pos: Vector3, yaw: float = 0.0, scale_k: float = K_SCALE, fit: Vector3 = Vector3.ZERO) -> Node3D:
 	if not _scenes.has(path):
 		_scenes[path] = load(path)
@@ -37,6 +44,12 @@ static func place(parent: Node3D, path: String, pos: Vector3, yaw: float = 0.0, 
 		var probe: Node = ps.instantiate()
 		var acc: Array = []
 		_collect(probe, Transform3D.IDENTITY, acc)
+		if acc.is_empty():
+			# modelo sem malha (arquivo corrompido ou vazio): não coloca nada, sem travar o jogo
+			probe.free()
+			_scenes[path] = null
+			push_warning("Móvel sem malha: " + path)
+			return null
 		var b: AABB = acc[0]
 		for a in acc:
 			b = b.merge(a)
@@ -61,6 +74,19 @@ static func place(parent: Node3D, path: String, pos: Vector3, yaw: float = 0.0, 
 	m.position = Vector3(-c.x * s, -box.position.y * s, -c.z * s)
 	_tone(m)
 	holder.add_child(m)
+	# sombra de contato sob o móvel (os modelos não recebem a oclusão assada do kit): assenta no piso
+	if _shadow_mesh == null:
+		var k := preload("res://world3d/mesh_kit.gd").new()
+		k.disc(Vector3.ZERO, 0.5, 0.5, Color(0.02, 0.02, 0.04, 0.42), 0.0, 16, 0.0, 0.7, 0.75)
+		_shadow_mesh = k.commit(preload("res://world3d/mesh_kit.gd").shadow_material())
+	var foot := Vector2(box.size.x, box.size.z) * s
+	if foot.x > 0.15 and foot.y > 0.15 and box.size.y * s > 0.12:
+		var sh := MeshInstance3D.new()
+		sh.mesh = _shadow_mesh
+		sh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		sh.position = Vector3(0, 0.012, 0)
+		sh.scale = Vector3(foot.x * 1.15, 1.0, foot.y * 1.15)
+		holder.add_child(sh)
 	parent.add_child(holder)
 	return holder
 

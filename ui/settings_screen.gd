@@ -4,6 +4,8 @@ signal navigate(screen: String, args: Dictionary)
 
 const UI = preload("res://ui/ui_theme.gd")
 
+var pace_opt: OptionButton
+var aging_check: CheckBox
 var args: Dictionary = {}
 var key_edit: LineEdit
 var filter_edit: LineEdit
@@ -18,8 +20,16 @@ var models: Array = []
 
 
 func _ready() -> void:
+	# fundo de contexto (céu de fim de tarde e silhuetas da cidade) em vez do fundo liso
+	var sky := preload("res://ui/menu/skyline_bg.gd").new()
+	sky.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(sky)
 	var root := UI.vbox(10)
-	var outer := UI.margin(root, 30)
+	# a tela inteira dentro de um painel de madeira, como os outros menus
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", UI.glass(16, 26))
+	panel.add_child(root)
+	var outer := UI.margin(panel, 30)
 	outer.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(outer)
 
@@ -73,6 +83,23 @@ func _ready() -> void:
 	local_check.button_pressed = Settings.local_dialogue
 	root.add_child(local_check)
 
+	root.add_child(UI.label("Calendário e idade", 17, UI.ACCENT))
+	var crow := UI.hbox(10)
+	root.add_child(crow)
+	var cl := UI.label("Ritmo do calendário")
+	cl.custom_minimum_size = Vector2(200, 0)
+	crow.add_child(cl)
+	pace_opt = OptionButton.new()
+	for n in TimeManager.PACES:
+		pace_opt.add_item("Meses de %d dias  (1 ano = %d dias de jogo, ~%d h jogadas)" % [n, n * 12, int(round(n * 12 * 24.0 / 60.0))])
+	pace_opt.select(maxi(0, TimeManager.PACES.find(Settings.days_per_month)))
+	pace_opt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	crow.add_child(pace_opt)
+	aging_check = CheckBox.new()
+	aging_check.text = "Envelhecer nos aniversários (desligado: o calendário e as festas continuam, a idade não muda)"
+	aging_check.button_pressed = Settings.aging
+	root.add_child(aging_check)
+
 	status = UI.label("", 15, UI.MUTED)
 	root.add_child(status)
 
@@ -124,7 +151,11 @@ func _apply() -> void:
 	Settings.api_key = key_edit.text.strip_edges()
 	Settings.temperature = temp_slider.value
 	Settings.local_dialogue = local_check.button_pressed
+	Settings.days_per_month = TimeManager.PACES[maxi(0, pace_opt.selected)]
+	Settings.aging = aging_check.button_pressed
 	Settings.save_settings()
+	if GameState.active:
+		Settings.apply_calendar()
 
 
 func _save() -> void:
