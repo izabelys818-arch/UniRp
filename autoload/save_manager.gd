@@ -13,6 +13,7 @@ func has_save() -> bool:
 func save_game() -> bool:
 	if not GameState.active:
 		return false
+	get_tree().call_group("world_stream", "flush")
 	var data := {
 		"version": VERSION,
 		"game": GameState.to_dict(),

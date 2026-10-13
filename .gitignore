@@ -1,3 +1,6 @@
 .godot/
 export/
 __pycache__/
+
+# Mixamo: arquivos crus não podem ser redistribuídos; o jogo usa assets/humans/*_mx.res
+assets/anim/mixamo/*.fbx

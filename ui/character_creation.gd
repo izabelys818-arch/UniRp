@@ -230,40 +230,79 @@ func _build_3d() -> void:
 	view3d.add_child(_vp)
 	var root := Node3D.new()
 	_vp.add_child(root)
+	# Estúdio fotográfico: luz principal grande e macia (sombra com penumbra), preenchimento
+	# quente, contraluz fria que revela a pele translúcida e o brilho do cabelo, oclusão de
+	# ambiente, piso de concreto fotográfico e fundo desfocado.
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color("#2b2620")
+	env.background_color = Color("#221f1b")
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color("#8d8476")
-	env.ambient_light_energy = 0.45
-	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	env.ambient_light_color = Color("#7d7468")
+	env.ambient_light_energy = 0.32
+	env.tonemap_mode = Environment.TONE_MAPPER_ACES
+	env.tonemap_exposure = 1.05
+	env.tonemap_white = 6.0
+	env.ssao_enabled = true
+	env.ssao_radius = 0.6
+	env.ssao_intensity = 2.2
+	env.glow_enabled = true
+	env.glow_intensity = 0.3
+	env.glow_hdr_threshold = 1.6
+	env.adjustment_enabled = true
+	env.adjustment_contrast = 1.05
 	env.fog_enabled = true
-	env.fog_light_color = Color("#2b2620")
-	env.fog_density = 0.04
+	env.fog_light_color = Color("#221f1b")
+	env.fog_density = 0.035
 	var we := WorldEnvironment.new()
 	we.environment = env
 	root.add_child(we)
-	var key := DirectionalLight3D.new()
-	key.rotation = Vector3(-deg_to_rad(32), deg_to_rad(-38), 0)
-	key.light_energy = 1.05
-	key.light_color = Color("#ffe1bd")
+	_vp.use_taa = true
+	var key := SpotLight3D.new()
+	key.position = Vector3(2.0, 2.9, 2.6)
+	key.light_color = Color("#ffe6cc")
+	key.light_energy = 4.2
+	key.spot_range = 9.0
+	key.spot_angle = 34.0
+	key.spot_angle_attenuation = 0.6
+	key.light_size = 0.5
 	key.shadow_enabled = true
+	key.shadow_blur = 1.5
 	root.add_child(key)
-	var rim := DirectionalLight3D.new()
-	rim.rotation = Vector3(-deg_to_rad(12), deg_to_rad(155), 0)
-	rim.light_energy = 0.55
-	rim.light_color = Color("#9fb8ff")
+	key.look_at(Vector3(0, 0.95, 0))
+	var fill := OmniLight3D.new()
+	fill.position = Vector3(-2.6, 1.3, 2.2)
+	fill.light_color = Color("#ffd7b0")
+	fill.light_energy = 0.7
+	fill.omni_range = 7.0
+	root.add_child(fill)
+	var rim := SpotLight3D.new()
+	rim.position = Vector3(-1.2, 2.4, -2.4)
+	rim.light_color = Color("#a9c4ff")
+	rim.light_energy = 2.4
+	rim.spot_range = 7.0
+	rim.spot_angle = 30.0
+	rim.light_size = 0.25
 	root.add_child(rim)
+	rim.look_at(Vector3(0, 1.1, 0))
 	var floor_mi := MeshInstance3D.new()
 	var disc := CylinderMesh.new()
 	disc.top_radius = 1.6
 	disc.bottom_radius = 1.6
 	disc.height = 0.04
-	disc.radial_segments = 48
+	disc.radial_segments = 64
 	floor_mi.mesh = disc
 	var fm := StandardMaterial3D.new()
-	fm.albedo_color = Color("#4a4238")
-	fm.roughness = 0.9
+	fm.albedo_color = Color("#6a6258")
+	fm.roughness = 1.0
+	if FileAccess.file_exists("res://assets/textures/surfaces/concrete_albedo.jpg.import"):
+		fm.albedo_texture = load("res://assets/textures/surfaces/concrete_albedo.jpg")
+		fm.albedo_color = Color(0.62, 0.58, 0.52) / 0.7
+		fm.normal_enabled = true
+		fm.normal_texture = load("res://assets/textures/surfaces/concrete_nr.jpg")
+		fm.roughness_texture = fm.normal_texture
+		fm.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_BLUE
+		fm.uv1_triplanar = true
+		fm.uv1_scale = Vector3.ONE * 0.6
 	disc.material = fm
 	floor_mi.position.y = -0.02
 	root.add_child(floor_mi)
@@ -272,6 +311,13 @@ func _build_3d() -> void:
 	var cam := Camera3D.new()
 	cam.fov = 27
 	cam.position = Vector3(0, 1.05, 4.4)
+	# lente de retrato: o fundo amolece, a pessoa fica nítida
+	var lens := CameraAttributesPractical.new()
+	lens.dof_blur_far_enabled = true
+	lens.dof_blur_far_distance = 5.6
+	lens.dof_blur_far_transition = 3.0
+	lens.dof_blur_amount = 0.06
+	cam.attributes = lens
 	root.add_child(cam)
 	cam.look_at(Vector3(0, 0.86, 0))
 
@@ -304,6 +350,7 @@ func _process(delta: float) -> void:
 		if _fig != null:
 			_fig.queue_free()
 		_fig = Person.new()
+		_fig.locomotion_turns = false
 		_turn.add_child(_fig)
 		_fig.set_look(_look())
 		_fig.set_emotion(_emotion)
@@ -901,7 +948,7 @@ func _randomize_part(id: String) -> void:
 		"olhos":
 			spec["olhos"] = [0, 0, 1, 1, 2, 3, 4, 5][randi() % 8]
 			spec.erase("olhos_cor")
-			_rand_adj(["eye_size", "eye_h", "eye_tilt"], 0.5)
+			_rand_adj(["eye_size", "eye_h", "eye_tilt", "eye_spacing"], 0.5)
 			_rand_marks([7, 8], 0.1)
 		"sobrancelhas":
 			spec["sobrancelha"] = randi() % 7

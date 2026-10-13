@@ -201,5 +201,10 @@ func _ready() -> void:
 		var hid: String = rentable[0]
 		check(HomeSystem.rent(hid), "alugou %s" % hid)
 		check(not Houses.locked(hid) and Houses.inside_actions().size() >= 0, "a casa alugada fica aberta para o jogador")
+	var region = preload("res://world3d/city_layout.gd").new()
+	region.ensure_chunk(Vector2i(4, 2))
+	region.ensure_chunk(Vector2i(5, 2))
+	var path: Array = region._astar(Vector2i(7, 4), Vector2i(11, 4))
+	check(not path.is_empty() and path.back() == Vector2i(11, 4), "grafo de rotina costurado além da grade antiga")
 	print("RESULTADO SOCIAL: ", "OK" if fails == 0 else "%d falha(s)" % fails)
 	get_tree().quit()

@@ -36,6 +36,9 @@ const EXPRESSIONS := {
 	"entediado": {"eye_open": 0.55, "mouth_curve": -0.15, "brow_raise": -0.1, "gaze_y": 0.2},
 	"exausto": {"eye_open": 0.5, "dark_circles": 1.0, "mouth_open": 0.08, "pale": 0.4, "brow_angle": -0.3},
 	"machucado": {"bruise": 1.0, "eye_open": 0.8, "mouth_curve": -0.4, "brow_angle": -0.4, "dark_circles": 0.4},
+	"pensativo": {"eye_open": 0.8, "gaze_x": 0.25, "gaze_y": 0.25, "brow_asym": 0.2, "mouth_curve": -0.12},
+	"concentrado": {"eye_open": 0.9, "squint": 0.3, "brow_angle": 0.2, "mouth_width": 0.92, "gaze_y": 0.1},
+	"aliviado": {"mouth_curve": 0.28, "eye_open": 0.82, "squint": 0.15, "brow_angle": -0.12, "tilt": -0.015},
 }
 
 const SCENE_COLORS := {

@@ -15,4 +15,7 @@ void fragment() {
 	ALBEDO = mix(photo, pigment * detail, mask);
 	ROUGHNESS = 0.3;
 	SPECULAR = 0.38;
+	// córnea: camada lisa e molhada por cima (o reflexo é o que dá vida ao olhar)
+	CLEARCOAT = 1.0;
+	CLEARCOAT_ROUGHNESS = 0.03;
 }

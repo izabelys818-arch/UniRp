@@ -114,7 +114,18 @@ static func num(key: String) -> float:
 	return float(p()[key])
 
 
-static func fill_kind(roll: float) -> String:
+static func fill_kind(roll: float, distance: float = -1.0) -> String:
+	if distance >= 0.0:
+		var urbanity := -0.12 if id() == "vale_sereno" else (0.15 if id() == "nova_aurora" else 0.0)
+		if distance < 400.0:
+			return "predio" if roll < 0.52 + urbanity else ("comercio" if roll < 0.82 else ("casas" if roll < 0.94 else "verde"))
+		if distance < 1000.0:
+			return "predio" if roll < 0.2 + urbanity else ("comercio" if roll < 0.43 else ("casas" if roll < 0.87 else "verde"))
+		if distance < 2000.0:
+			return "casas" if roll < 0.7 else ("comercio" if roll < 0.81 else ("verde" if roll < 0.94 else "terreno"))
+		if distance < 3500.0:
+			return "chacara" if roll < 0.24 else ("plantacao" if roll < 0.7 else "verde")
+		return "serra"
 	var acc := 0.0
 	for e in p()["fill"]:
 		acc += float(e[1])

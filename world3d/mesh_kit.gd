@@ -1,10 +1,50 @@
 extends RefCounted
 
+const Surfaces = preload("res://world3d/surfaces.gd")
+const GrassField = preload("res://world3d/grass_field.gd")
+const Foliage = preload("res://world3d/foliage.gd")
+
 # Junta muitas formas simples (caixas, cilindros, esferas) numa só malha com cor por vértice.
 # Assim um quarteirão inteiro vira uma única chamada de desenho.
 
+var physical_shapes: Array = []
+const PhysicsLayers = preload("res://world3d/physics_layers.gd")
+
+func solid_box(center: Vector3, size: Vector3, layer := 4, yaw := 0.0, label := "movel") -> void:
+	var shape := BoxShape3D.new()
+	shape.size = size
+	physical_shapes.append({"shape": shape, "point": center, "yaw": yaw, "layer": layer, "label": label, "size": size})
+
+func solid_cylinder(base: Vector3, radius: float, height: float, layer := 4, label := "poste") -> void:
+	var shape := CylinderShape3D.new()
+	shape.radius = radius
+	shape.height = height
+	physical_shapes.append({"shape": shape, "point": base + Vector3(0, height / 2, 0), "yaw": 0.0, "layer": layer, "label": label, "size": Vector3(radius * 2, height, radius * 2)})
+
+func install_colliders(parent: Node3D) -> void:
+	var groups := {}
+	for entry in physical_shapes:
+		var layer: int = entry["layer"]
+		var body: StaticBody3D = groups.get(layer)
+		if body == null:
+			body = StaticBody3D.new()
+			body.name = "PhysicalProps"
+			body.collision_layer = layer
+			body.collision_mask = 0
+			body.set_meta("physical_layer", layer)
+			body.add_to_group("physical_props")
+			parent.add_child(body)
+			groups[layer] = body
+		var shape := PhysicsLayers.shape(body, entry["shape"], entry["point"], entry["yaw"])
+		shape.set_meta("kind", entry["label"])
+		var bounds := shape.transform * AABB(-entry["size"] / 2, entry["size"])
+		body.set_meta("physical_bounds", (body.get_meta("physical_bounds") as AABB).merge(bounds) if body.has_meta("physical_bounds") else bounds)
+	physical_shapes.clear()
+
 var st := SurfaceTool.new()
 var count := 0
+var stream_batches: Array[SurfaceTool] = []
+var _batch_count := 0
 # categoria de superfície (usada pelo ChunkKit para escolher o material: asfalto, calçada, vegetação...)
 var cat := ""
 # sombras de contato suaves sob objetos (outra malha, transparente)
@@ -14,6 +54,8 @@ var vary_glass := false
 var vary_lit := false
 var _vr := RandomNumberGenerator.new()
 static var _seq := 0
+static var generation_seed := -1
+static var generation_serial := 0
 
 const GLASS_TONES := ["#4c5a67", "#56626c", "#43505b", "#5d6a73", "#4a5560", "#525e66"]
 const GLASS_COVER := ["#9c8c74", "#b8b0a0", "#8a7a6a", "#a39a88"]
@@ -25,6 +67,12 @@ static var roof_material: Material = null
 static var shadow_material_ref: Material = null
 var roofs = null
 var is_roof := false
+# material fotográfico explícito (camada do Surfaces + 1); 0 = o shader deduz pela cor e pela face
+var surf := 0
+# onde o kit fica no mundo (casas desenham em coordenadas locais do lote) e se o chão dele
+# entra no registro da grama (interiores montados depois não entram)
+var world_xf := Transform3D.IDENTITY
+var registers_ground := true
 
 
 static func cleanup() -> void:
@@ -38,6 +86,14 @@ func _init() -> void:
 	# semente fixa por ordem de criação: a cidade sai igual a cada partida, mas cada prédio varia
 	_seq += 1
 	_vr.seed = hash(_seq * 7919)
+	if generation_seed >= 0:
+		generation_serial += 1
+		_vr.seed = (generation_seed + generation_serial * 7919) & 0x7fffffff
+
+
+# Formas prontas de fora do Kit (carros): entram no mesmo cache das primitivas.
+static func register_shape(kind: String, arrays: Array) -> void:
+	_cache[kind] = arrays
 
 
 static func _arrays(kind: String) -> Array:
@@ -110,8 +166,21 @@ static func _ao_k(y: float) -> float:
 	return lerpf(AO_MIN, 1.0, k * k * (3.0 - 2.0 * k))
 
 
+func use_surface(name: String) -> void:
+	surf = Surfaces.layer(name) + 1 if name != "" else 0
+
+
 func add(kind: String, xf: Transform3D, color: Color) -> void:
+	_stream_batch()
 	color = _tone(color)
+	if kind == "box" and not is_roof and registers_ground:
+		GrassField.register_box(world_xf * xf, color)
+	elif kind == "sphere" and registers_ground and Foliage.enabled and Foliage.is_foliage(color, cat):
+		# copa: as folhas de verdade nascem em volta; aqui fica só o miolo escuro
+		var core: Array = Foliage.register_sphere(world_xf * xf, xf, color)
+		xf = core[0]
+		color = core[1]
+	st.set_uv2(Vector2(surf, 0.0))
 	var a: Array = _arrays(kind)
 	var verts: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
 	var norms: PackedVector3Array = a[Mesh.ARRAY_NORMAL]
@@ -204,6 +273,7 @@ var _tri_center := Vector3.INF
 # Triângulo solto. Se houver um centro de referência, orienta a face para fora dele
 # (Godot desenha a face da frente no sentido horário) e põe a normal para fora.
 func tri(a: Vector3, b: Vector3, c: Vector3, color: Color) -> void:
+	_stream_batch()
 	var n := (b - a).cross(c - a)
 	if _tri_center != Vector3.INF:
 		var centroid := (a + b + c) / 3.0
@@ -215,6 +285,7 @@ func tri(a: Vector3, b: Vector3, c: Vector3, color: Color) -> void:
 		n = -n
 	n = n.normalized()
 	st.set_color(color)
+	st.set_uv2(Vector2(surf, 0.0))
 	for v in [a, b, c]:
 		st.set_normal(n)
 		st.add_vertex(v)
@@ -283,6 +354,7 @@ func disc(c: Vector3, rx: float, rz: float, col: Color, rot: float = 0.0, segs: 
 		outer.append(c + b * Vector3(d.x * rx, 0, d.z * rz))
 	# sentido horário visto de cima = face da frente
 	st.set_normal(Vector3.UP)
+	st.set_uv2(Vector2(surf, 0.0))
 	for i in segs:
 		var j := (i + 1) % segs
 		# miolo
@@ -315,12 +387,26 @@ func soft_shadow(c: Vector3, rx: float, rz: float, alpha: float = 0.34, rot: flo
 # Monta a malha. Telhados e sombras de contato entram como superfícies extras da mesma malha.
 func commit(material: Material, into: ArrayMesh = null) -> ArrayMesh:
 	var mesh := into
+	for batch in stream_batches:
+		batch.set_material(material)
+		mesh = batch.commit(mesh)
 	if count > 0:
 		st.set_material(material)
 		mesh = st.commit(mesh)
 	if roofs != null and roofs.count > 0:
 		mesh = roofs.commit(roof_material, mesh)
 	return mesh
+
+
+func _stream_batch() -> void:
+	if generation_seed < 0:
+		return
+	if _batch_count >= 64:
+		stream_batches.append(st)
+		st = SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		_batch_count = 0
+	_batch_count += 1
 
 
 # Sombras de contato em malha separada: quem monta a cena põe essa malha sem projeção de sombra

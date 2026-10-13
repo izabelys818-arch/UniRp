@@ -7,6 +7,7 @@ var leaves: Array = []
 var rng := RandomNumberGenerator.new()
 var timer := 0.0
 var elapsed := 0.0
+var wind := Vector3(0.32, 0, 0.24)
 
 func _ready() -> void:
 	rng.seed = 94731
@@ -55,7 +56,7 @@ func update(delta: float, player: Vector3, indoors: bool, storm: bool) -> void:
 		var p: Vector3 = leaf["p"]
 		var phase: float = float(leaf["phase"]) + elapsed * 2.4
 		if float(leaf["time"]) >= 0.0 and p.y > 0.19:
-			p += Vector3((0.16 if not storm else 0.8) + sin(phase) * 0.13, -0.48 - float(i % 3) * 0.04, cos(phase * 0.7) * 0.12) * delta
+			p += (wind + Vector3(sin(phase) * 0.13, -0.48 - float(i % 3) * 0.04, cos(phase * 0.7) * 0.12)) * delta
 			p.y = maxf(p.y, 0.19)
 		leaf["p"] = p
 		var rotation := Vector3(PI / 2.0, float(leaf["phase"]), 0) if p.y <= 0.19 else Vector3(sin(phase), phase, cos(phase) * 0.4)

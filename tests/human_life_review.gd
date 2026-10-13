@@ -15,6 +15,7 @@ func check(condition: bool, label: String) -> void:
 
 func _ready() -> void:
 	get_window().content_scale_size = Vector2i(900, 700)
+	get_window().size = Vector2i(900, 700)
 	DirAccess.make_dir_recursive_absolute(output)
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 	var world := SubViewport.new()
@@ -28,7 +29,15 @@ func _ready() -> void:
 	for frame in 600:
 		actor._process(1.0 / 60.0)
 	check(actor._pose_cur.length() < 1.0, "idoso neutro mantém postura ereta")
-	check(actor.skel.get_bone_pose_rotation(actor._spine).get_angle() < 0.2, "coluna não acumula inclinação após 600 quadros")
+	# O pivô nativo da cabeça está à frente da pelve (~9,6° mesmo no repouso).
+	# Mede desvio do repouso e rotação do tórax; um limite absoluto de 8° reprova a própria malha.
+	var trunk: Vector3 = actor.skel.get_bone_global_pose(actor._head).origin - actor.skel.get_bone_global_pose(actor.skel.find_bone("pelvis")).origin
+	var rest_trunk: Vector3 = actor.skel.get_bone_global_rest(actor._head).origin - actor.skel.get_bone_global_rest(actor.skel.find_bone("pelvis")).origin
+	var chest := actor.skel.find_bone("spine_03")
+	var chest_delta := actor.skel.get_bone_global_pose(chest).basis * actor.skel.get_bone_global_rest(chest).basis.inverse()
+	var deviation := angle_difference(atan2(rest_trunk.z, rest_trunk.y), atan2(trunk.z, trunk.y))
+	print("POSTURE native_pivot_deg=%.2f deviation_deg=%.2f chest_pitch_deg=%.2f" % [rad_to_deg(atan2(rest_trunk.z, rest_trunk.y)), rad_to_deg(deviation), rad_to_deg(chest_delta.get_euler().x)])
+	check(absf(deviation) < deg_to_rad(8.0) and absf(chest_delta.get_euler().x) < deg_to_rad(5.0), "coluna não acumula inclinação após 600 quadros")
 	check(Motion.profile(76)["run"] < Motion.profile(30)["run"], "corrida varia com idade")
 	check(Motion.profile(9)["stride"] < Motion.profile(30)["stride"], "criança tem passada menor")
 	var old_body: PackedVector3Array = actor.body_mi.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
@@ -61,6 +70,9 @@ func _ready() -> void:
 	var player_spec := base.duplicate(true)
 	player_spec["ajustes"] = {"jaw": 0.3}
 	check(Looks.individual_spec(player_spec, "abc") == player_spec, "aparência personalizada de save é preservada")
+	for emotion_name in ["pensativo", "concentrado", "aliviado"]:
+		actor.set_emotion(emotion_name)
+		check(World.emotions.has(emotion_name) and preload("res://ui/face/face_base.gd").EXPRESSIONS.has(emotion_name) and not actor._face_t.is_empty(), emotion_name + ": expressão disponível no mundo, IA e retrato")
 	actor.queue_free()
 	world.queue_free()
 	await get_tree().process_frame
@@ -78,18 +90,29 @@ func _ready() -> void:
 		add_face(Looks.individual_spec({"pele": 2, "cabelo": 0, "cor_cabelo": 1, "rosto": 0}, "identidade_%d" % i), "Identidade %d" % (i + 1), i)
 	await get_tree().create_timer(2.0).timeout
 	await shot("identidades")
+	for child in faces:
+		child.queue_free()
+	faces.clear()
+	await get_tree().process_frame
+	for i in 6:
+		var expression: String = ["pensativo", "concentrado", "aliviado"][i % 3]
+		var gender := "homem" if i < 3 else "mulher"
+		add_face({"pele": 2, "cabelo": 0 if i < 3 else 4}, expression.capitalize(), i, expression, gender)
+	await get_tree().create_timer(2.0).timeout
+	await shot("novas_expressoes")
 	print("RESULTADO HUMAN LIFE: ", "OK" if fails == 0 else str(fails) + " falhas")
 	get_tree().quit(fails)
 
 
-func add_face(spec: Dictionary, label: String, i: int) -> void:
+func add_face(spec: Dictionary, label: String, i: int, expression := "neutro", gender := "homem") -> void:
 	var f = preload("res://ui/face/face_portrait.gd").new()
 	f.position = Vector2((i % 3) * 300, (i / 3) * 350)
 	f.size = Vector2(300, 350)
 	f.scene = "casa"
 	add_child(f)
 	faces.append(f)
-	f.set_look(Looks.build(spec, 32, "homem"))
+	f.set_look(Looks.build(spec, 32, gender))
+	f.set_emotion(expression, true)
 	var text := Label.new()
 	text.text = label
 	text.position = f.position + Vector2(10, 320)

@@ -9,9 +9,12 @@ var output := "C:/Users/glznc/Documents/Codex/2026-10-10/humans"
 
 
 func _ready() -> void:
+	get_window().content_scale_size = Vector2i(1280, 800)
+	get_window().size = Vector2i(1280, 800)
 	get_viewport().gui_disable_input = true
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 	Engine.max_fps = 0
+	print("VISUAL WINDOW ", get_window().size)
 	WorldView.realtime = false
 	WorldEvents.random_enabled = false
 	SaveManager.path = "user://human_visual_preview_unused.json"

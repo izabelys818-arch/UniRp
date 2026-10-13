@@ -1,6 +1,7 @@
 extends Node
 
 var failures: Array = []
+const TEST_SAVE := "user://test_save.json"
 
 
 func check(cond: bool, msg: String) -> void:
@@ -506,7 +507,7 @@ func _ready() -> void:
 	Settings.local_dialogue = false
 	Settings.api_key = ""
 	Settings.model = ""
-	SaveManager.path = "user://test_save.json"
+	SaveManager.path = TEST_SAVE
 	var origin := World.get_origin("recem_chegado")
 	GameState.new_game({
 		"name": "Teste", "age": 30, "gender": "homem", "appearance": "comum",
@@ -622,6 +623,8 @@ func _ready() -> void:
 	screen.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(screen)
 	await get_tree().process_frame
+	if not screen.world_view._built:
+		await screen.world_view.world_ready
 	await get_tree().process_frame
 	check(screen.side_box.get_child_count() > 4, "tela do jogo montou painel do local")
 	check(screen.actors.has("marina"), "Marina aparece na conversa")
@@ -698,6 +701,9 @@ func _ready() -> void:
 	creator.portrait.set_emotion("chorando")
 	check(creator.portrait.emotion == "chorando", "botões de expressão funcionam")
 	creator._start()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	await get_tree().process_frame
 	check(GameState.player["name"] == "Joana" and GameState.player["look"]["cabelo"] == 1, "personagem criado com aparência")
 	creator.queue_free()
 	await get_tree().process_frame
@@ -706,6 +712,9 @@ func _ready() -> void:
 	NeedsSystem.apply({"saude": -1000}, "teste")
 	check(not GameState.active, "morte encerra o jogo")
 
-	SaveManager.delete_save()
+	if SaveManager.path == TEST_SAVE:
+		SaveManager.delete_save()
+	else:
+		check(false, "limpeza recusada: caminho não é o save de teste")
 	print("RESULTADO: ", "OK" if failures.is_empty() else "%d falha(s)" % failures.size())
 	get_tree().quit(0 if failures.is_empty() else 1)

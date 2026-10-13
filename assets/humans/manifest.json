@@ -13,8 +13,8 @@
     "eyebrow001.png": "cacacd1ab64647620b1f627b1c3f4eeac1eafe405174765e21b0113715eb85f4",
     "eyelashes01.png": "90a4dcd86ffeceb0d2d132878123c446eea13b444d2e5fdbdbef605bde9708f0",
     "eyes.png": "003eec5ab3f09068aa88e7cd7eaee251b75e1098fa41f1d67c62c5633abe3423",
-    "female_casualsuit01_cloth.png": "9467be293a1feabe11cbfb63773544eede9344fac170e8b6bc6efb5ebf178e0e",
-    "female_casualsuit02_cloth.png": "b98ed92c963f007cdabd05555a4b670c070aff1afd43a9690ed630ef0dcad79d",
+    "female_casualsuit01_cloth.png": "a7a903da738d00dcf2f8da967df47c14ce34231053621f394a9f14260bba7a23",
+    "female_casualsuit02_cloth.png": "a58c21c7fba00f8872615e49b1f0a88a083f74aa953b677e68c90b348e882175",
     "female_middleage_skin.png": "bf740194a5e4db5842195a9527f1523d4d7af88406b1a5052700c6e6ef0f2bab",
     "female_old_skin.png": "ef47aa833f1d5e02da1b850f2eb87e9a3a9aeac8a01d725e354044f331f676c3",
     "female_skin.png": "747e7f179b4f6ac5b8a233cf357a1e15f507fb4666f6419cdfc0a3043be9adfd",
@@ -33,7 +33,7 @@
     "Human_male_coverage.json": "cccbf8e6855eec28bed8ff6969db1371e8bfc26fce67cb8cc0ea3e2f89f0e19f",
     "long01_hair.png": "2e5da6062175b9ddd66805bb52e554edf67e2514425dab486557c21797c56a10",
     "male_casualsuit01_cloth.png": "6a57f71699d573b14ad45afc075415cfa3f0e23783e489c7234375cda0ad4a01",
-    "male_casualsuit02_cloth.png": "7911dd71a48e05bc7f1f10e8a8b4d299056af5ac181a7aa16109fcb4efb23b11",
+    "male_casualsuit02_cloth.png": "c46ca4ca8a6dfcfe092a6488e39fb26dd58d6c6dfdfc9b13e3ac10eadb6a80e2",
     "male_middleage_skin.png": "ba340c3246b38ddff7914edb09cb64e89beb56f6595fb2d6aa8590245fa749e7",
     "male_old_skin.png": "3a54a07be9b93eaa7f6adbcb0b825da93b0b4d693e64b7f33f537bfdf5cc2b63",
     "male_skin.png": "e4717243e94b9b5c534ca11a5b1741159f29efcac9b831bf944c921f0f8772a7",
@@ -44,5 +44,6 @@
     "short02_hair.png": "86e49f74705c484c4bc39079634b5543cdf51f95952847ed5ea3cee78791170e",
     "short03_hair.png": "89811250de86d7940059a2de2951b99510b460644d8d9942b5992ab895756e2b",
     "short04_hair.png": "80304a95930ade97c63a12538a906c85c85977a8531a9d52dc15a557937ab166"
-  }
+  },
+  "edited_2026_10_12": "Logotipo MakeHuman removido do peito de male_casualsuit02, female_casualsuit01 e female_casualsuit02 (copiado o tecido liso da costa do mesmo atlas)."
 }

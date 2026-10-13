@@ -210,7 +210,7 @@ func _build_footer() -> void:
 	var h := _label("↑ ↓   NAVEGAR          ENTER   SELECIONAR", 12, Color(DIM, 0.8), _font(400, 4))
 	h.name = "Hint"
 	_hint.add_child(h)
-	var v := _label("v0.8 (10/out)   •   Godot 4   •   modelos 3D CC0 de Quaternius e Kenney", 12, Color(DIM, 0.6), _font(400, 2))
+	var v := _label("v0.9 (11/out)   •   MakeHuman, Quaternius e Kenney (CC0)", 12, Color(DIM, 0.6), _font(400, 2))
 	v.name = "Ver"
 	_hint.add_child(v)
 

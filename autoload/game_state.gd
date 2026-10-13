@@ -136,5 +136,10 @@ func to_dict() -> Dictionary:
 
 func from_dict(d: Dictionary) -> void:
 	player = d["player"]
+	var stream: Dictionary = player.get("world_stream", {})
+	for pair in [["seed", 7741], ["chunks", {}], ["landmarks", {}], ["npc_positions", {}]]:
+		if not stream.has(pair[0]):
+			stream[pair[0]] = pair[1]
+	player["world_stream"] = stream
 	log_entries = d.get("log", [])
 	active = player.get("alive", false)

@@ -25,7 +25,7 @@ func _process(delta: float) -> void:
 			over60 += 1
 		if ms > 100.0:
 			over100 += 1
-	if ms > 250.0:
+	if ms > 250.0 and is_instance_valid(wv) and is_instance_valid(wv.player):
 		print("TRAVADA %.0f ms (hora do jogo %s, pos %s)" % [ms, TimeManager.clock_str(), Vector2(wv.player.position.x, wv.player.position.z).round()])
 
 
@@ -46,6 +46,7 @@ func _report(tag: String) -> void:
 
 
 func _ready() -> void:
+	AIService.mock = _stream_mock
 	preload("res://world3d/world_view.gd").trace = OS.get_environment("STRESS_TRACE") == "1"
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 	Engine.max_fps = 0
@@ -90,6 +91,14 @@ func _ready() -> void:
 
 
 func _run_loop() -> void:
+	# A cidade monta por etapas; quadros sem limite não medem prontidão.
+	var deadline := Time.get_ticks_msec() + 60000
+	while not wv._built:
+		if Time.get_ticks_msec() > deadline:
+			push_error("ESTRESSE: cidade não ficou pronta em 60 s")
+			get_tree().quit(1)
+			return
+		await get_tree().process_frame
 	for i in 90:
 		await get_tree().process_frame
 	t_start = Time.get_ticks_msec() / 1000.0
@@ -125,3 +134,7 @@ func _run_loop() -> void:
 	print("ESTRESSE pior quadro de todos: %.0f ms; quadros >60ms: %d; >100ms: %d" % [worst_ever, over60, over100])
 	SaveManager.delete_save()
 	get_tree().quit()
+
+
+func _stream_mock(_messages: Array) -> Dictionary:
+	return {"ok": true, "text": "{\"fala\":\"Tudo bem.\",\"emocao\":\"neutro\"}"}

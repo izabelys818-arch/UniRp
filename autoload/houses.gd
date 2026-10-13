@@ -41,20 +41,28 @@ func _seed_of(id: String) -> int:
 	return int(World.locations[id].get("seed", hash(id)))
 
 
+func initial_state(id: String) -> Dictionary:
+	var r := RandomNumberGenerator.new()
+	r.seed = _seed_of(id)
+	var kind: String = TYPES[r.randi() % TYPES.size()]
+	var state := {
+		"lock": "open" if r.randf() < 0.38 else "locked", "tipo": kind,
+		"ocupada": kind != "abandonada" and r.randf() < 0.8,
+		"busca": -1, "tentou": false, "forcada": 0,
+	}
+	if kind == "abandonada":
+		state["lock"] = "open" if r.randf() < 0.5 else "locked"
+	return state
+
+
+func preview_state(id: String) -> Dictionary:
+	return all()[id] if all().has(id) else initial_state(id)
+
+
 func st(id: String) -> Dictionary:
 	var h := all()
 	if not h.has(id):
-		var r := RandomNumberGenerator.new()
-		r.seed = _seed_of(id)
-		var kind: String = TYPES[r.randi() % TYPES.size()]
-		h[id] = {
-			"lock": "open" if r.randf() < 0.38 else "locked",
-			"tipo": kind,
-			"ocupada": kind != "abandonada" and r.randf() < 0.8,
-			"busca": -1, "tentou": false, "forcada": 0,
-		}
-		if kind == "abandonada":
-			h[id]["lock"] = "open" if r.randf() < 0.5 else "locked"
+		h[id] = initial_state(id)
 	return h[id]
 
 

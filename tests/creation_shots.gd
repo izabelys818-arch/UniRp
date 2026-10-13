@@ -97,10 +97,14 @@ func _ready() -> void:
 	cc.birth_m = 5
 	cc.birth_d = 3
 	cc._start()
+	# O início aguarda quadros para desenhar o feedback antes de navegar.
+	var deadline := Time.get_ticks_msec() + 5000
+	while navigated.is_empty() and Time.get_ticks_msec() < deadline:
+		await get_tree().process_frame
 	check(navigated == ["game"], "confirmar leva ao jogo")
 	check(GameState.age() == 16 and GameState.is_minor(), "jogador começa com 16 anos")
 	check(str(GameState.player.get("car", "x")) == "", "menor começa sem carro")
 	check(AgingSystem.birthday_md("") == Vector2i(5, 3), "aniversário escolhido: %s" % AgingSystem.birthday_str(""))
 	check(TimeManager.date_str() == "1 de março de 2026", "calendário novo: %s" % TimeManager.date_str())
 	print("RESULTADO CRIACAO: ", "OK" if fails == 0 else "%d falha(s)" % fails)
-	get_tree().quit()
+	get_tree().quit(0 if fails == 0 else 1)

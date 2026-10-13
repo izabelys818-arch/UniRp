@@ -30,37 +30,71 @@ func _ready() -> void:
 	for i in 40:
 		await get_tree().process_frame
 	var wv = screen.world_view
-	# procura um prédio alto e fica do lado oposto à câmera (atrás dele na tela)
-	var best: Dictionary = {}
+	while not wv._built:
+		await get_tree().process_frame
+	for i in 60:
+		await get_tree().process_frame
+	var out := OS.get_environment("HIDE_OUT") if OS.get_environment("HIDE_OUT") != "" else OS.get_user_data_dir()
+	# alvos: o prédio mais alto e a casa (lote) mais próxima do jogador
+	var tall: Dictionary = {}
+	var house: Dictionary = {}
+	var shop: Dictionary = {}
 	var tallest := 0.0
+	var nearest := INF
 	for s in wv.city.structures:
 		var h: float = wv._structure_height(s)
 		s["h"] = h
 		if h > tallest and (s["rect"] as Rect2).size.length() > 8.0:
 			tallest = h
-			best = s
-	print("maior prédio: altura ", snappedf(tallest, 0.1), " de ", wv.city.structures.size(), " estruturas")
-	if best.is_empty():
-		print("sem prédio alto")
-		get_tree().quit()
-		return
-	var r: Rect2 = best["rect"]
-	var d: Vector3 = wv.CAM_DIR.normalized()
-	var behind := r.get_center() - Vector2(d.x, d.z).normalized() * (r.size.length() * 0.5 + 3.0)
-	wv.player.position = Vector3(behind.x, 0.25, behind.y)
-	wv.cam_target = wv.player.position
-	wv.zoom = 9.0
-	wv.camera.size = 9.0
-	for i in 90:
-		await get_tree().process_frame
-	print("prédio abaixou: escala ", snappedf((best["root"] as Node3D).scale.y, 0.01), " altura ", snappedf(float(best["h"]), 0.1))
-	await RenderingServer.frame_post_draw
-	get_viewport().get_texture().get_image().save_png(OS.get_user_data_dir() + "/esconde_depois.png")
-	# sem a regra, para comparar
-	(best["root"] as Node3D).scale = Vector3.ONE
-	wv.set_process(false)
-	await RenderingServer.frame_post_draw
-	await RenderingServer.frame_post_draw
-	get_viewport().get_texture().get_image().save_png(OS.get_user_data_dir() + "/esconde_antes.png")
+			tall = s
+		var dist := (s["rect"] as Rect2).get_center().distance_to(wv._p2())
+		if s.get("enterable", false) and not s.has("lot") and str(s.get("loc", "")) in ["bar", "lanchonete", "mercado"] and shop.is_empty():
+			shop = s
+		if s.has("lot") and dist < nearest:
+			nearest = dist
+			house = s
+	print("estruturas=", wv.city.structures.size(), " alto=", tallest, " casa=", nearest)
+	var fails := 0
+	for pair in [["predio", tall], ["casa", house], ["loja", shop]]:
+		var target: Dictionary = pair[1]
+		if target.is_empty():
+			continue
+		var r: Rect2 = target["rect"]
+		var d: Vector3 = wv.CAM_DIR.normalized()
+		var away := -Vector2(d.x, d.z).normalized()
+		# atrás = do lado oposto à câmera, a 1,2 m da parede
+		var behind := r.get_center()
+		while r.grow(1.2).has_point(behind):
+			behind += away * 0.2
+		wv.player.position = Vector3(behind.x, 0.25, behind.y)
+		wv.player.velocity = Vector3.ZERO
+		wv.cam_target = wv.player.position + Vector3(0, 1.0, 0)
+		wv.zoom = 11.0
+		wv.camera.size = 11.0
+		for i in 40:
+			await get_tree().process_frame
+		var cut: bool = target["cut_now"]
+		var flat: bool = is_equal_approx((target["root"] as Node3D).scale.y, 1.0)
+		print("%s atrás: recortado=%s escala=%.2f altura=%.1f" % [pair[0], cut, (target["root"] as Node3D).scale.y, float(target["h"])])
+		if not cut or not flat:
+			fails += 1
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png(out + "/esconde_%s_depois.png" % pair[0])
+		# sem a regra, para comparar
+		wv.set_process(false)
+		wv.city.set_cut(target, false)
+		await RenderingServer.frame_post_draw
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png(out + "/esconde_%s_antes.png" % pair[0])
+		wv.set_process(true)
+		# saindo de trás, a fachada volta
+		wv.player.position = Vector3(r.get_center().x, 0.25, r.get_center().y) + Vector3(-d.x, 0, -d.z).normalized() * 0.0 + Vector3(d.x, 0, d.z).normalized() * (r.size.length() * 0.5 + 8.0)
+		wv.cam_target = wv.player.position + Vector3(0, 1.0, 0)
+		for i in 60:
+			await get_tree().process_frame
+		print("%s saindo: recortado=%s" % [pair[0], target["cut_now"]])
+		if target["cut_now"]:
+			fails += 1
+	print("RESULTADO ESCONDE: ", "OK" if fails == 0 else str(fails) + " falhas")
 	SaveManager.delete_save()
 	get_tree().quit()

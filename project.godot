@@ -7,6 +7,7 @@ config_version=5
 config/name="UniRp"
 config/description="RPG de vida com NPCs controlados por IA"
 run/main_scene="res://main.tscn"
+run/max_fps=60
 config/features=PackedStringArray("4.7")
 
 [autoload]
@@ -41,7 +42,56 @@ window/size/viewport_height=768
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 
+[layer_names]
+
+3d_physics/layer_1="chao"
+3d_physics/layer_2="parede"
+3d_physics/layer_3="movel"
+3d_physics/layer_4="veiculo"
+3d_physics/layer_5="npc"
+3d_physics/layer_6="jogador"
+3d_physics/layer_7="animal"
+3d_physics/layer_8="vegetacao"
+3d_physics/layer_9="interativo"
+3d_physics/layer_10="area_trigger"
+
 [rendering]
 
-renderer/rendering_method="gl_compatibility"
+renderer/rendering_method="forward_plus"
 renderer/rendering_method.mobile="gl_compatibility"
+
+[shader_globals]
+
+world_wind={
+"type": "vec3",
+"value": Vector3(0.32, 0, 0.24)
+}
+
+wetness={
+"type": "float",
+"value": 0.0
+}
+rain_time={
+"type": "float",
+"value": 0.0
+}
+player_pos={
+"type": "vec3",
+"value": Vector3(0, 0, 0)
+}
+night_glow={
+"type": "float",
+"value": 0.0
+}
+grime={
+"type": "float",
+"value": 0.5
+}
+cloud_shade={
+"type": "float",
+"value": 0.0
+}
+pom_quality={
+"type": "float",
+"value": 1.0
+}

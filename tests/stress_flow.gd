@@ -26,6 +26,7 @@ func _wait(sec: float) -> void:
 
 
 func _ready() -> void:
+	AIService.mock = _stream_mock
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 	Engine.max_fps = 0
 	SaveManager.path = "user://fluxo_save.json"
@@ -41,6 +42,13 @@ func _ready() -> void:
 		main_node.show_screen("game", {})
 		await _wait(0.2)
 		var load_ms := Time.get_ticks_msec() - t0
+		var deadline := Time.get_ticks_msec() + 90000
+		while main_node.current == null or main_node.current_key != "game" or not main_node.current.world_view._built:
+			if Time.get_ticks_msec() > deadline:
+				push_error("FLUXO: mundo não ficou pronto")
+				get_tree().quit(1)
+				return
+			await get_tree().process_frame
 		await _wait(6.0)
 		for i in 12:
 			TimeManager.advance(60)
@@ -64,3 +72,7 @@ func _ready() -> void:
 	SaveManager.delete_save()
 	print("FLUXO FIM")
 	get_tree().quit()
+
+
+func _stream_mock(_messages: Array) -> Dictionary:
+	return {"ok": true, "text": "{\"fala\":\"Tudo bem.\",\"emocao\":\"neutro\"}"}

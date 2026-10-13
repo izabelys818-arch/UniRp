@@ -1,0 +1,22 @@
+Texturas de ambientCG.com (CC0 1.0, domínio público). Materiais:
+- grass: https://ambientcg.com/view?id=Grass004
+- asphalt: https://ambientcg.com/view?id=Asphalt012
+- paving: https://ambientcg.com/view?id=PavingStones070
+- ground: https://ambientcg.com/view?id=Ground037
+- plaster: https://ambientcg.com/view?id=PaintedPlaster017
+- brick: https://ambientcg.com/view?id=Bricks059
+- concrete: https://ambientcg.com/view?id=Concrete034
+- roof: https://ambientcg.com/view?id=RoofingTiles013A
+- woodfloor: https://ambientcg.com/view?id=WoodFloor051
+- wood: https://ambientcg.com/view?id=Wood049
+- paintedwood: https://ambientcg.com/view?id=PaintedWood005
+- tiles: https://ambientcg.com/view?id=Tiles074
+- fabric: https://ambientcg.com/view?id=Fabric030
+- leather: https://ambientcg.com/view?id=Leather037
+- carpet: https://ambientcg.com/view?id=Carpet012
+- marble: https://ambientcg.com/view?id=Marble006
+- metal: https://ambientcg.com/view?id=PaintedMetal004
+- rust: https://ambientcg.com/view?id=Rust004
+- gravel: https://ambientcg.com/view?id=Gravel022
+- bark: https://ambientcg.com/view?id=Bark007
+- leaf: https://ambientcg.com/view?id=LeafSet024

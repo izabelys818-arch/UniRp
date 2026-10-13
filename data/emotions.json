@@ -16,5 +16,8 @@
 	"envergonhado": {"pt": "envergonhado"},
 	"entediado": {"pt": "entediado"},
 	"exausto": {"pt": "exausto"},
-	"machucado": {"pt": "machucado"}
+	"machucado": {"pt": "machucado"},
+	"pensativo": {"pt": "pensativo"},
+	"concentrado": {"pt": "concentrado"},
+	"aliviado": {"pt": "aliviado"}
 }

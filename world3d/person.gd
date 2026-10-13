@@ -9,6 +9,8 @@ const AnimBank = preload("res://world3d/anim_bank.gd")
 const Toon = preload("res://world3d/humanoid.gd")
 const HumanStyle = preload("res://world3d/human_style.gd")
 const HumanMotion = preload("res://world3d/human_motion.gd")
+const PlayerLocomotion = preload("res://world3d/player_locomotion.gd")
+const MxLocomotion = preload("res://world3d/mx_locomotion.gd")
 const HumanFeatures = preload("res://world3d/human_features.gd")
 
 const BODY := {
@@ -22,6 +24,12 @@ const BODY_CHILD := {
 const SKIN_TEX := {
 	"homem": "res://assets/humans/male_skin.png",
 	"mulher": "res://assets/humans/female_skin.png",
+}
+# Centros da linha labial medidos nas quatro malhas de origem (metros).
+# A antiga estimativa nariz - 37 mm errava 4–5 mm nos adultos.
+const MOUTH_REST := {
+	"male": Vector3(0, 1.6137, 0.1612), "female": Vector3(0, 1.6131, 0.1565),
+	"male_child": Vector3(0, 1.5823, 0.1903), "female_child": Vector3(0, 1.5891, 0.1630),
 }
 const HAIR_FILES := {
 	"raspado": "short04", "curto": "short01", "desgrenhado": "short02", "franja": "short03",
@@ -188,6 +196,9 @@ const FACE_EXPR := {
 	"entediado": {"apertar_olhos": 0.6, "boca_triste": 0.15, "tensao_boca": 0.2},
 	"exausto": {"apertar_olhos": 0.8, "sobr_triste": 0.3, "boca_triste": 0.25},
 	"machucado": {"boca_triste": 0.55, "sobr_brava": 0.4, "apertar_olhos": 0.7, "tensao_boca": 0.55},
+	"pensativo": {"apertar_olhos": 0.24, "boca_triste": 0.12, "assimetria": 0.12, "sobr_cima": 0.08},
+	"concentrado": {"apertar_olhos": 0.35, "sobr_brava": 0.18, "tensao_boca": 0.24},
+	"aliviado": {"sorriso": 0.24, "apertar_olhos": 0.2, "sobr_triste": 0.08},
 }
 # Postura por emoção, em graus para a frente: [coluna, pescoço, cabeça]
 const POSTURE := {
@@ -195,6 +206,7 @@ const POSTURE := {
 	"envergonhado": [2.0, 6.0, 12.0], "assustado": [-4.0, -2.0, -2.0], "nervoso": [2.0, 2.0, 3.0], "furioso": [5.0, 2.0, -6.0],
 	"irritado": [3.0, 1.0, -3.0], "ameacador": [4.0, 0.0, -5.0], "feliz": [-2.0, -1.0, -3.0], "rindo": [-3.0, -2.0, -6.0],
 	"surpreso": [-3.0, -2.0, -4.0], "machucado": [6.0, 4.0, 4.0],
+	"pensativo": [0.0, 1.0, 3.0], "concentrado": [0.0, 0.5, 1.5], "aliviado": [0.0, -0.5, -1.0],
 }
 
 # Silhueta vista através das paredes: só desenha onde o corpo está encoberto (teste de
@@ -208,8 +220,9 @@ void fragment() {
 	// não acionam a silhueta (antes, com 18 cm, o jogador virava um "fantasma" manchado); só paredes de verdade
 	DEPTH = FRAGCOORD.z + 0.004;
 	float rim = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 2.0);
-	ALBEDO = vec3(1.0, 0.86, 0.58);
-	ALPHA = (0.22 + 0.5 * rim) * strength;
+	// só contorno quente e um véu leve: o corpo atrás da parede não vira um "fantasma" branco
+	ALBEDO = vec3(1.0, 0.8, 0.5);
+	ALPHA = (0.06 + 0.55 * rim * rim) * strength;
 }
 """
 
@@ -217,6 +230,19 @@ var look: Dictionary = {}
 var walking: bool = false
 var running: bool = false
 var move_speed: float = 0.0
+# Variação visual transitória; não altera save nem atividades da IA.
+var idle_pose: String = "relaxado"
+var rest_weight := 0.0
+var oral_parts: Array[MeshInstance3D] = []
+var reach_target := Vector3.INF
+var reach_weight := 0.0
+var reach_grip := 0.0
+var locomotion_turns := true
+var _grip_offset := Vector3.ZERO
+# Distingue a velocidade medida pela cápsula do jogador da posição dos NPCs.
+var use_player_locomotion := false
+var player_motion # MxLocomotion (captura) ou PlayerLocomotion (UAL, reserva)
+var _contact_blob: MeshInstance3D
 var highlight: float = 0.0
 var talk_left: float = 0.0
 var emotion: String = "neutro"
@@ -227,6 +253,7 @@ var activity: String = ""
 var daily_action: String = ""
 var action_time: float = 0.0
 var _animation_pose: Array[Quaternion] = []
+var _animation_pelvis := Vector3.INF
 var social_gesture := ""
 var gesture_left := 0.0
 # andar mais contido (pessoas mais velhas)
@@ -298,8 +325,53 @@ static func _scene(path: String) -> PackedScene:
 	return _scenes[path]
 
 
+# ---------- chuva no corpo ----------
+# Roupa, cabelo e pele escurecem e ficam brilhantes na chuva (devagar), menos sob o
+# guarda-chuva, e secam ainda mais devagar depois.
+var _wet_mats: Array = []          # [material, cor seca, rugosidade seca, rugosidade molhada]
+var _wet := 0.0
+var _wet_applied := 0.0
+
+
+func _register_wet(m: Material, wet_rough: float) -> void:
+	if m is ShaderMaterial:
+		_wet_mats.append([m, Color.WHITE, 0.0, 0.0])
+	else:
+		var sm := m as StandardMaterial3D
+		_wet_mats.append([sm, sm.albedo_color, sm.roughness, wet_rough])
+
+
+func _update_wet(delta: float) -> void:
+	var want := 0.0
+	if hunched:
+		want = 0.3 if umbrella_on else 1.0
+	_wet = move_toward(_wet, want, delta * (0.06 if want > _wet else 0.012))
+	if absf(_wet - _wet_applied) < 0.02 and not (_wet == 0.0 and _wet_applied > 0.0):
+		return
+	_wet_applied = _wet
+	for e in _wet_mats:
+		if e[0] is ShaderMaterial:
+			(e[0] as ShaderMaterial).set_shader_parameter("wet", _wet)
+			continue
+		var m: StandardMaterial3D = e[0]
+		var dry: Color = e[1]
+		m.albedo_color = Color(dry.r, dry.g, dry.b, dry.a).darkened(0.3 * _wet)
+		m.roughness = lerpf(float(e[2]), float(e[3]), _wet)
+
+
 func set_look(l: Dictionary) -> void:
+	oral_parts.clear()
+	reach_target = Vector3.INF
+	reach_weight = 0.0
+	_wet_mats.clear()
+	_wet_applied = -1.0
+	player_motion = null
+	_contact_blob = null
+	if use_player_locomotion:
+		_speed = 0.0
+		_prev_pos = Vector3.INF
 	_animation_pose.clear()
+	_animation_pelvis = Vector3.INF
 	look = l
 	for c in get_children():
 		c.queue_free()
@@ -393,21 +465,22 @@ func _build() -> void:
 		skel.set_bone_pose_scale(_head, _head_vec)
 	# Materiais foscos: o tom escolhido recebe a luz do mundo; sem brilho
 	# próprio nem textura que desenhe musculatura de herói na pele.
-	var base := StandardMaterial3D.new()
-	base.albedo_color = Color(skin.r / 0.82, skin.g / 0.63, skin.b / 0.51)
+	# Pele de verdade (shader próprio): textura 2K + pigmento do rosto, poros, oleosidade,
+	# luz que atravessa (SSS), penugem contra a luz; molha na chuva.
 	var skin_path: String = SKIN_TEX[gender]
 	var sex := "female" if female else "male"
 	if age >= 42:
 		skin_path = "res://assets/humans/" + sex + ("_old_skin.png" if age >= 60 else "_middleage_skin.png")
-	base.albedo_texture = load(skin_path)
-	base.roughness = 0.63
-	# Preenchimento mínimo para a pessoa não desaparecer na iluminação noturna.
-	base.emission_enabled = true
-	base.emission = skin
-	base.emission_energy_multiplier = 0.035
-	base.metallic_specular = 0.22
-	base.vertex_color_use_as_albedo = true
+	var base := ShaderMaterial.new()
+	base.shader = SKIN_SHADER
+	base.set_shader_parameter("skin_map", load(skin_path))
+	base.set_shader_parameter("tint", Color(skin.r / 0.82, skin.g / 0.63, skin.b / 0.51))
+	base.set_shader_parameter("fill", skin)
+	base.set_shader_parameter("pores", _detail_noise("pores"))
+	base.set_shader_parameter("oil_noise", _detail_noise("grain"))
+	base.set_shader_parameter("age_k", clampf((age - 35.0) / 40.0, 0.0, 1.0))
 	body_mi.material_override = base
+	_register_wet(base, 0.3)
 	_anatomy = _face_marks(body_mi.mesh, _bind_names())
 	# sobrancelhas
 	var brow := skel.get_node_or_null("Eyebrows") as MeshInstance3D
@@ -435,7 +508,12 @@ func _build() -> void:
 	_dress(style, c1, c2, female, skin)
 	_hide_under_clothes(gender)
 	_build_individual_face(base)
+	var hand_rest := skel.get_bone_global_rest(skel.find_bone("hand_r"))
+	var middle := skel.find_bone("middle_01_r")
+	if middle >= 0:
+		_grip_offset = hand_rest.affine_inverse() * skel.get_bone_global_rest(middle).origin * 0.65
 	_build_lashes(hair_c)
+	_build_oral()
 	HumanFeatures.apply(self)
 	_add_blob()
 	# animações
@@ -458,7 +536,14 @@ func _build() -> void:
 	add_child(bubble)
 	set_emotion(emotion, _show_bubble)
 	_play("Idle", 0.0)
-	ap.advance(randf() * 2.0)
+	ap.advance(fposmod(seed_n * 0.017, 1.0) * ap.current_animation_length)
+	var mx_lib := MxLocomotion.load_library(body_path, skel)
+	if mx_lib != null:
+		player_motion = MxLocomotion.new()
+		player_motion.setup(self, mx_lib, body_path)
+	else:
+		player_motion = PlayerLocomotion.new()
+		player_motion.setup(self, body_path)
 
 
 # Limita o cache de anatomia, sem guardar cores, roupa ou histórico do NPC.
@@ -469,7 +554,7 @@ func _face_signature() -> String:
 	return str(values)
 
 
-func _build_individual_face(material: StandardMaterial3D) -> void:
+func _build_individual_face(material: Material) -> void:
 	if _anatomy.is_empty():
 		return
 	var parts := HumanStyle.split(body_mi.mesh, _body_key + "_outfit" + str(_outfit), _anatomy)
@@ -492,11 +577,12 @@ func _build_individual_face(material: StandardMaterial3D) -> void:
 			f[point] = HumanStyle.sculpt(f[point], _anatomy, look)
 		f["mouth_x"] *= float(look.get("mouth_w", 1.0))
 		mesh = ArrayMesh.new()
+		mesh.blend_shape_mode = Mesh.BLEND_SHAPE_MODE_NORMALIZED
 		var bs: Array = []
 		if face_fx:
 			for fs in FACE_SHAPES:
 				mesh.add_blend_shape(fs)
-				bs.append(_shape_delta(arr, _face_shape(fs, arr, f, [])))
+				bs.append(_shape_target(arr, _face_shape(fs, arr, f, [])))
 		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr, bs, {}, int(parts["flags"]))
 		if _face_meshes.size() >= 96:
 			_face_meshes.clear()
@@ -521,6 +607,7 @@ func _customize_eyes() -> void:
 	var out: ArrayMesh = _eye_meshes.get(signature)
 	if out == null:
 		out = ArrayMesh.new()
+		out.blend_shape_mode = Mesh.BLEND_SHAPE_MODE_NORMALIZED
 		out.add_blend_shape("fechar")
 		for surface in src.get_surface_count():
 			var arr := src.surface_get_arrays(surface)
@@ -534,7 +621,7 @@ func _customize_eyes() -> void:
 				var ec: Vector3 = _anatomy["eye_l"] if verts[v].x < 0.0 else _anatomy["eye_r"]
 				ec = HumanStyle.sculpt(ec, _anatomy, look)
 				closed[v] = verts[v]
-			out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr, [_shape_delta(arr, closed)], {}, src.surface_get_format(surface) & ~Mesh.ARRAY_FLAG_COMPRESS_ATTRIBUTES)
+			out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr, [_shape_target(arr, closed)], {}, src.surface_get_format(surface) & ~Mesh.ARRAY_FLAG_COMPRESS_ATTRIBUTES)
 			out.surface_set_material(surface, src.surface_get_material(surface))
 		if _eye_meshes.size() >= 96:
 			_eye_meshes.clear()
@@ -590,18 +677,13 @@ func _shaped_body(key: String) -> Mesh:
 	return out
 
 
-# Converte posições absolutas para deltas das expressões faciais.
-static func _shape_delta(arr: Array, shaped: PackedVector3Array) -> Array:
-	var base: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
-	var dv := PackedVector3Array()
-	dv.resize(base.size())
-	for v in base.size():
-		dv[v] = shaped[v] - base[v]
+# Alvos absolutos em modo NORMALIZED: a posição e a normal seguem a mesma mistura.
+# A GPU comprime normais unitárias em octaedro; diferenças/zeros não são direções válidas.
+static func _shape_target(arr: Array, shaped: PackedVector3Array) -> Array:
 	var a: Array = []
 	a.resize(Mesh.ARRAY_MAX)
-	a[Mesh.ARRAY_VERTEX] = dv
-	# normais e tangentes iguais às da base: com elas o relevo da pele continua certo
-	a[Mesh.ARRAY_NORMAL] = arr[Mesh.ARRAY_NORMAL]
+	a[Mesh.ARRAY_VERTEX] = shaped
+	a[Mesh.ARRAY_NORMAL] = HumanStyle.normals(shaped, arr[Mesh.ARRAY_INDEX], arr[Mesh.ARRAY_NORMAL])
 	if arr[Mesh.ARRAY_TANGENT] != null:
 		a[Mesh.ARRAY_TANGENT] = arr[Mesh.ARRAY_TANGENT]
 	return a
@@ -648,7 +730,11 @@ func _face_marks(src: Mesh, names: Array) -> Dictionary:
 	el /= nl
 	er /= nr
 	var eye_dx := (er.x - el.x) * 0.5
-	return {"nose": nose, "eye_l": Vector3(el.x, el.y, ez), "eye_r": Vector3(er.x, er.y, ez), "mouth_y": nose.y - 0.037,
+	var mouth_key := "female" if str(look.get("gender", "homem")) == "mulher" else "male"
+	if int(look.get("age", 30)) < 13:
+		mouth_key += "_child"
+	var mouth: Vector3 = MOUTH_REST[mouth_key]
+	return {"nose": nose, "eye_l": Vector3(el.x, el.y, ez), "eye_r": Vector3(er.x, er.y, ez), "mouth_y": mouth.y, "mouth": mouth,
 		"mouth_x": eye_dx * 0.74, "head_w": head_w}
 
 
@@ -699,10 +785,13 @@ func _face_shape(name: String, arr: Array, f: Dictionary, _names: Array) -> Pack
 					else:
 						d += Vector3(-side * 0.0008, -0.007, -0.0005) * w
 			"queixo":
-				var below := smoothstep(my + 0.001, my - 0.01, p.y)
-				var mid := 1.0 - smoothstep(0.022, 0.045, absf(p.x))
-				var keep_neck := 1.0 - smoothstep(my - 0.05, my - 0.07, p.y)
-				d = Vector3(0, -0.006, -0.0012) * below * mid * keep_neck * smoothstep(nose.z - 0.07, nose.z - 0.03, p.z)
+				# Mandíbula articulada atrás das bochechas: o queixo acompanha o lábio
+				# inferior, sem alongar apenas uma faixa central em direção ao pescoço.
+				var below := 1.0 - smoothstep(my - 0.003, my + 0.002, p.y)
+				var cheek := 1.0 - smoothstep(mx * 1.6, mx * 3.1, absf(p.x))
+				var neck := smoothstep(my - 0.085, my - 0.050, p.y)
+				var hinge := Vector3(0, my + 0.017, nose.z - 0.083)
+				d = (Basis(Vector3.RIGHT, 0.12) * (p - hinge) + hinge - p) * below * cheek * neck
 			"piscar":
 				for e in [f["eye_l"], f["eye_r"]]:
 					var ec: Vector3 = e
@@ -727,6 +816,7 @@ func _brow_mesh(gender: String, src: Mesh) -> Mesh:
 	if src == null or src.get_blend_shape_count() > 0 or not face_fx:
 		return src
 	var out := ArrayMesh.new()
+	out.blend_shape_mode = Mesh.BLEND_SHAPE_MODE_NORMALIZED
 	for bsn in BROW_SHAPES:
 		out.add_blend_shape(bsn)
 	for s in src.get_surface_count():
@@ -758,7 +848,7 @@ func _brow_mesh(gender: String, src: Mesh) -> Mesh:
 						nv[v] = p + Vector3(-signf(p.x) * 0.0015 * inner, -0.006 * inner + 0.001 * outer, 0.0004 * inner)
 					"sobr_triste":
 						nv[v] = p + Vector3(0, 0.006 * inner - 0.002 * outer, 0)
-			bs.append(_shape_delta(arr, nv))
+			bs.append(_shape_target(arr, nv))
 		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr, bs, {}, src.surface_get_format(s) & ~Mesh.ARRAY_FLAG_COMPRESS_ATTRIBUTES)
 		out.surface_set_material(s, src.surface_get_material(s))
 	if _brow_meshes.size() >= 64:
@@ -799,11 +889,22 @@ func enable_xray() -> void:
 		var m: Material = mi.material_override
 		if m == null:
 			m = mi.mesh.surface_get_material(0)
-		if m == null or not (m is BaseMaterial3D):
+		if m == null or not (m is BaseMaterial3D or m is ShaderMaterial):
 			continue
-		var dup := (m as BaseMaterial3D).duplicate() as BaseMaterial3D
-		dup.next_pass = _xray_mat
+		# pele e roupa são shaders próprios: a silhueta entra como passe extra em qualquer um;
+		# se já houver um passe (sinais na pele), a silhueta vem depois dele
+		var dup := m.duplicate() as Material
+		if dup.next_pass != null and dup.next_pass != _xray_mat:
+			var extra := dup.next_pass.duplicate() as Material
+			extra.next_pass = _xray_mat
+			dup.next_pass = extra
+		else:
+			dup.next_pass = _xray_mat
 		mi.material_override = dup
+		# a chuva continua molhando o material novo
+		for e in _wet_mats:
+			if e[0] == m:
+				e[0] = dup
 
 
 # Desliga a silhueta quando algo cobre o corpo de propósito (coberta na cama, mesa, box do banho).
@@ -823,6 +924,7 @@ func _add_blob() -> void:
 	blob.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	blob.position = Vector3(0, 0.012, 0)
 	add_child(blob)
+	_contact_blob = blob
 
 
 # Corpo simples caso o modelo 3D não carregue: o jogo segue sem erro.
@@ -859,10 +961,11 @@ func _detail_face_mesh(src: Mesh) -> ArrayMesh:
 	hw.fill(1.0)
 	f["head_w"] = hw
 	var out := ArrayMesh.new()
+	out.blend_shape_mode = Mesh.BLEND_SHAPE_MODE_NORMALIZED
 	var shapes: Array = []
 	for fs in FACE_SHAPES:
 		out.add_blend_shape(fs)
-		shapes.append(_shape_delta(arr, _face_shape(fs, arr, f, [])))
+		shapes.append(_shape_target(arr, _face_shape(fs, arr, f, [])))
 	out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr, shapes, {}, src.surface_get_format(0) & ~Mesh.ARRAY_FLAG_COMPRESS_ATTRIBUTES)
 	return out
 
@@ -915,7 +1018,17 @@ func _attach_hair(key: String, color: Color) -> void:
 	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
 	m.alpha_scissor_threshold = 0.35
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	# fios: brilho alongado ao longo do cabelo e borda suave (sem serrilhado)
+	m.alpha_antialiasing_mode = BaseMaterial3D.ALPHA_ANTIALIASING_ALPHA_TO_COVERAGE_AND_TO_ONE
+	m.anisotropy_enabled = true
+	m.anisotropy = 0.65
+	m.roughness = 0.5
+	m.metallic_specular = 0.42
+	m.rim_enabled = true
+	m.rim = 0.25
+	m.rim_tint = 0.5
 	mi.material_override = m
+	_register_wet(m, 0.22)
 
 
 # ---------- roupas ----------
@@ -953,11 +1066,103 @@ func _dress(style: String, c1: Color, c2: Color, _female: bool, _skin: Color) ->
 			_cloth_cache[cache_key] = _shape_piece(mi.mesh)
 		mi.mesh = _cloth_cache[cache_key]
 		mi.visible = true
-		var m := mi.mesh.surface_get_material(0).duplicate() as StandardMaterial3D
-		m.albedo_color = c1 if name.begins_with("HumanTop") else (_pants_color(style, c1, c2) if name.begins_with("HumanPants") else Color("#363331"))
-		m.roughness = 0.9
-		m.metallic_specular = 0.18
+		var src := mi.mesh.surface_get_material(0) as StandardMaterial3D
+		var color: Color = c1 if name.begins_with("HumanTop") else (_pants_color(style, c1, c2) if name.begins_with("HumanPants") else Color("#363331"))
+		var m := _cloth_material(src, color, _fabric_kind(name, style))
+		_hem(m, name)
 		mi.material_override = m
+		_register_wet(m, 0.38)
+
+
+# Tipo de tecido de cada peça: 0 algodão, 1 jeans, 2 couro, 3 lã/sarja de terno.
+func _fabric_kind(piece: String, style: String) -> int:
+	if piece == "HumanShoes":
+		return 2
+	if piece.begins_with("HumanTop"):
+		if style == "couro":
+			return 2
+		if style in ["social", "terno", "farda", "uniforme", "jaleco", "sobretudo", "batina"]:
+			return 3
+		return 0
+	if style in ["social", "terno", "farda", "uniforme", "sobretudo", "batina"]:
+		return 3
+	if style in ["academia", "havaiana", "regata"]:
+		return 0
+	return 1
+
+
+static var _cloth_cache_mats: Dictionary = {}
+const SKIN_SHADER := preload("res://world3d/human_skin.gdshader")
+const CLOTH_SHADER := preload("res://world3d/human_cloth.gdshader")
+static var _noise_cache: Dictionary = {}
+
+
+# Ruídos de detalhe compartilhados: poros (relevo celular fino) e grão (fiapos, manchas).
+static func _detail_noise(kind: String) -> Texture2D:
+	if _noise_cache.has(kind):
+		return _noise_cache[kind]
+	var n := FastNoiseLite.new()
+	var t := NoiseTexture2D.new()
+	t.width = 512
+	t.height = 512
+	t.seamless = true
+	t.generate_mipmaps = true
+	if kind == "pores":
+		n.noise_type = FastNoiseLite.TYPE_CELLULAR
+		n.frequency = 0.09
+		n.cellular_return_type = FastNoiseLite.RETURN_DISTANCE
+		t.as_normal_map = true
+		t.bump_strength = 6.0
+	else:
+		n.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+		n.frequency = 0.02
+		n.fractal_octaves = 4
+	t.noise = n
+	_noise_cache[kind] = t
+	return t
+
+
+func _cloth_material(src: StandardMaterial3D, color: Color, fabric: int) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = CLOTH_SHADER
+	m.set_shader_parameter("cloth_map", src.albedo_texture)
+	m.set_shader_parameter("dye", color)
+	var weave_name := "leather" if fabric == 2 else "fabric"
+	if FileAccess.file_exists("res://assets/textures/surfaces/" + weave_name + "_nr.jpg.import"):
+		m.set_shader_parameter("weave", load("res://assets/textures/surfaces/" + weave_name + "_nr.jpg"))
+	m.set_shader_parameter("grain_noise", _detail_noise("grain"))
+	m.set_shader_parameter("fabric", fabric)
+	m.set_shader_parameter("weave_scale", [26.0, 18.0, 7.0, 34.0][fabric])
+	return m
+
+
+# Até onde a poeira da rua sobe em cada peça (sapato: só a borda da sola; camisa: nada).
+func _hem(m: ShaderMaterial, piece: String) -> void:
+	if piece == "HumanShoes":
+		m.set_shader_parameter("hem_top", 0.035)
+		m.set_shader_parameter("hem_amount", 0.6)
+	elif piece.begins_with("HumanPants"):
+		m.set_shader_parameter("hem_top", 0.3)
+		m.set_shader_parameter("hem_amount", 0.32)
+	else:
+		m.set_shader_parameter("hem_amount", 0.0)
+
+
+# Trama de tecido (ou couro) fotográfica pelo UV da peça: acompanha o corpo sem escorregar.
+# A foto é só detalhe em cinza (média 0,45 linear): a cor continua a da roupa.
+func _fabric(m: StandardMaterial3D, kind: String) -> void:
+	if m.albedo_texture != null or not FileAccess.file_exists("res://assets/textures/surfaces/layers.json"):
+		return
+	var dir := "res://assets/textures/surfaces/" + kind
+	m.albedo_texture = load(dir + "_albedo.jpg")
+	m.albedo_color = Color(m.albedo_color.r / 0.7, m.albedo_color.g / 0.7, m.albedo_color.b / 0.7)
+	m.normal_enabled = true
+	m.normal_texture = load(dir + "_nr.jpg")
+	m.normal_scale = 0.8
+	m.roughness_texture = m.normal_texture
+	m.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_BLUE
+	m.roughness = 1.0 if kind == "fabric" else 0.75
+	m.uv1_scale = Vector3(9.0, 9.0, 1.0) if kind == "fabric" else Vector3(5.0, 5.0, 1.0)
 
 
 func _hide_under_clothes(gender: String) -> void:
@@ -1052,9 +1257,18 @@ func set_active(on: bool) -> void:
 	if visible != on:
 		visible = on
 	set_process(on)
+	# AnimationPlayer é um filho com processamento próprio: parar só o Node3D
+	# deixava os esqueletos fora de cena animando, inclusive os modelos reutilizados.
+	if ap != null and ap.active != on:
+		ap.active = on
+	if player_motion != null:
+		player_motion.tree.active = on and player_motion.active
 
 
 func set_lod(near: bool) -> void:
+	if not near and _lod_near:
+		for part in oral_parts:
+			part.visible = false
 	_lod_near = near
 
 
@@ -1077,9 +1291,31 @@ func _play_once(name: String) -> void:
 const ACT_ANIM := {"dancar": "Dance", "conversar": "Idle", "celular": "Idle", "olhar": "Idle", "mexer": "Interact", "pegar": "PickUp_Table", "agachar": "Crouch_Idle", "consertar": "Fixing_Kneeling"}
 
 
+func _impact_animation(delta: float) -> bool:
+	var physical := str(get_meta("impact_state", "normal"))
+	if physical == "normal":
+		if ap.speed_scale == 0: ap.speed_scale = 1.0
+		return false
+	if player_motion != null: player_motion.suspend(self)
+	_restore_animation_pose()
+	var phase := clampf(float(get_meta("impact_phase", 0)), 0, 1)
+	var clip := "Hit_Chest" if physical == "tropecando" else "Death01"
+	if not ap.has_animation(clip): return false
+	_play(clip, 0.12)
+	ap.speed_scale = 0
+	var length := ap.get_animation(clip).length
+	var sample := phase
+	if physical == "caido": sample = 0.99
+	elif physical == "levantando": sample = 1.0 - phase
+	ap.seek(length * minf(sample, 0.99), true)
+	_save_animation_pose()
+	return true
+
 func _process(delta: float) -> void:
 	if skel == null or ap == null:
 		return
+	_update_wet(delta)
+	if _impact_animation(delta): return
 	_restore_animation_pose()
 	t += delta
 	talk_left = maxf(0.0, talk_left - delta)
@@ -1088,10 +1324,16 @@ func _process(delta: float) -> void:
 		_prev_pos = gp
 	var vel := (gp - _prev_pos) / maxf(delta, 0.0001)
 	_prev_pos = gp
-	if vel.length() < 14.0:
-		_speed = lerpf(_speed, vel.length(), minf(delta * 8.0, 1.0))
+	if use_player_locomotion:
+		# O corpo físico já mediu deslocamento horizontal após a colisão. Sem
+		# atraso de filtro ao frear, sem passo falso por queda/teletransporte.
+		_speed = maxf(0.0, move_speed) if move_speed < 14.0 else 0.0
+	elif Vector2(vel.x, vel.z).length() < 14.0:
+		_speed = Vector2(vel.x, vel.z).length()
 	else:
 		_speed = 0.0
+	if player_motion != null and (lying or busy_t > 0.0 or daily_action != "" or activity not in ["", "olhar", "conversar"] or talk_left > 0.0):
+		player_motion.suspend(self)
 	if lying:
 		_play("Death01", 0.2)
 		ap.speed_scale = 1.0
@@ -1112,7 +1354,24 @@ func _process(delta: float) -> void:
 		HumanMotion.apply(self, delta)
 		_apply_posture(delta)
 		_apply_hands(delta)
+		HumanMotion.stance(self, delta)
+		if player_motion != null and player_motion.active:
+			player_motion.ground(self, delta)
 		_apply_look(delta)
+		_apply_object_reach()
+		_apply_face(delta)
+		return
+	if player_motion != null and daily_action == "" and activity in ["", "olhar", "conversar"] and talk_left <= 0.0:
+		player_motion.step(self, delta)
+		_save_animation_pose()
+		HumanMotion.apply(self, delta)
+		_apply_posture(delta)
+		_apply_hands(delta)
+		HumanMotion.stance(self, delta)
+		if player_motion != null and player_motion.active:
+			player_motion.ground(self, delta)
+		_apply_look(delta)
+		_apply_object_reach()
 		_apply_face(delta)
 		return
 	var spd := _speed
@@ -1151,7 +1410,9 @@ func _process(delta: float) -> void:
 	HumanMotion.apply(self, delta)
 	_apply_posture(delta)
 	_apply_hands(delta)
+	HumanMotion.stance(self, delta)
 	_apply_look(delta)
+	_apply_object_reach()
 	_apply_face(delta)
 	if bubble and bubble.visible:
 		bubble.position.y = 2.2 + sin(t * 2.4) * 0.04
@@ -1218,6 +1479,11 @@ func _apply_face(delta: float) -> void:
 			for extra in [_lash_mi, _beard_mi]:
 				if extra != null:
 					extra.set_blend_shape_value(i, nw)
+	for part in oral_parts:
+		var opening: float = _face_w.get("queixo", 0.0)
+		part.visible = opening > 0.24
+		if part == oral_parts[0]:
+			part.scale.y = clampf(opening * 0.55, 0.08, 0.55)
 	if _brow_mi != null:
 		for i in BROW_SHAPES.size():
 			var n2: String = BROW_SHAPES[i]
@@ -1487,24 +1753,25 @@ func _apply_hands(delta: float) -> void:
 		return
 	_wave_t = maxf(0.0, _wave_t - delta)
 	if not umbrella_on and not stroller_on and _wave_t <= 0.0:
-		if _speed < 0.15 and activity in ["", "conversar", "olhar"] and daily_action == "" and talk_left <= 0.0 and not lying:
+		var player_idle: bool = player_motion != null and player_motion.prototype and player_motion.active
+		var mocap_on: bool = player_motion != null and player_motion.get("mocap") == true and player_motion.active
+		if (_speed < 0.15 or player_idle) and not mocap_on and activity in ["", "conversar", "olhar"] and daily_action == "" and talk_left <= 0.0 and not lying:
+			var relax_weight: float = 0.45*(1.0-player_motion.move_weight) if player_idle else 0.9
 			for side in ["l", "r"]:
 				var arm := skel.find_bone("upperarm_" + side)
 				var forearm := skel.find_bone("lowerarm_" + side)
 				if arm >= 0 and forearm >= 0:
 					var sign_x := signf(skel.get_bone_global_pose(arm).origin.x)
-					_aim_bone(arm, forearm, Vector3(sign_x * 0.09, -1.0, 0.035), 0.9)
+					_aim_bone(arm, forearm, Vector3(sign_x * 0.09, -1.0, 0.035), relax_weight)
 					var hand := skel.find_bone("hand_" + side)
 					var middle := skel.find_bone("middle_01_" + side)
-					_aim_bone(forearm, hand, Vector3(sign_x * 0.04, -1.0, 0.07), 0.9)
-					_aim_bone(hand, middle, Vector3(sign_x * 0.02, -1.0, 0.01), 0.85)
+					_aim_bone(forearm, hand, Vector3(sign_x * 0.04, -1.0, 0.07), relax_weight)
+					_aim_bone(hand, middle, Vector3(sign_x * 0.02, -1.0, 0.01), relax_weight if player_idle else 0.85)
 				for finger in ["thumb", "index", "middle", "ring", "pinky"]:
 					for segment in [1, 2, 3]:
 						var joint := skel.find_bone("%s_%02d_%s" % [finger, segment, side])
 						if joint >= 0:
-							skel.set_bone_pose_rotation(joint, Quaternion.IDENTITY.slerp(skel.get_bone_pose_rotation(joint), 0.16))
-				_aim_bone(skel.find_bone("thigh_" + side), skel.find_bone("calf_" + side), Vector3(0, -1, 0), 0.85)
-				_aim_bone(skel.find_bone("calf_" + side), skel.find_bone("foot_" + side), Vector3(0, -1, 0.015), 0.75)
+							skel.set_bone_pose_rotation(joint, Quaternion.IDENTITY.slerp(skel.get_bone_pose_rotation(joint), 0.60 if player_motion != null and player_motion.prototype and player_motion.active else 0.16))
 		return
 	if _arm_bones.is_empty():
 		for bn in ["upperarm_r", "lowerarm_r", "hand_r", "upperarm_l", "lowerarm_l", "hand_l"]:
@@ -1559,12 +1826,15 @@ func gesture(kind: String) -> void:
 
 
 func _save_animation_pose() -> void:
+	_animation_pelvis = skel.get_bone_pose_position(skel.find_bone("pelvis"))
 	_animation_pose.clear()
 	for i in skel.get_bone_count():
 		_animation_pose.append(skel.get_bone_pose_rotation(i))
 
 
 func _restore_animation_pose() -> void:
+	if _animation_pelvis != Vector3.INF:
+		skel.set_bone_pose_position(skel.find_bone("pelvis"), _animation_pelvis)
 	for i in mini(_animation_pose.size(), skel.get_bone_count()):
 		skel.set_bone_pose_rotation(i, _animation_pose[i])
 
@@ -1596,3 +1866,122 @@ func _reach_hand(side: String, target: Vector3, weight: float) -> void:
 	_aim_bone(arm, elbow, joint - a, weight)
 	e = skel.get_bone_global_pose(elbow).origin
 	_aim_bone(elbow, hand, target - e, weight)
+
+
+# Alcance de um objeto no mundo. Base de repouso da própria locomoção + IK;
+# pés fixos e flexão de quadril/joelhos quando o objeto está baixo.
+func _apply_object_reach() -> void:
+	if reach_target == Vector3.INF or reach_weight <= 0.001 or skel == null:
+		return
+	var local: Vector3 = skel.global_transform.affine_inverse() * reach_target
+	var arm := skel.find_bone("upperarm_r")
+	var elbow := skel.find_bone("lowerarm_r")
+	var hand := skel.find_bone("hand_r")
+	var shoulder := skel.get_bone_global_pose(arm).origin
+	var arm_length := shoulder.distance_to(skel.get_bone_global_pose(elbow).origin) + skel.get_bone_global_pose(elbow).origin.distance_to(skel.get_bone_global_pose(hand).origin) - 0.025
+	var lean := clampf((shoulder.y - local.y) * 0.6, 0.23, 0.75) * reach_weight
+	for entry in [["spine_01", 0.8], ["spine_02", 0.15], ["spine_03", 0.05]]:
+		var i := skel.find_bone(entry[0])
+		var parent := skel.get_bone_parent(i)
+		var basis := Basis(Vector3.RIGHT, lean * float(entry[1])) * skel.get_bone_global_pose(i).basis
+		skel.set_bone_pose_rotation(i, (skel.get_bone_global_pose(parent).basis.inverse() * basis).get_rotation_quaternion())
+	shoulder = skel.get_bone_global_pose(arm).origin
+	var flat := Vector2(shoulder.x - local.x, shoulder.z - local.z).length()
+	# Corpos baixos precisam inclinar sobre a borda: a cápsula continua com o mesmo raio.
+	if flat > arm_length * 0.88:
+		var spine := skel.find_bone("spine_01")
+		var parent := skel.get_bone_parent(spine)
+		var trunk_height := maxf(0.25, shoulder.y - skel.get_bone_global_pose(spine).origin.y)
+		var extra := clampf((flat - arm_length * 0.88) / trunk_height, 0.0, 0.5) * reach_weight
+		var basis := Basis(Vector3.RIGHT, extra) * skel.get_bone_global_pose(spine).basis
+		skel.set_bone_pose_rotation(spine, (skel.get_bone_global_pose(parent).basis.inverse() * basis).get_rotation_quaternion())
+		shoulder = skel.get_bone_global_pose(arm).origin
+		flat = Vector2(shoulder.x - local.x, shoulder.z - local.z).length()
+	var vertical := sqrt(maxf(arm_length * arm_length - flat * flat, 0.0))
+	var low := clampf(shoulder.y - local.y - vertical, 0.0, 0.80) * reach_weight
+	var feet: Array = []
+	for side in ["l", "r"]:
+		var thigh := skel.find_bone("thigh_" + side)
+		var calf := skel.find_bone("calf_" + side)
+		var foot := skel.find_bone("foot_" + side)
+		var h := skel.get_bone_global_pose(thigh).origin
+		var k := skel.get_bone_global_pose(calf).origin
+		var a := skel.get_bone_global_pose(foot).origin
+		feet.append([thigh, calf, foot, a, skel.get_bone_global_pose(foot).basis, h.distance_to(k), k.distance_to(a)])
+	if low > 0.001:
+		var pelvis := skel.find_bone("pelvis")
+		var parent := skel.get_bone_parent(pelvis)
+		var offset := skel.get_bone_global_pose(parent).basis.inverse() * Vector3(0, -low, 0)
+		skel.set_bone_pose_position(pelvis, skel.get_bone_pose_position(pelvis) + offset)
+		for leg in feet:
+			var h := skel.get_bone_global_pose(leg[0]).origin
+			var to: Vector3 = leg[3] - h
+			var length: float = clampf(to.length(), 0.02, float(leg[5]) + float(leg[6]) - 0.002)
+			var dir := to.normalized()
+			var proj: float = (float(leg[5]) ** 2 - float(leg[6]) ** 2 + length ** 2) / (2 * length)
+			var pole := Vector3.BACK - dir * Vector3.BACK.dot(dir)
+			pole = pole.normalized()
+			var knee: Vector3 = h + dir * proj + pole * sqrt(maxf(float(leg[5]) ** 2 - proj ** 2, 0.0))
+			_aim_bone(leg[0], leg[1], knee - h)
+			_aim_bone(leg[1], leg[2], leg[3] - skel.get_bone_global_pose(leg[1]).origin)
+			skel.set_bone_pose_rotation(leg[2], (skel.get_bone_global_pose(leg[1]).basis.inverse() * (leg[4] as Basis)).get_rotation_quaternion())
+	# A âncora é o centro da palma, não o pulso. Refina depois do giro do antebraço.
+	for iteration in 3:
+		var palm_offset := skel.get_bone_global_pose(hand).basis * _grip_offset
+		_reach_hand("r", local - palm_offset, reach_weight)
+	for finger in ["index", "middle", "ring", "pinky"]:
+		for n in [1, 2, 3]:
+			_rotate_local("%s_%02d_r" % [finger, n], Vector3(0, 0, -reach_grip * 0.35))
+
+
+func grasp_position() -> Vector3:
+	return (skel.global_transform * skel.get_bone_global_pose(skel.find_bone("hand_r"))) * _grip_offset
+
+
+func _build_oral() -> void:
+	if skel == null or _anatomy.is_empty():
+		return
+	var anchor := BoneAttachment3D.new()
+	anchor.bone_name = "Head"
+	skel.add_child(anchor)
+	var rest := skel.get_bone_global_rest(_head).affine_inverse()
+	var mouth: Vector3 = _anatomy["mouth"] - Vector3(0, 0, 0.006)
+	mouth = HumanStyle.sculpt(mouth, _anatomy, look)
+	var inside := MeshInstance3D.new()
+	inside.visible = false
+	var cavity := SphereMesh.new()
+	cavity.radius = 0.023 * float(look.get("mouth_w", 1.0))
+	cavity.height = 0.014
+	cavity.radial_segments = 24
+	cavity.rings = 12
+	inside.mesh = cavity
+	inside.scale.z = 0.18
+	inside.position = rest * (mouth - Vector3(0, 0.004, 0.013))
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color("#30141a")
+	dark.roughness = 1.0
+	inside.material_override = dark
+	oral_parts.append(inside)
+	anchor.add_child(inside)
+	var enamel := StandardMaterial3D.new()
+	enamel.albedo_color = Color("#cfc9b7")
+	enamel.roughness = 0.38
+	for i in 8:
+		var tooth := MeshInstance3D.new()
+		tooth.visible = false
+		var shape := SphereMesh.new()
+		shape.radius = 0.0025
+		shape.height = 0.005
+		shape.radial_segments = 10
+		shape.rings = 6
+		tooth.mesh = shape
+		var x := (i - 3.5) * 0.0045 * float(look.get("mouth_w", 1.0))
+		tooth.position = rest * (mouth + Vector3(x, 0.0015, -0.003 - absf(x) * 0.12))
+		tooth.material_override = enamel
+		if i == 3 and (10 in look.get("marks", []) or "dente_ouro" in look.get("extras", [])):
+			var gold := enamel.duplicate() as StandardMaterial3D
+			gold.albedo_color = Color("#b99a4c")
+			gold.metallic = 0.7
+			tooth.material_override = gold
+		oral_parts.append(tooth)
+		anchor.add_child(tooth)

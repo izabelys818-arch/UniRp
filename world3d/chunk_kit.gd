@@ -7,11 +7,13 @@ extends RefCounted
 # Use como um Kit comum: mude `cat` antes de desenhar cada grupo de peças.
 
 const Kit = preload("res://world3d/mesh_kit.gd")
+const Surfaces = preload("res://world3d/surfaces.gd")
 # chão rente: não projeta sombra (economiza o passe de sombra e evita serrilhado no asfalto)
 const FLAT := ["asphalt", "walk"]
 
 var size: float
 var cat := "walk"
+var surf := 0
 var count := 0
 var kits: Dictionary = {}    # Vector2i -> {cat: Kit}
 
@@ -33,7 +35,18 @@ func _k(p: Vector3) -> Kit:
 		k.cat = cat
 		d[cat] = k
 	count += 1
+	k.surf = surf
 	return k
+
+
+func solid_box(center: Vector3, dimensions: Vector3, layer := 4, yaw := 0.0, label := "movel") -> void:
+	_k(center).solid_box(center, dimensions, layer, yaw, label)
+
+func solid_cylinder(base: Vector3, radius: float, height: float, layer := 4, label := "poste") -> void:
+	_k(base).solid_cylinder(base, radius, height, layer, label)
+
+func use_surface(name: String) -> void:
+	surf = Surfaces.layer(name) + 1 if name != "" else 0
 
 
 func add(kind: String, xf: Transform3D, color: Color) -> void:
@@ -76,14 +89,19 @@ func soft_shadow(c: Vector3, rx: float, rz: float, alpha: float = 0.34, rot: flo
 
 
 # Cria as malhas: por pedaço, uma rente ao chão (sem sombra) e outra com os objetos (com sombra).
-func build(parent: Node3D, mats: Dictionary, fallback: Material) -> MeshInstance3D:
+func build(parent: Node3D, mats: Dictionary, fallback: Material, staged: bool = false) -> MeshInstance3D:
 	var first: MeshInstance3D = null
+	var frame_start := Time.get_ticks_usec()
 	for cell in kits:
+		if staged and Time.get_ticks_usec() - frame_start >= 6000:
+			await parent.get_tree().process_frame
+			frame_start = Time.get_ticks_usec()
 		var d: Dictionary = kits[cell]
 		var flat: ArrayMesh = null
 		var solid: ArrayMesh = null
 		for c in d:
 			var k: Kit = d[c]
+			k.install_colliders(parent)
 			var m: Material = mats.get(c, fallback)
 			if c in FLAT:
 				flat = k.commit(m, flat)

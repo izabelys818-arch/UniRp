@@ -363,6 +363,8 @@ func actions() -> Array:
 	if not contracts().has(loc_id) or status_of(loc_id) == "comercial":
 		return out
 	var u := utils(loc_id)
+	if Houses.is_house(loc_id) and bool(u["agua"]):
+		out.append({"id": "banho_casa", "label": "Tomar banho"})
 	if has_furn("fogao", loc_id) and bool(u["agua"]):
 		out.append({"id": "casa:cozinhar", "label": "Preparar uma refeição (R$ 8)"})
 	if has_furn("tv", loc_id) and bool(u["luz"]):

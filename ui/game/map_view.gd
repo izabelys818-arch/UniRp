@@ -22,25 +22,38 @@ var t: float = 0.0
 var layout: Layout
 var _off := Vector2.ZERO
 var _s := 1.0
+var _bounds := Rect2(Vector2.ZERO, Vector2.ONE * Layout.SIZE)
 
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	clip_contents = true
-	layout = Layout.new()
+	_share_layout()
+
+
+func _share_layout() -> void:
+	var stream := get_tree().get_first_node_in_group("world_chunks")
+	if stream != null:
+		layout = stream.layout
 
 
 func _process(delta: float) -> void:
 	if not is_visible_in_tree():
 		return
+	_share_layout()
 	t += delta
 	queue_redraw()
 
 
 func _fit() -> void:
 	var avail := size - Vector2(40, 40)
-	_s = minf(avail.x, avail.y) / Layout.SIZE
-	_off = ((size - Vector2(Layout.SIZE, Layout.SIZE) * _s) / 2.0).round()
+	var saved: Array = GameState.player.get("pos", [165, 165])
+	var point := Vector2(float(saved[0]), float(saved[1]))
+	_bounds = Rect2(Vector2.ZERO, Vector2.ONE * Layout.SIZE)
+	if not _bounds.has_point(point):
+		_bounds = Rect2(point - Vector2.ONE * 240.0, Vector2.ONE * 480.0)
+	_s = minf(avail.x / _bounds.size.x, avail.y / _bounds.size.y)
+	_off = ((size - _bounds.size * _s) / 2.0 - _bounds.position * _s).round()
 
 
 func _p(v: Vector2) -> Vector2:
@@ -49,7 +62,8 @@ func _p(v: Vector2) -> Vector2:
 
 func _pin_world(id: String) -> Vector2:
 	if not layout.lots.has(id):
-		return Vector2.ZERO
+		var loc: Dictionary = World.locations.get(id, {})
+		return Vector2(float(loc.get("x", 0)), float(loc.get("y", 0))) * Layout.SIZE / 100.0
 	var lot: Dictionary = layout.lots[id]
 	var b: Rect2 = lot["building"]
 	return b.get_center() if b.size != Vector2.ZERO else (lot["rect"] as Rect2).get_center()
@@ -57,8 +71,11 @@ func _pin_world(id: String) -> Vector2:
 
 func _pin_at(p: Vector2) -> String:
 	_fit()
+	if layout == null:
+		return ""
 	for id in World.visible_locations():
-		if _p(_pin_world(id)).distance_to(p) < 20:
+		var point := _pin_world(id)
+		if _bounds.has_point(point) and _p(point).distance_to(p) < 20:
 			return id
 	return ""
 
@@ -85,14 +102,20 @@ func _rect(r: Rect2, c: Color) -> void:
 func _draw() -> void:
 	_fit()
 	draw_rect(Rect2(Vector2.ZERO, size), Color("#0a0f16"))
-	_rect(Rect2(Vector2(-6, -6), Vector2(Layout.SIZE + 12, Layout.SIZE + 12)), Color("#141a24"))
+	if layout == null:
+		return
+	_rect(_bounds.grow(6), Color("#141a24"))
 	# ruas e quarteirões
 	for c in layout.blocks:
 		var info: Dictionary = layout.blocks[c]
 		var r := Layout.block_rect(c)
+		if not _bounds.intersects(r):
+			continue
 		var id := str(info["loc"])
 		if id == "":
 			_rect(r, FILL_COLORS.get(str(info["kind"]), Color("#1c2532")))
+			continue
+		if not World.locations.has(id) or not layout.lots.has(id):
 			continue
 		var tipo := str(World.locations[id].get("tipo", "publico"))
 		var base: Color = TYPE_COLORS.get(tipo, UI.TEXT)
@@ -106,10 +129,14 @@ func _draw() -> void:
 			draw_rect(Rect2(_p(b.position), _p(b.end) - _p(b.position)), Color(base, 0.9), false, 1.0)
 	# faixa central das ruas
 	var line_col := Color("#2b3547")
-	for i in Layout.GRID + 1:
-		var lp := i * Layout.PITCH + Layout.STREET / 2.0
-		draw_line(_p(Vector2(lp, 0)), _p(Vector2(lp, Layout.SIZE)), line_col, 1.0)
-		draw_line(_p(Vector2(0, lp)), _p(Vector2(Layout.SIZE, lp)), line_col, 1.0)
+	for node in layout.street_nodes:
+		var point := Layout._node_pos(node)
+		if not _bounds.grow(Layout.PITCH).has_point(point):
+			continue
+		for direction in [Vector2i.RIGHT, Vector2i.DOWN]:
+			var neighbor: Vector2i = node + direction
+			if layout.street_nodes.has(neighbor) and Layout.road_edge(node, neighbor):
+				draw_line(_p(point), _p(Layout._node_pos(neighbor)), line_col, 1.0)
 	var here := World.current_id()
 	var pos_a: Array = GameState.player.get("pos", [0, 0])
 	var me := _p(Vector2(float(pos_a[0]), float(pos_a[1])))
@@ -126,7 +153,10 @@ func _draw() -> void:
 		return (1 if (a == hovered or a == selected or a == here) else 0) > (1 if (b == hovered or b == selected or b == here) else 0))
 	for id in order:
 		var loc: Dictionary = World.locations[id]
-		var p := _p(_pin_world(id))
+		var point := _pin_world(id)
+		if not _bounds.has_point(point):
+			continue
+		var p := _p(point)
 		var col: Color = TYPE_COLORS.get(loc["tipo"], UI.TEXT)
 		var open := World.is_open(id)
 		if not open:

@@ -23,6 +23,8 @@ func _wait(sec: float) -> void:
 
 
 func _shot(name: String) -> void:
+	if DisplayServer.get_name() == "headless":
+		return
 	await RenderingServer.frame_post_draw
 	var path := OS.get_user_data_dir() + "/acao_%s.png" % name
 	get_viewport().get_texture().get_image().save_png(path)
@@ -55,6 +57,7 @@ func _put_player(p: Vector2, loc: String) -> void:
 
 
 func _ready() -> void:
+	AIService.mock = _stream_mock
 	preload("res://world3d/world_view.gd").realtime = false
 	WorldEvents.random_enabled = false
 	SaveManager.path = "user://acoes_save.json"
@@ -101,7 +104,9 @@ func _ready() -> void:
 			order.append(_stage())
 		await get_tree().process_frame
 	order.append("animar")
-	check(NeedsSystem.get_value("energia") == e0, "dormir: energia não muda antes de deitar")
+	# A aproximação mantém o gasto normal de caminhada/altura. O sono ainda
+	# não pode restaurar energia nem avançar o relógio nesta etapa.
+	check(NeedsSystem.get_value("energia") <= e0 + 0.001 and TimeManager.total_minutes == m0 and not bool(wv._act.get("applied", true)), "dormir: recuperação só ocorre depois da animação")
 	await _wait(0.9)
 	check(absf(wv.player_fig.rotation.x) > 1.0, "dormir: personagem deitado na cama")
 	await _shot("dormir")
@@ -114,6 +119,8 @@ func _ready() -> void:
 	# --- banho ---
 	NeedsSystem.apply({"higiene": -70})
 	var h0 := NeedsSystem.get_value("higiene")
+	var shower: Vector2 = wv.city.use_points[home]["chuveiro"]["path"].back()
+	await _put_player(shower, home)
 	screen._do_action("banho_casa")
 	var t1 := Time.get_ticks_msec()
 	while _stage() != "animar" and Time.get_ticks_msec() - t1 < 15000:
@@ -124,6 +131,16 @@ func _ready() -> void:
 	await _follow([], 6.0)
 	check(NeedsSystem.get_value("higiene") > h0 + 50.0, "banho: higiene subiu depois (%.0f → %.0f)" % [h0, NeedsSystem.get_value("higiene")])
 	# --- comer sentado à mesa ---
+	await _follow([], 15.0)
+	var dining: Dictionary = {}
+	for seat in wv.city.seats:
+		if wv.layout.lot_at(seat["p"]) == home:
+			dining = seat
+			break
+	check(not dining.is_empty(), "comer: assento real na casa")
+	if not dining.is_empty():
+		var front := Vector2(sin(float(dining["yaw"])), cos(float(dining["yaw"])))
+		await _put_player((dining["p"] as Vector2) + front * 0.85, home)
 	var s0 := NeedsSystem.get_value("saciedade")
 	check(screen._use_item_animated("pao"), "comer: começou pela bolsa")
 	check(GameState.player["inventory"].has("pao"), "comer: o pão ainda está na bolsa enquanto ele vai sentar")
@@ -182,9 +199,22 @@ func _ready() -> void:
 	HomeSystem.utils(home)["luz"] = true
 	WorldEvents.stop("apagao")
 	for kind in ["cozinhar", "tv", "sofa", "pc"]:
+		var action_loc := home
+		if kind == "pc" and not wv.city.use_points[home].has("computador"):
+			action_loc = "hospital"
+			var structure: Dictionary = wv.city.loc_info[action_loc]["structure"]
+			wv.city.ensure_interior(structure)
+			HomeSystem.housing()["contracts"][action_loc] = {"tipo": "propria", "aluguel": 0}
+			HomeSystem.housing()["moveis"][action_loc] = ["computador"]
+			HomeSystem.utils(action_loc)["internet"] = true
+			HomeSystem.utils(action_loc)["luz"] = true
 		var point_key: String = "fogao" if kind == "cozinhar" else ("computador" if kind == "pc" else "sofa")
-		var target: Vector2 = wv.city.use_points[home][point_key]["path"].back()
-		await _put_player(target + Vector2(0.0, 0.6), home)
+		check(wv.city.use_points[action_loc].has(point_key), kind + ": objeto real disponível")
+		if not wv.city.use_points[action_loc].has(point_key):
+			get_tree().quit(1)
+			return
+		var target: Vector2 = wv.city.use_points[action_loc][point_key]["path"].back()
+		await _put_player(target + Vector2(0.0, 0.6), action_loc)
 		var clock := TimeManager.total_minutes
 		var money := GameState.money()
 		screen._do_action("casa:" + kind)
@@ -233,6 +263,13 @@ func _ready() -> void:
 			lying += 1
 	print("HOSPITAL pessoas deitadas: ", lying)
 	await _shot("hospital")
+	wv.layout.ensure_chunk(Vector2i(4, 2))
+	var crossing: PackedVector2Array = wv.layout.route(Vector2(285, 165), Vector2(405, 165))
+	check(not crossing.is_empty() and crossing[crossing.size() - 1] == Vector2(405, 165), "ações mantêm navegação entre regiões")
 	print("RESULTADO ACOES: ", "OK" if fails == 0 else "%d falha(s)" % fails)
 	SaveManager.delete_save()
 	get_tree().quit()
+
+
+func _stream_mock(_messages: Array) -> Dictionary:
+	return {"ok": true, "text": "{\"fala\":\"Tudo bem.\",\"emocao\":\"neutro\"}"}

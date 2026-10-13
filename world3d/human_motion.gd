@@ -1,5 +1,72 @@
 extends RefCounted
 
+const REST_POSES := ["relaxado", "peso_esquerda", "peso_direita", "olhar_ao_redor", "ajustar_manga"]
+
+# Base estreita durante a marcha, sem apagar flexão/avanço do joelho.
+# Usa rotações sobre os clipes: não desloca vértices, cápsula ou pivôs.
+static func stance(person, delta: float) -> void:
+	if person.player_motion != null and person.player_motion.get("mocap") == true and person.player_motion.active:
+		# Captura de movimento já tem base, joelhos e peso corretos: nada de reapontar pernas.
+		# Só as variações de repouso (peso numa perna, olhar ao redor) por cima da respiração.
+		var still: float = 1.0 - person.player_motion.move_weight
+		person.rest_weight = move_toward(person.rest_weight, still, delta * 2.0) if still > 0.98 else minf(person.rest_weight, still)
+		rest_pose(person)
+		return
+	if person.player_motion != null and person.player_motion.prototype and person.player_motion.active:
+		rest_pose(person)
+		return
+	if person.lying or person.busy_t > 0.0 or person.daily_action != "" or person.activity not in ["", "olhar", "conversar"]:
+		person.rest_weight = 0.0
+		return
+	var sk: Skeleton3D = person.skel
+	var moving: bool = person._speed > 0.15
+	var amount: float = person.player_motion.move_weight if person.player_motion != null and person.player_motion.active else smoothstep(0.05, 0.4, person._speed)
+	for side in ["l", "r"]:
+		var hip := sk.find_bone("thigh_" + side)
+		var knee := sk.find_bone("calf_" + side)
+		var ankle := sk.find_bone("foot_" + side)
+		var h: Vector3 = sk.get_bone_global_pose(hip).origin
+		var k: Vector3 = sk.get_bone_global_pose(knee).origin
+		var a: Vector3 = sk.get_bone_global_pose(ankle).origin
+		var sign_x := signf(h.x)
+		var rest_h: Vector3 = sk.get_bone_global_rest(hip).origin
+		var knee_x := sign_x * absf(rest_h.x) * lerpf(0.94, 0.75, amount)
+		person._aim_bone(hip, knee, Vector3(knee_x - h.x, k.y - h.y, k.z - h.z), 1.0)
+		k = sk.get_bone_global_pose(knee).origin
+		a = sk.get_bone_global_pose(ankle).origin
+		var ankle_x := sign_x * absf(rest_h.x) * lerpf(0.87, 0.57, amount)
+		person._aim_bone(knee, ankle, Vector3(ankle_x - k.x, a.y - k.y, a.z - k.z), 1.0)
+	person.rest_weight = move_toward(person.rest_weight, 0.0 if moving else 1.0, delta * 3.0)
+	rest_pose(person)
+
+
+static func rest_pose(person) -> void:
+	if person.rest_weight <= 0.001 or not person._lod_near or person.talk_left > 0.0:
+		return
+	# Determinístico por pessoa, com intervalos lentos e envelopes suaves.
+	var time: float = person.t + fposmod(person.seed_n * 0.031, 17.0)
+	var slot := int(floor(time / 12.0))
+	var local: float = fposmod(time, 12.0)
+	var weight: float = smoothstep(0.0, 2.0, local) * (1.0 - smoothstep(9.0, 12.0, local)) * person.rest_weight
+	var pose := posmod(int(person.seed_n) + slot, REST_POSES.size())
+	person.idle_pose = REST_POSES[pose]
+	var sway: float = (-1.0 if pose == 1 else (1.0 if pose == 2 else 0.25 * sin(time * 0.35))) * weight
+	person._rotate_local("pelvis", Vector3(0, 0, sway * 0.018))
+	person._rotate_local("spine_02", Vector3(sin(time * 1.18) * 0.007 * person.rest_weight, 0, -sway * 0.012))
+	person._rotate_local("Head", Vector3(sin(time * 0.42) * 0.014 * weight, sin(time * 0.31) * (0.10 if pose == 3 else 0.025) * weight, 0))
+	if person.umbrella_on or person.stroller_on or person.gesture_left > 0.0 or person._wave_t > 0.0:
+		return
+	# captura de movimento já tem braços naturais: a mão "ajeitando a manga" cruzava o corpo
+	# (o IK não desvia do tronco) e o braço atravessava o peito
+	if person.player_motion != null and person.player_motion.get("mocap") == true and person.player_motion.active:
+		return
+	if pose == 4:
+		person._reach_hand("r", Vector3(0.16, 0.99, 0.16), weight * 0.65)
+		person._reach_hand("l", Vector3(0.19, 0.92, 0.12), weight * 0.30)
+	else:
+		person._rotate_local("clavicle_l", Vector3(0, 0, weight * 0.015))
+		person._rotate_local("clavicle_r", Vector3(0, 0, -weight * 0.008))
+
 # Ritmos cotidianos; idade não implica deformação da coluna.
 static func profile(age: int) -> Dictionary:
 	if age < 13:
@@ -12,10 +79,22 @@ static func profile(age: int) -> Dictionary:
 
 
 static func apply(person, delta: float) -> void:
+	if person.player_motion != null and person.player_motion.prototype and person.player_motion.active:
+		person.player_motion.body(person, delta)
+		return
 	if not person._lod_near or person.lying:
 		return
 	var sk: Skeleton3D = person.skel
-	if person._speed > 0.35 and person.activity != "sentar":
+	if person.player_motion != null and person.player_motion.active and person.activity != "sentar":
+		person.player_motion.dynamics(person, delta)
+	if person.player_motion != null and person.player_motion.get("mocap") == true and person.player_motion.active and person.daily_action == "" and person.activity in ["", "olhar", "conversar"]:
+		return
+	if person._speed > 0.35 and person.activity != "sentar" and person.player_motion != null:
+		# A UAL já coordena braços e pernas. Mantém esse contrabalanço e adiciona
+		# apenas um pequeno assentamento do tronco, sem apagar 80–90% da pose.
+		var phase: float = person.player_motion.phase * TAU
+		person._rotate_local("spine_02", Vector3(-0.012 * person.player_motion.run_weight, sin(phase) * 0.008, 0))
+	if person._speed > 0.35 and person.activity != "sentar" and person.player_motion == null:
 		var age_profile := profile(int(person.look.get("age", 30)))
 		var running: bool = person._cur_anim in ["Jog_Fwd", "Sprint"]
 		var phase: float = person.ap.current_animation_position / maxf(person.ap.current_animation_length, 0.1) * TAU
@@ -39,7 +118,7 @@ static func apply(person, delta: float) -> void:
 		for name in ["spine_01", "spine_02", "spine_03", "neck_01", "Head"]:
 			var i := sk.find_bone(name)
 			if i >= 0:
-				sk.set_bone_pose_rotation(i, Quaternion.IDENTITY)
+				sk.set_bone_pose_rotation(i, Quaternion.IDENTITY.slerp(sk.get_bone_pose_rotation(i), 0.25))
 		var pelvis := sk.find_bone("pelvis")
 		if pelvis >= 0:
 			sk.set_bone_pose_rotation(pelvis, Quaternion(Vector3.FORWARD, sin(person.t * 0.55 + person.seed_n) * 0.006))

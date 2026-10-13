@@ -41,14 +41,18 @@ func figure(spec: Dictionary, age: int, gender: String, face: bool = false, emot
 	fig.set_process(false)
 	people.append(fig)
 	print("FIGURE ", gender, " ", age, " skeleton: ", fig.skel, " body: ", fig.body_mi)
-	if fig.ap != null:
-		fig.ap.play(animation)
-		for frame in 65:
-			fig.ap.advance(0.016)
-			fig._apply_posture(0.016)
-			if animation == "Idle":
-				fig._apply_hands(0.016)
-			fig._apply_face(0.016)
+	if animation == "Sitting_Idle":
+		fig.activity = "sentar"
+	elif animation == "Idle_Talking":
+		fig.talk_left = 5.0
+	# Usa o mesmo processamento do jogo, incluindo passada, postura e expressão.
+	var pace := 0.0
+	if animation in ["Walk", "Sprint"]:
+		var profile := Person.HumanMotion.profile(age)
+		pace = 1.4 * float(profile["walk"]) if animation == "Walk" else 5.0 * float(profile["run"])
+	for frame in 150:
+		fig._prev_pos = fig.global_position - Vector3(0, 0, pace / 60.0)
+		fig._process(1.0 / 60.0)
 	var cam := Camera3D.new()
 	root.add_child(cam)
 	cam.projection = Camera3D.PROJECTION_ORTHOGONAL
@@ -97,6 +101,10 @@ func _ready() -> void:
 	for a in ["Walk", "Sitting_Idle", "Idle_Talking"]:
 		figure(male, 34, "homem", false, "neutro", a)
 	await sheet("movimentos")
+	for age in [10, 30, 76]:
+		figure(male, age, "homem", false, "neutro", "Walk")
+		figure(male, age, "homem", false, "neutro", "Sprint")
+	await sheet("andar_correr_por_idade")
 	for body in 7:
 		figure({"pele": 2, "cabelo": 0, "barba": 1, "roupa": 0, "corpo": body, "rosto": 0}, 35, "homem")
 	await sheet("tipos_fisicos")

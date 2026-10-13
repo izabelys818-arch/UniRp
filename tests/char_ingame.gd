@@ -30,6 +30,8 @@ func _ready() -> void:
 	root.add_child(screen)
 	await get_tree().process_frame
 	var wv = screen.world_view
+	if not wv._built:
+		await wv.world_ready
 	screen.side_box.get_parent().get_parent().hide()
 	var tag := OS.get_environment("CHAR_TAG")
 	var p: Vector2 = wv.layout.door_out("praca") + Vector2(2, 3)

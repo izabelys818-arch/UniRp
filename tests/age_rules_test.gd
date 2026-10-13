@@ -35,6 +35,7 @@ func _shop_with(item: String) -> String:
 
 
 func _ready() -> void:
+	AIService.mock = _stream_mock
 	preload("res://world3d/world_view.gd").realtime = false
 	WorldEvents.random_enabled = false
 	_game(15)
@@ -93,3 +94,7 @@ func _ready() -> void:
 	check(Prompts.minor_rules(30, 40) == "", "adulto: nenhuma regra extra no prompt")
 	print("RESULTADO IDADE: ", "OK" if fails == 0 else "%d falha(s)" % fails)
 	get_tree().quit()
+
+
+func _stream_mock(_messages: Array) -> Dictionary:
+	return {"ok": true, "text": "{\"fala\":\"Tudo bem.\",\"emocao\":\"neutro\"}"}

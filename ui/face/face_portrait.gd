@@ -170,18 +170,24 @@ func _build() -> void:
 func _customize_skin() -> void:
 	if _person._face_mi == null or _person._anatomy.is_empty():
 		return
-	var base := _person._face_mi.material_override as StandardMaterial3D
+	# a pele do corpo agora é um shader próprio (human_skin): lê textura e tom dele
+	var base: Material = _person._face_mi.material_override
+	var skin_tex: Texture2D = null
+	var skin_tint := Color.WHITE
+	if base is ShaderMaterial:
+		skin_tex = (base as ShaderMaterial).get_shader_parameter("skin_map")
+		skin_tint = (base as ShaderMaterial).get_shader_parameter("tint")
+	elif base is StandardMaterial3D:
+		skin_tex = (base as StandardMaterial3D).albedo_texture
+		skin_tint = (base as StandardMaterial3D).albedo_color
 	_skin_fx = ShaderMaterial.new()
 	_skin_fx.shader = SKIN
 	_skin_fx.next_pass = base.next_pass
-	_skin_fx.set_shader_parameter("skin_texture", base.albedo_texture)
-	_skin_fx.set_shader_parameter("skin_tint", base.albedo_color)
+	_skin_fx.set_shader_parameter("skin_texture", skin_tex)
+	_skin_fx.set_shader_parameter("skin_tint", skin_tint)
 	_skin_fx.set_shader_parameter("nose", _person._anatomy["nose"])
 	_skin_fx.set_shader_parameter("eye_left", _person._anatomy["eye_l"])
 	_skin_fx.set_shader_parameter("eye_right", _person._anatomy["eye_r"])
-	_skin_fx.set_shader_parameter("mouth_y", _person._anatomy["mouth_y"])
-	_skin_fx.set_shader_parameter("mouth_width", _person._anatomy["mouth_x"] * float(look.get("mouth_w", 1.0)) * 0.9)
-	_skin_fx.set_shader_parameter("gold_tooth", 10 in look.get("marks", []) or "dente_ouro" in look.get("extras", []))
 	_person._face_mi.material_override = _skin_fx
 	_person.body_mi.material_override = _skin_fx
 
@@ -237,10 +243,6 @@ func _update_skin() -> void:
 		["tears", "tears"], ["sweat", "sweat"], ["menace", "shadow_eyes"]]:
 		_skin_fx.set_shader_parameter(pair[0], cur[pair[1]])
 	_skin_fx.set_shader_parameter("phase", t)
-	var jaw: float = _person._face_w.get("queixo", 0.0)
-	_skin_fx.set_shader_parameter("jaw_open", jaw)
-	for part in _person.oral_parts:
-		part.visible = jaw > 0.3
 
 
 func _update_finish() -> void:

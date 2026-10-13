@@ -14,10 +14,6 @@ uniform float tears = 0.0;
 uniform float sweat = 0.0;
 uniform float menace = 0.0;
 uniform float phase = 0.0;
-uniform float jaw_open = 0.0;
-uniform float mouth_y = 1.6;
-uniform float mouth_width = 0.025;
-uniform bool gold_tooth = false;
 varying vec3 face_position;
 
 float spot(vec3 p, vec3 c, vec3 radius) {
@@ -45,20 +41,7 @@ void fragment() {
 	base = mix(base, vec3(0.26, 0.04, 0.045), cut * bruise * front * 0.65);
 	base = mix(base, base * vec3(0.97, 1.01, 1.07), pale * 0.4);
 	base *= 1.0 - under_eyes * menace * front * 0.15;
-	// A base humana tem a linha labial fechada. O interior aparece somente
-	// quando o maxilar se abre; dentes são discretos e nunca branco puro.
-	float opening = clamp(jaw_open, 0.0, 1.0);
-	vec2 oral = vec2(p.x / max(mouth_width, 0.005),
-		(p.y - mouth_y + opening * 0.0045) / max(opening * 0.01, 0.0001));
-	float aperture = (1.0 - smoothstep(0.52, 1.0, dot(oral, oral)));
-	aperture *= smoothstep(0.06, 0.3, opening) * smoothstep(nose.z - 0.04, nose.z - 0.015, p.z);
-	float teeth = smoothstep(0.0, 0.25, oral.y) * (1.0 - smoothstep(0.5, 0.8, oral.y));
-	float seam = 1.0 - smoothstep(0.85, 0.99, fract((oral.x + 1.0) * 4.0));
-	vec3 oral_color = mix(vec3(0.045, 0.014, 0.018), vec3(0.54, 0.49, 0.4) * (0.85 + seam * 0.15), teeth * 0.95);
-	if (gold_tooth && oral.x > -0.25 && oral.x < 0.0) {
-		oral_color = mix(oral_color, vec3(0.58,0.39,0.11),teeth);
-	}
-	base = mix(base, oral_color, aperture);
+	// Lábios e dentes são geometria. Não pinta uma segunda boca por cima da textura.
 	float wet = 0.0;
 	for (int i = 0; i < 2; i++) {
 		vec3 eye = i == 0 ? eye_left : eye_right;

@@ -30,7 +30,6 @@ func _ready() -> void:
 	vp.msaa_3d = Viewport.MSAA_4X
 	vp.handle_input_locally = false
 	add_child(vp)
-	_environment()
 	cam = Camera3D.new()
 	cam.fov = 42.0
 	cam.near = 0.6
@@ -85,6 +84,11 @@ func _environment() -> void:
 func _build_later() -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
+	if is_queued_for_deletion() or not is_inside_tree():
+		return
+	# O céu só é criado quando a tela realmente permanece aberta. Cancelar o
+	# menu antes do primeiro quadro deixava duas texturas pendentes no GLES3.
+	_environment()
 	var layout := Layout.new()
 	city = CityBuilder.new()
 	vp.add_child(city)

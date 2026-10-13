@@ -65,6 +65,9 @@ var side_box: VBoxContainer
 var dialogue: DialogueBox
 var buttons: Dictionary = {}
 var context_menu: PopupMenu
+var object_menu: PopupMenu
+var object_target: Dictionary = {}
+var object_options: Array = []
 var context_target: String = ""
 
 var phone: PhonePanel
@@ -84,14 +87,19 @@ var toast_panel: PanelContainer
 var toast_tween: Tween
 # menu de pausa (Esc)
 var pause_layer: Control
+var settings_overlay: Control
 var pause_box: PanelContainer
 var pause_sub: Label
 var pause_status: Label
 var pause_confirm: VBoxContainer
 var pause_confirm_text: Label
 var pause_buttons: VBoxContainer
+var pause_confirm_yes: Button
+var pause_confirm_no: Button
 var _pause_tween: Tween
 var _confirm_action: Callable
+var _realtime_before_pause := true
+var _realtime_before_settings := true
 var refresh_queued := false
 var narrating := false
 var shown_scene := ""
@@ -122,7 +130,7 @@ func _ready() -> void:
 	if not GameState.log_entries.is_empty():
 		_on_log(GameState.log_entries[-1])
 	_refresh()
-	get_tree().create_timer(1.2).timeout.connect(func() -> void: _toast("WASD anda  •  clique no chão para ir  •  clique numa pessoa para conversar  •  F1 ajuda"))
+	get_tree().create_timer(1.2).timeout.connect(func() -> void: _toast("WASD anda • %s alterna câmera • E interage em terceira pessoa • F1 ajuda" % OS.get_keycode_string(Settings.camera_key)))
 	if args.has("new_origin"):
 		World.start_story(args["new_origin"])
 
@@ -145,10 +153,14 @@ func _build() -> void:
 	world_view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	world_view.npc_chosen.connect(_on_walk_npc)
 	world_view.npc_menu.connect(_open_context)
+	world_view.object_chosen.connect(_open_object)
 	world_view.toast.connect(_toast)
 	world_view.world_ready.connect(_queue_refresh)
 	world_view.pause_check = func() -> bool:
-		return phone.visible or bag.visible or map_panel.visible or shop.visible or history.visible or money_panel.visible or choice_panel.visible or business_panel.visible or (pause_layer != null and pause_layer.visible)
+		for panel in [phone, bag, map_panel, shop, history, money_panel, choice_panel, business_panel, pause_layer, context_menu, object_menu, help_panel, settings_overlay]:
+			if is_instance_valid(panel) and panel.visible:
+				return true
+		return false
 	add_child(world_view)
 	grade = FilmFx.new()
 	grade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -287,6 +299,9 @@ func _build() -> void:
 	context_menu = PopupMenu.new()
 	context_menu.id_pressed.connect(_on_context)
 	add_child(context_menu)
+	object_menu = PopupMenu.new()
+	object_menu.id_pressed.connect(_on_object)
+	add_child(object_menu)
 
 	toast_panel = PanelContainer.new()
 	var tsb := UI.glass(12, 12)
@@ -470,6 +485,107 @@ func _open_context(id: String) -> void:
 	context_menu.popup()
 
 
+func _object_actions(target: Dictionary) -> Array:
+	var out: Array = []
+	if world_view.action_busy():
+		return [{"label": "Levantar / interromper atividade", "kind": "stop"}]
+	if not world_view.object_access(target):
+		return out
+	var owner: Node3D = target.get("owner")
+	if owner != null and owner.has_method("wake") and not owner.broken:
+		out.append({"label": "Derrubar" if owner.held else "Pegar", "kind": "physical_hold"})
+	var available: Array = Economy.available_actions()
+	var ids: Array = available.map(func(a): return str(a["id"]))
+	match str(target["kind"]):
+		"stairs":
+			return [{"label": "Subir um andar" if int(target["plan"]["destination_floor"]) > int(target["plan"]["floor"]) else "Descer um andar", "kind": "stairs"}]
+		"bed":
+			out.append({"label": "Deitar", "kind": "deitar"})
+			for action in ["dormir_casa", "dormir_quarto", "casa_g:dormir"]:
+				if action in ids:
+					out.append({"label": "Deitar e dormir (8h)", "kind": "dormir", "action": action})
+					break
+		"seat", "tv":
+			out.append({"label": "Sentar", "kind": "sentar"})
+			var action := "casa:tv" if str(target["kind"]) == "tv" else "casa:sofa"
+			if action in ids:
+				out.append({"label": "Assistir TV (1h)" if action == "casa:tv" else "Descansar (1h)", "kind": "tv" if action == "casa:tv" else "sofa", "action": action})
+		"stove":
+			if "casa:cozinhar" in ids:
+				out.append({"label": "Cozinhar uma refeição (R$8)", "kind": "cozinhar", "action": "casa:cozinhar"})
+		"bath":
+			if "banho_casa" in ids:
+				out.append({"label": "Tomar banho", "kind": "banho", "action": "banho_casa"})
+		"computer":
+			if "casa:pc" in ids:
+				out.append({"label": "Trabalhar no computador (2h)", "kind": "pc", "action": "casa:pc"})
+		"storage":
+			if "casa_g:vasculhar" in ids:
+				out.append({"label": "Vasculhar e pegar o que encontrar (30min)", "kind": "pegar", "action": "casa_g:vasculhar"})
+		"shop":
+			if World.shop_open() and World.current_id() == str(target["loc"]):
+				for item in target.get("items", []):
+					var kind := str(GameState.MINOR_ITEMS.get(str(item), ""))
+					if GameState.minor_block(kind) == "":
+						out.append({"label": "Pegar e comprar %s — R$%d" % [World.item_name(str(item)), World.item_price(str(item))], "kind": "pegar", "item": str(item)})
+	out.append({"label": "Examinar " + str(target["label"]).to_lower(), "kind": "examinar"})
+	return out
+
+
+func _open_object(target: Dictionary) -> void:
+	object_target = target
+	object_options = _object_actions(target)
+	if object_options.is_empty():
+		return
+	object_menu.clear()
+	object_menu.add_separator(str(target["label"]))
+	for index in object_options.size():
+		object_menu.add_item(str(object_options[index]["label"]), index)
+	object_menu.position = Vector2i(get_global_mouse_position())
+	object_menu.reset_size()
+	object_menu.popup()
+
+
+func _on_object(index: int) -> void:
+	if index < 0 or index >= object_options.size():
+		return
+	var option: Dictionary = object_options[index]
+	if str(option["kind"]) == "stairs":
+		object_menu.hide()
+		if not world_view.use_stairs(object_target):
+			_toast("Não foi possível alcançar a escada.")
+		return
+	if str(option["kind"]) == "stop":
+		world_view._cancel_action("Você se levanta.")
+		return
+	# Revalida no clique e no fim da animação: não dá item/renda se a ação mudou.
+	if not option in _object_actions(object_target):
+		_toast("Essa ação não está disponível agora.")
+		return
+	var target := object_target.duplicate()
+	var effect := func() -> bool:
+		if str(option.get("action", "")) != "":
+			var ids: Array = Economy.available_actions().map(func(a): return str(a["id"]))
+			if str(option["action"]) in ids and World.current_id() == str(target["loc"]):
+				Economy.do_action(str(option["action"]))
+			else:
+				return false
+		elif str(option.get("item", "")) != "":
+			if World.current_id() == str(target["loc"]):
+				var before := GameState.item_count(str(option["item"]))
+				Economy.buy(str(option["item"]))
+				return GameState.item_count(str(option["item"])) > before
+			return false
+		elif str(option["kind"]) == "examinar":
+			_toast(str(target["label"]) + ": " + ("mercadorias à venda" if str(target["kind"]) == "shop" else "um objeto usado no cotidiano"))
+		return true
+	if str(option["kind"]) == "physical_hold":
+		world_view.physical_world.toggle_hold(target)
+		return
+	if not world_view.start_object_action(target, str(option["kind"]), effect, str(option.get("item", ""))):
+		_toast("Não há espaço livre para essa atividade agora.")
+
+
 func _ensure_talking(id: String) -> bool:
 	if NPCManager.talking_to != id:
 		NPCManager.start_conversation(id)
@@ -503,6 +619,7 @@ func _on_context(menu_id: int) -> void:
 			return
 		SocialSystem.contact(id, {9: "cumprimento", 10: "abraco", 11: "beijo"}[menu_id])
 		return
+	if menu_id == 7 and not world_view.push_npc(id): return
 	if MENU_ACTIONS.has(menu_id):
 		NPCManager.talk(MENU_ACTIONS[menu_id])
 	elif menu_id == MENU_MONEY:
@@ -538,6 +655,8 @@ func _refresh() -> void:
 		if street != "":
 			place_title.text = street
 	place_sub.text = "%s • %02d:%02d • %s" % [TimeManager.short_date_str(), TimeManager.hour(), TimeManager.minute(), TimeManager.period()]
+	if int(GameState.player.get("interior_floor", 0)) > 0:
+		place_sub.text += " • %dº andar" % (int(GameState.player["interior_floor"]) + 1)
 	(money_chip.get_child(0) as Label).text = "R$ %d" % GameState.money()
 	stars_view.set_stars(CrimeSystem.wanted())
 	var hol := Holidays.label_today()
@@ -583,7 +702,7 @@ func _do_action(id: String) -> void:
 	match id:
 		"casa:cozinhar", "casa:tv", "casa:sofa", "casa:pc":
 			kind = id.trim_prefix("casa:")
-		"dormir_casa", "dormir_quarto":
+		"dormir_casa", "dormir_quarto", "casa_g:dormir":
 			kind = "dormir"
 		"banho_casa":
 			if bool(HomeSystem.utils(World.current_id()).get("agua", true)):
@@ -747,6 +866,11 @@ func _toast(text: String) -> void:
 func _unhandled_key_input(e: InputEvent) -> void:
 	if not (e is InputEventKey and e.pressed and not e.echo):
 		return
+	if is_instance_valid(settings_overlay):
+		if e.keycode == KEY_ESCAPE:
+			settings_overlay._back()
+		get_viewport().set_input_as_handled()
+		return
 	if e.keycode == KEY_ESCAPE:
 		if pause_layer.visible:
 			close_pause()
@@ -789,10 +913,10 @@ func _toggle_help() -> void:
 		v.add_child(UI.title("Como jogar", 24))
 		var lines := [
 			["Andar", "WASD ou setas  •  Shift corre  •  clique no chão para ir até lá"],
-			["Câmera", "roda do mouse aproxima e afasta"],
+			["Câmera", "%s alterna • roda ajusta zoom/distância • terceira pessoa: arraste o botão direito para olhar" % OS.get_keycode_string(Settings.camera_key)],
 			["Conversar", "clique numa pessoa (ou na lista Pessoas aqui)  •  escreva e aperte Enter"],
 			["Ações", "use *asteriscos* para gestos: *ofereço um café*  •  só funciona com o que você tem"],
-			["Opções", "botão direito numa pessoa: elogiar, ameaçar, dar dinheiro, roubar..."],
+			["Opções", "botão direito numa pessoa • terceira pessoa: E interage; com mensagem aberta, E continua a leitura"],
 			["Lugares", "o painel da direita mostra o que dá para fazer onde você está"],
 			["Portas", "chegue perto de uma porta trancada: tentar, bater ou arrombar aparecem no painel"],
 			["Atalhos", "M mapa  •  B bolsa  •  C celular  •  H histórico  •  F1 esta ajuda"],
@@ -843,7 +967,22 @@ func _save() -> void:
 
 
 func _settings() -> void:
-	navigate.emit("settings", {"back": "game"})
+	if is_instance_valid(settings_overlay):
+		return
+	world_view._release_orbit()
+	_realtime_before_settings = WorldView.realtime
+	WorldView.realtime = false
+	settings_overlay = preload("res://ui/settings_screen.gd").new()
+	settings_overlay.set("args", {"back": "game"})
+	settings_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	settings_overlay.navigate.connect(func(_screen: String, _args: Dictionary):
+		var overlay := settings_overlay
+		settings_overlay = null
+		overlay.hide()
+		overlay.queue_free()
+		if not pause_layer.visible:
+			WorldView.realtime = _realtime_before_settings)
+	add_child(settings_overlay)
 
 
 func _on_game_over(reason: String) -> void:
@@ -908,10 +1047,12 @@ func _build_pause() -> void:
 	var specs := [
 		["Continuar", close_pause, "accent"],
 		["Salvar jogo", _pause_save, ""],
-		["Configurações", func() -> void: close_pause(); _settings(), ""],
+		["Configurações", _settings, ""],
+		["Sobre o jogo", _show_about, ""],
 		["Como jogar  (F1)", func() -> void: close_pause(); _toggle_help(), ""],
 		["Salvar e sair para o início", _save_and_exit, ""],
 		["Sair sem salvar", _ask_exit_no_save, "danger"],
+		["Sair do jogo", _ask_quit_game, "danger"],
 	]
 	for sp in specs:
 		var b: Button = UI.accent_button(sp[0], sp[1]) if sp[2] == "accent" else UI.button(sp[0], sp[1])
@@ -942,6 +1083,11 @@ func _build_pause() -> void:
 	var no := UI.accent_button("Voltar", _cancel_confirm)
 	no.custom_minimum_size = Vector2(150, 40)
 	crow.add_child(no)
+	pause_confirm_yes = yes
+	pause_confirm_no = no
+	var version := UI.label("UniRp  •  v0.9 (11/out)", 12, UI.MUTED)
+	version.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(version)
 
 
 # Aniversário do jogador: retrato, idade no cartão e corpo 3D acompanham a idade nova.
@@ -956,6 +1102,8 @@ func _on_birthday(id: String, _age: int) -> void:
 func open_pause() -> void:
 	if pause_layer.visible:
 		return
+	_realtime_before_pause = WorldView.realtime
+	WorldView.realtime = false
 	pause_sub.text = "%s  •  %s, %s  •  %02d:%02d" % [place_title.text, TimeManager.weekday(), TimeManager.date_str(), TimeManager.hour(), TimeManager.minute()]
 	pause_status.hide()
 	_cancel_confirm()
@@ -973,6 +1121,7 @@ func open_pause() -> void:
 func close_pause() -> void:
 	if not pause_layer.visible:
 		return
+	WorldView.realtime = _realtime_before_pause
 	if _pause_tween:
 		_pause_tween.kill()
 	_pause_tween = create_tween()
@@ -1017,22 +1166,69 @@ func _ask_exit_no_save() -> void:
 	_ask_confirm("Sair sem salvar? Tudo o que aconteceu desde o último salvamento será perdido.", _leave_to_title)
 
 
+func _ask_quit_game() -> void:
+	_ask_confirm("Fechar o UniRp agora? O progresso não salvo será perdido.", _quit_game)
+
+
+func _quit_game() -> void:
+	_clear_pending_interaction()
+	get_tree().quit()
+
+
 func _ask_confirm(text: String, action: Callable) -> void:
 	_confirm_action = action
 	pause_confirm_text.text = text
+	pause_confirm_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	pause_confirm_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	pause_confirm_yes.show()
+	pause_confirm_no.text = "Voltar"
 	pause_buttons.hide()
 	pause_confirm.show()
+	pause_confirm_no.grab_focus()
+
+
+func _show_about() -> void:
+	_confirm_action = Callable()
+	pause_confirm_text.text = "UniRp  •  v0.9\n13 de outubro de 2026\n\nUm RPG de vida ambientado em Porto Cinza e outras cidades.\n\nCréditos de conteúdo CC0\nMakeHuman hm08 • Universal Animation Library • Quaternius e Kenney"
+	pause_confirm_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	pause_confirm_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	pause_confirm_yes.hide()
+	pause_confirm_no.text = "Voltar"
+	pause_buttons.hide()
+	pause_confirm.show()
+	pause_confirm_no.grab_focus()
 
 
 func _cancel_confirm() -> void:
 	pause_confirm.hide()
 	pause_buttons.show()
+	_confirm_action = Callable()
 	for b in pause_buttons.get_children():
 		(b as Button).disabled = false
 
 
 func _leave_to_title() -> void:
+	_clear_pending_interaction()
 	if NPCManager.talking_to != "":
 		NPCManager.end_conversation()
 	pause_layer.hide()
+	WorldView.realtime = true
 	navigate.emit("menu", {})
+
+
+func _clear_pending_interaction() -> void:
+	if is_instance_valid(context_menu):
+		context_menu.hide()
+	if is_instance_valid(object_menu):
+		object_menu.hide()
+	context_target = ""
+	object_target.clear()
+	object_options.clear()
+	if is_instance_valid(world_view):
+		world_view.pending_npc = ""
+		world_view.hover_id = ""
+		world_view.hover_object.clear()
+		world_view.path = PackedVector2Array()
+		world_view._release_orbit(false)
+		if world_view.action_busy():
+			world_view._cancel_action("")

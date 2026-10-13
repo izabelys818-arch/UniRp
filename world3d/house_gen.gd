@@ -6,8 +6,10 @@ extends RefCounted
 # a frente fica em +z. O nó raiz é girado em 180° quando a casa olha para o norte.
 
 const Kit = preload("res://world3d/mesh_kit.gd")
+const Flora = preload("res://world3d/flora.gd")
 const Furn = preload("res://world3d/furn_lib.gd")
 const Art = preload("res://world3d/art_style.gd")
+const Interiors = preload("res://world3d/interior_builder.gd")
 
 const Y0 := 0.17
 const H := 2.9
@@ -32,7 +34,8 @@ func _jit(c: Color, a: float = 0.05) -> Color:
 
 
 func _style(lot: Dictionary) -> Dictionary:
-	var abandoned: bool = str(Houses.st(lot["id"])["tipo"]) == "abandonada"
+	var state: Dictionary = Houses.preview_state(lot["id"]) if World.locations[lot["id"]].get("streamed", false) else Houses.st(lot["id"])
+	var abandoned: bool = str(state["tipo"]) == "abandonada"
 	var w: float = (lot["building"] as Rect2).size.x
 	var wall := Art.pick("walls", rng) if rng.randf() < 0.82 else Art.pick("accent_walls", rng)
 	var st := {
@@ -52,6 +55,14 @@ func _style(lot: Dictionary) -> Dictionary:
 		"porch_life": rng.randi() % 4,
 	}
 	st["trim"] = Art.pick("trims", rng)
+	if lot.get("urban", false):
+		st["urban"] = true
+		st["porch"] = false
+		st["garage"] = false
+		st["fence"] = "none"
+		st["chimney"] = false
+		st["tank"] = false
+		st["kind"] = "flat" if int(lot.get("floors", 1)) == 3 or absi(int(lot["seed"])) % 2 == 0 else "gable_x"
 	if abandoned:
 		st["wear"] = maxf(float(st["wear"]), 0.85)
 	if abandoned:
@@ -78,6 +89,7 @@ func _sb(body: StaticBody3D, rect: Rect2, h: float, y: float = 0.0) -> Collision
 
 
 func _mesh(k: Kit, parent: Node3D, m: Material = null) -> MeshInstance3D:
+	k.install_colliders(parent)
 	var mesh := k.commit(m if m else city.mat)
 	city._add_shadow(k, parent)
 	if mesh == null:
@@ -89,25 +101,9 @@ func _mesh(k: Kit, parent: Node3D, m: Material = null) -> MeshInstance3D:
 
 
 func _tree(k: Kit, p: Vector3, scale: float, kind: int) -> void:
-	var g := Color("#3f6b35").lerp(Color("#7a9a3a"), rng.randf())
-	if kind == 0:
-		var h := rng.randf_range(2.4, 3.4) * scale
-		k.cyl(p, 0.17 * scale, h, Color("#5a4330"))
-		k.sphere(p + Vector3(0, h + 0.5 * scale, 0), Vector3(3.2, 2.4, 3.2) * scale, g)
-		k.sphere(p + Vector3(0.7, h + 1.3 * scale, 0.3), Vector3(2.3, 1.8, 2.3) * scale, g.lightened(0.08))
-		k.sphere(p + Vector3(-0.6, h + 1.0 * scale, -0.5), Vector3(2.1, 1.7, 2.1) * scale, g.darkened(0.08))
-	elif kind == 1:
-		var h2 := rng.randf_range(3.2, 4.4) * scale
-		k.cyl(p, 0.15 * scale, h2 * 0.35, Color("#4a3a2a"))
-		k.cone(p + Vector3(0, h2 * 0.2, 0), 1.5 * scale, h2 * 0.5, g.darkened(0.2))
-		k.cone(p + Vector3(0, h2 * 0.5, 0), 1.1 * scale, h2 * 0.4, g.darkened(0.12))
-		k.cone(p + Vector3(0, h2 * 0.72, 0), 0.7 * scale, h2 * 0.3, g.darkened(0.05))
-	else:
-		var h3 := rng.randf_range(3.0, 4.2) * scale
-		k.cyl(p, 0.13 * scale, h3, Color("#8a7355"))
-		for i in 6:
-			var a := TAU * i / 6.0
-			k.box(p + Vector3(cos(a) * 0.7 * scale, h3 + 0.1, sin(a) * 0.7 * scale), Vector3(1.4 * scale, 0.1, 0.3), Color("#3f7a35"), -a)
+	# copa de folhas reais (Flora + Foliage): 0 frondosa, 1 pinheiro em camadas, 2 palmeira
+	var sp: String = ["copa", "conica", "palmeira"][clampi(kind, 0, 2)]
+	Flora.tree(k, p, scale, rng, sp, kind == 0)
 
 
 func _bush(k: Kit, p: Vector3, s: float) -> void:
@@ -123,6 +119,7 @@ func build(c: Node3D, lot: Dictionary) -> Dictionary:
 	rng.seed = int(lot["seed"])
 	var id: String = lot["id"]
 	var b: Rect2 = lot["building"]
+	preload("res://world3d/grass_field.gd").exclude_interior(b)
 	var north: bool = lot["north"]
 	var w := b.size.x
 	var d := b.size.y
@@ -133,6 +130,7 @@ func build(c: Node3D, lot: Dictionary) -> Dictionary:
 	root.rotation.y = PI if north else 0.0
 	city.add_child(root)
 	var body := StaticBody3D.new()
+	body.collision_layer = 3
 	root.add_child(body)
 	var full := Node3D.new()
 	var cut := Node3D.new()
@@ -151,6 +149,8 @@ func build(c: Node3D, lot: Dictionary) -> Dictionary:
 		local_lot = Rect2(lr.position.x - cen.x, lr.position.y - cen.y, lr.size.x, lr.size.y)
 	var s := {"rect": b, "full": full, "cut": cut, "loc": id, "cut_now": false, "root": root, "body": body, "interior": null,
 		"lit": lit, "lot": lot, "style": st, "w": w, "d": d, "dx": dx, "lr": local_lot, "windows": []}
+	s["floor_count"] = int(lot.get("floors", 1))
+	s["floor_height"] = H
 	city.structures.append(s)
 	var ka := Kit.new()
 	var kf := Kit.new()
@@ -158,9 +158,23 @@ func build(c: Node3D, lot: Dictionary) -> Dictionary:
 	var kw := Kit.new()
 	var kl := Kit.new()
 	var kcw := Kit.new()       # vidro das janelas visto de dentro, na versão aberta
+	await city.generation_checkpoint()
+	# Paredes do fundo da versão aberta: inteiras com o jogador dentro (The Sims), baixas quando
+	await city.generation_checkpoint()
+	# a casa só está tapando o jogador do lado de fora (Project Zomboid).
+	var kb := Kit.new()
+	var kbl := Kit.new()
+	for kit in [ka, kf, kc, kw, kl, kcw, kb, kbl]:
+		await city.generation_checkpoint()
+		(kit as Kit).world_xf = root.transform
 	kw.vary_glass = true
 	kl.vary_lit = true
 	kcw.vary_glass = true
+	await city.generation_checkpoint()
+	# Janelas também dependem do lote, não da ordem global de construção.
+	kw._vr.seed = int(lot["seed"]) + 19
+	kl._vr.seed = int(lot["seed"]) + 23
+	kcw._vr.seed = int(lot["seed"]) + 29
 	var wall: Color = st["wall"]
 	var trim: Color = st["trim"]
 	var x0 := -w / 2.0
@@ -169,15 +183,21 @@ func build(c: Node3D, lot: Dictionary) -> Dictionary:
 	var z1 := d / 2.0
 	var door_w := 1.05
 	var gar_w: float = 3.2 if st["garage"] else 0.0
+	await city.generation_checkpoint()
 	# --- quintal ---
+	var urban: bool = lot.get("urban", false)
 	var yard_c := (Color("#5a7a3f") if not st["abandoned"] else Color("#6f7a45")).lerp(Color("#4a6438"), rng.randf() * 0.5)
+	if urban:
+		yard_c = Art.col("sidewalk").lerp(Color("#897d69"), 0.25)
 	ka.box_ab(Vector3(local_lot.position.x, Y0, local_lot.position.y), Vector3(local_lot.end.x, Y0 + 0.02, local_lot.end.y), yard_c)
 	for i in rng.randi_range(2, 5):
+		await city.generation_checkpoint()
 		var px := rng.randf_range(local_lot.position.x + 1, local_lot.end.x - 1)
 		var pz := rng.randf_range(local_lot.position.y + 1, local_lot.end.y - 1)
 		if absf(px) < w / 2.0 + 0.5 and absf(pz) < d / 2.0 + 0.5:
 			continue
 		ka.box_ab(Vector3(px - 0.9, Y0 + 0.02, pz - 0.7), Vector3(px + 0.9, Y0 + 0.03, pz + 0.7), Color("#6e5d45") if rng.randf() < 0.6 else yard_c.lightened(0.1))
+	await city.generation_checkpoint()
 	# calçada de entrada e garagem
 	var front_z: float = local_lot.end.y
 	ka.box_ab(Vector3(dx - 0.6, Y0 + 0.02, z1), Vector3(dx + 0.6, Y0 + 0.04, front_z), Color("#a8a397"))
@@ -185,8 +205,11 @@ func build(c: Node3D, lot: Dictionary) -> Dictionary:
 	if st["garage"]:
 		drive_x = x0 + gar_w / 2.0 + 0.2
 		ka.box_ab(Vector3(drive_x - 1.5, Y0 + 0.02, z1), Vector3(drive_x + 1.5, Y0 + 0.04, front_z), Color("#8d8a82"))
-		if rng.randf() < 0.55:
-			city._car(ka, Vector3(drive_x, Y0 + 0.04, front_z - 3.2), 0.0, city._car_color())
+		var drive_len := front_z - z1
+		if rng.randf() < 0.55 and drive_len >= 5.2:
+			# de frente para a rua, com folga até a parede e até o portão
+			city._car(ka, Vector3(drive_x, Y0 + 0.04, z1 + drive_len * 0.5), 0.0, city._car_color())
+	await city.generation_checkpoint()
 	# --- fundação e piso ---
 	var fc2 := Color("#9a968c")
 	ka.box_ab(Vector3(x0 - 0.08, Y0, z0 - 0.08), Vector3(x1 + 0.08, Y0 + 0.5, z0 + T), fc2)
@@ -194,57 +217,6 @@ func build(c: Node3D, lot: Dictionary) -> Dictionary:
 	ka.box_ab(Vector3(x0 - 0.08, Y0, z0), Vector3(x0 + T, Y0 + 0.5, z1), fc2)
 	ka.box_ab(Vector3(x1 - T, Y0, z0), Vector3(x1 + 0.08, Y0 + 0.5, z1), fc2)
 	ka.box_ab(Vector3(x0, Y0, z0), Vector3(x1, Y0 + 0.06, z1), Color("#7a6248"))
-	# --- paredes (inteiras e cortadas) com vão da porta ---
-	var gap0 := dx - door_w / 2.0
-	var gap1 := dx + door_w / 2.0
-	# Versão aberta (jogador dentro): como no The Sims, só as paredes viradas para a câmera e o
-	# telhado baixam; as do fundo continuam inteiras. Câmera fica do lado +x/+z do mundo; a casa do
-	# lado norte da rua está girada 180°, então o "fundo" dela são as paredes z1/x1 locais.
-	var high := Y0 + H
-	for g in [[kf, true], [kc, false]]:
-		var k: Kit = g[0]
-		var whole: bool = g[1]
-		var low := Y0 + CUT_H
-		var t_z0: float = high if (whole or not north) else low
-		var t_z1: float = high if (whole or north) else low
-		var t_x0: float = high if (whole or not north) else low
-		var t_x1: float = high if (whole or north) else low
-		k.box_ab(Vector3(x0, Y0, z0), Vector3(x1, t_z0, z0 + T), wall)
-		k.box_ab(Vector3(x0, Y0, z0), Vector3(x0 + T, t_x0, z1), wall)
-		k.box_ab(Vector3(x1 - T, Y0, z0), Vector3(x1, t_x1, z1), wall)
-		k.box_ab(Vector3(x0, Y0, z1 - T), Vector3(gap0, t_z1, z1), wall)
-		k.box_ab(Vector3(gap1, Y0, z1 - T), Vector3(x1, t_z1, z1), wall)
-		# batentes
-		k.box_ab(Vector3(gap0 - 0.07, Y0, z1 - T - 0.02), Vector3(gap0, minf(t_z1, Y0 + 2.2) if t_z1 < high else t_z1, z1 + 0.03), trim)
-		k.box_ab(Vector3(gap1, Y0, z1 - T - 0.02), Vector3(gap1 + 0.07, minf(t_z1, Y0 + 2.2) if t_z1 < high else t_z1, z1 + 0.03), trim)
-		# cantos: inteiros se encostam numa parede do fundo
-		for cx in [x0, x1]:
-			for cz in [z0, z1]:
-				var tall: bool = whole or (cx == x0 and not north) or (cx == x1 and north) or (cz == z0 and not north) or (cz == z1 and north)
-				k.box_ab(Vector3(cx - 0.09, Y0, cz - 0.09), Vector3(cx + 0.09, high if tall else low, cz + 0.09), trim)
-	kf.box_ab(Vector3(gap0, Y0 + 2.15, z1 - T), Vector3(gap1, Y0 + H, z1), wall)
-	if north:
-		kc.box_ab(Vector3(gap0, Y0 + 2.15, z1 - T), Vector3(gap1, Y0 + H, z1), wall)
-	# acabamento interno das paredes do fundo (pintura clara e rodapé), visto com a casa aberta
-	var lining := wall.lerp(Color("#e6dcc8"), 0.6)
-	var base_c := lining.darkened(0.35)
-	if not north:
-		kc.box_ab(Vector3(x0 + T, Y0, z0 + T), Vector3(x1 - T, high - 0.02, z0 + T + 0.02), lining)
-		kc.box_ab(Vector3(x0 + T, Y0, z0 + T), Vector3(x1 - T, Y0 + 0.16, z0 + T + 0.045), base_c)
-		kc.box_ab(Vector3(x0 + T, Y0, z0 + T), Vector3(x0 + T + 0.02, high - 0.02, z1 - T), lining)
-		kc.box_ab(Vector3(x0 + T, Y0, z0 + T), Vector3(x0 + T + 0.045, Y0 + 0.16, z1 - T), base_c)
-	else:
-		for seg in [[x0 + T, gap0], [gap1, x1 - T]]:
-			kc.box_ab(Vector3(seg[0], Y0, z1 - T - 0.02), Vector3(seg[1], high - 0.02, z1 - T), lining)
-			kc.box_ab(Vector3(seg[0], Y0, z1 - T - 0.045), Vector3(seg[1], Y0 + 0.16, z1 - T), base_c)
-		kc.box_ab(Vector3(gap0, Y0 + 2.2, z1 - T - 0.02), Vector3(gap1, high - 0.02, z1 - T), lining)
-		kc.box_ab(Vector3(x1 - T - 0.02, Y0, z0 + T), Vector3(x1 - T, high - 0.02, z1 - T), lining)
-		kc.box_ab(Vector3(x1 - T - 0.045, Y0, z0 + T), Vector3(x1 - T, Y0 + 0.16, z1 - T), base_c)
-	_weather(kf, st, x0, x1, z0, z1, gap0, gap1)
-	kf.box_ab(Vector3(gap0 - 0.07, Y0 + 2.1, z1 - T - 0.02), Vector3(gap1 + 0.07, Y0 + 2.2, z1 + 0.03), trim)
-	# friso de topo
-	kf.box_ab(Vector3(x0 - 0.1, Y0 + H - 0.2, z0 - 0.1), Vector3(x1 + 0.1, Y0 + H, z1 + 0.1), trim.darkened(0.05))
-	# --- janelas ---
 	var wins: Array = []
 	var wx := x0 + 1.5
 	while wx < x1 - 1.0:
@@ -261,14 +233,99 @@ func build(c: Node3D, lot: Dictionary) -> Dictionary:
 	while wx < x1 - 1.0:
 		wins.append([Vector3(wx, 0, z0), PI])
 		wx += 2.9
+	var holes: Array = []
+	for wn in wins:
+		await city.generation_checkpoint()
+		var p: Vector3 = wn[0]
+		holes.append({"center": p + Vector3.UP * (Y0 + 1.55), "size": Vector2(1.12, 1.22), "along_x": absf(sin(float(wn[1]))) < 0.1})
+	for floor in range(1, int(s["floor_count"])):
+		await city.generation_checkpoint()
+		for wn in wins:
+			var p: Vector3 = wn[0]
+			holes.append({"center": p + Vector3.UP * (Y0 + 1.55 + floor * H), "size": Vector2(1.12, 1.22), "along_x": absf(sin(float(wn[1]))) < 0.1})
+	s["window_holes"] = holes
+	await city.generation_checkpoint()
+	# --- paredes (inteiras e cortadas) com vão da porta ---
+	var gap0 := dx - door_w / 2.0
+	var gap1 := dx + door_w / 2.0
+	await city.generation_checkpoint()
+	# Versão aberta (jogador dentro): como no The Sims, só as paredes viradas para a câmera e o
+	await city.generation_checkpoint()
+	# telhado baixam; as do fundo continuam inteiras. Câmera fica do lado +x/+z do mundo; a casa do
+	await city.generation_checkpoint()
+	# lado norte da rua está girada 180°, então o "fundo" dela são as paredes z1/x1 locais.
+	var high := Y0 + H
+	var low := Y0 + CUT_H
+	await city.generation_checkpoint()
+	# Na versão aberta, tudo que passa da altura baixa é parede do fundo: vai inteiro para kb e
+	await city.generation_checkpoint()
+	# cortado na altura baixa para kbl.
+	var open_box := func(a: Vector3, b2: Vector3, c: Color) -> void:
+		if b2.y <= low + 0.001:
+			kc.box_ab(a, b2, c)
+			return
+		kb.box_ab(a, b2, c)
+		if a.y < low:
+			kbl.box_ab(a, Vector3(b2.x, low, b2.z), c)
+	for g in [[kf, true], [kc, false]]:
+		await city.generation_checkpoint()
+		var k: Kit = g[0]
+		var whole: bool = g[1]
+		var put: Callable = Callable(k, "box_ab") if whole else open_box
+		var t_z0: float = high if (whole or not north) else low
+		var t_z1: float = high if (whole or north) else low
+		var t_x0: float = high if (whole or not north) else low
+		var t_x1: float = high if (whole or north) else low
+		await Interiors.wall_openings(put, Vector3(x0, Y0, z0), Vector3(x1, t_z0, z0 + T), wall, holes, city.generation_pause)
+		await Interiors.wall_openings(put, Vector3(x0, Y0, z0), Vector3(x0 + T, t_x0, z1), wall, holes, city.generation_pause)
+		await Interiors.wall_openings(put, Vector3(x1 - T, Y0, z0), Vector3(x1, t_x1, z1), wall, holes, city.generation_pause)
+		await Interiors.wall_openings(put, Vector3(x0, Y0, z1 - T), Vector3(gap0, t_z1, z1), wall, holes, city.generation_pause)
+		await Interiors.wall_openings(put, Vector3(gap1, Y0, z1 - T), Vector3(x1, t_z1, z1), wall, holes, city.generation_pause)
+		# batentes
+		put.call(Vector3(gap0 - 0.07, Y0, z1 - T - 0.02), Vector3(gap0, minf(t_z1, Y0 + 2.2) if t_z1 < high else t_z1, z1 + 0.03), trim)
+		put.call(Vector3(gap1, Y0, z1 - T - 0.02), Vector3(gap1 + 0.07, minf(t_z1, Y0 + 2.2) if t_z1 < high else t_z1, z1 + 0.03), trim)
+		# cantos: inteiros se encostam numa parede do fundo
+		for cx in [x0, x1]:
+			for cz in [z0, z1]:
+				var tall: bool = whole or (cx == x0 and not north) or (cx == x1 and north) or (cz == z0 and not north) or (cz == z1 and north)
+				put.call(Vector3(cx - 0.09, Y0, cz - 0.09), Vector3(cx + 0.09, high if tall else low, cz + 0.09), trim)
+	kf.box_ab(Vector3(gap0, Y0 + 2.15, z1 - T), Vector3(gap1, Y0 + H, z1), wall)
+	if north:
+		open_box.call(Vector3(gap0, Y0 + 2.15, z1 - T), Vector3(gap1, Y0 + H, z1), wall)
+	await city.generation_checkpoint()
+	# acabamento interno das paredes do fundo (pintura clara e rodapé), visto com a casa aberta
+	var lining := wall.lerp(Color("#e6dcc8"), 0.6)
+	var base_c := lining.darkened(0.35)
+	if not north:
+		await Interiors.wall_openings(open_box, Vector3(x0 + T, Y0, z0 + T), Vector3(x1 - T, high - 0.02, z0 + T + 0.02), lining, holes, city.generation_pause)
+		open_box.call(Vector3(x0 + T, Y0, z0 + T), Vector3(x1 - T, Y0 + 0.16, z0 + T + 0.045), base_c)
+		await Interiors.wall_openings(open_box, Vector3(x0 + T, Y0, z0 + T), Vector3(x0 + T + 0.02, high - 0.02, z1 - T), lining, holes, city.generation_pause)
+		open_box.call(Vector3(x0 + T, Y0, z0 + T), Vector3(x0 + T + 0.045, Y0 + 0.16, z1 - T), base_c)
+	else:
+		for seg in [[x0 + T, gap0], [gap1, x1 - T]]:
+			await Interiors.wall_openings(open_box, Vector3(seg[0], Y0, z1 - T - 0.02), Vector3(seg[1], high - 0.02, z1 - T), lining, holes, city.generation_pause)
+			open_box.call(Vector3(seg[0], Y0, z1 - T - 0.045), Vector3(seg[1], Y0 + 0.16, z1 - T), base_c)
+		await Interiors.wall_openings(open_box, Vector3(gap0, Y0 + 2.2, z1 - T - 0.02), Vector3(gap1, high - 0.02, z1 - T), lining, holes, city.generation_pause)
+		await Interiors.wall_openings(open_box, Vector3(x1 - T - 0.02, Y0, z0 + T), Vector3(x1 - T, high - 0.02, z1 - T), lining, holes, city.generation_pause)
+		open_box.call(Vector3(x1 - T - 0.045, Y0, z0 + T), Vector3(x1 - T, Y0 + 0.16, z1 - T), base_c)
+	_weather(kf, st, x0, x1, z0, z1, gap0, gap1)
+	kf.box_ab(Vector3(gap0 - 0.07, Y0 + 2.1, z1 - T - 0.02), Vector3(gap1 + 0.07, Y0 + 2.2, z1 + 0.03), trim)
+	await city.generation_checkpoint()
+	# friso de topo
+	for edge in [Rect2(x0 - 0.1, z0 - 0.1, w + 0.2, 0.4), Rect2(x0 - 0.1, z1 - 0.3, w + 0.2, 0.4), Rect2(x0 - 0.1, z0, 0.4, d), Rect2(x1 - 0.3, z0, 0.4, d)]:
+		await city.generation_checkpoint()
+		kf.box_ab(Vector3(edge.position.x, Y0 + H - 0.2, edge.position.y), Vector3(edge.end.x, Y0 + H, edge.end.y), trim.darkened(0.05))
+	await city.generation_checkpoint()
+	# --- janelas ---
 	var abandoned: bool = st["abandoned"]
 	for wn in wins:
+		await city.generation_checkpoint()
 		var p: Vector3 = wn[0]
 		var yaw: float = wn[1]
 		var n := Vector3(sin(yaw), 0, cos(yaw))
 		var wc := Vector3(p.x, Y0 + 1.55, p.z) + n * 0.02
 		var cm := Basis(Vector3.UP, yaw)
-		kf.add("box", Transform3D(cm * Basis.from_scale(Vector3(1.4, 1.5, 0.12)), wc + n * 0.02), trim)
+		Interiors.window_frame(kf, {"center": Vector3(p.x, Y0 + 1.55, p.z), "size": Vector2(1.12, 1.22), "along_x": absf(n.x) < 0.1}, trim)
 		kw.add("box", Transform3D(cm * Basis.from_scale(Vector3(1.12, 1.22, 0.05)), wc + n * 0.085), Color.WHITE)
 		kl.add("box", Transform3D(cm * Basis.from_scale(Vector3(1.06, 1.16, 0.05)), wc + n * 0.1), Color.WHITE)
 		kf.add("box", Transform3D(cm * Basis.from_scale(Vector3(0.05, 1.2, 0.07)), wc + n * 0.11), trim)
@@ -278,8 +335,8 @@ func build(c: Node3D, lot: Dictionary) -> Dictionary:
 		if on_back:
 			var wi := wc - n * (T + 0.03)
 			kcw.add("box", Transform3D(cm * Basis.from_scale(Vector3(1.06, 1.16, 0.02)), wi), Color.WHITE)
-			kc.add("box", Transform3D(cm * Basis.from_scale(Vector3(1.24, 1.34, 0.015)), wi + n * 0.006), trim)
-			kc.add("box", Transform3D(cm * Basis.from_scale(Vector3(1.3, 0.06, 0.12)), wi - n * 0.05 + Vector3(0, -0.62, 0)), trim.darkened(0.06))
+			kb.add("box", Transform3D(cm * Basis.from_scale(Vector3(1.24, 1.34, 0.015)), wi + n * 0.006), trim)
+			kb.add("box", Transform3D(cm * Basis.from_scale(Vector3(1.3, 0.06, 0.12)), wi - n * 0.05 + Vector3(0, -0.62, 0)), trim.darkened(0.06))
 		if st["bars"] and absf(yaw) < 0.1:
 			var bar_c := Color("#2c2d2f") if rng.randf() < 0.7 else Color("#e4e0d6")
 			for bi in 6:
@@ -293,6 +350,7 @@ func build(c: Node3D, lot: Dictionary) -> Dictionary:
 			for bi in 3:
 				kf.add("box", Transform3D(cm * Basis(Vector3.BACK, rng.randf_range(-0.25, 0.25)).scaled(Vector3(1.5, 0.14, 0.05)), wc + n * 0.14 + Vector3(0, -0.4 + bi * 0.4, 0)), Color("#6a5538"))
 		s["windows"].append(wc)
+	await city.generation_checkpoint()
 	# --- porta ---
 	var dc: Color = st["door"]
 	var door_closed := Kit.new()
@@ -302,6 +360,7 @@ func build(c: Node3D, lot: Dictionary) -> Dictionary:
 	var door_open := Kit.new()
 	var hinge := Vector3(dx - door_w / 2.0 + 0.03, Y0 + 1.05, z1 - 0.1)
 	door_open.add("box", Transform3D(Basis(Vector3.UP, -1.35) * Basis.from_scale(Vector3(door_w - 0.06, 2.1, 0.06)), hinge + Basis(Vector3.UP, -1.35) * Vector3((door_w - 0.06) / 2.0, 0, 0)), dc)
+	await city.generation_checkpoint()
 	# --- varanda ---
 	if st["porch"]:
 		var pw := 3.0
@@ -324,6 +383,7 @@ func build(c: Node3D, lot: Dictionary) -> Dictionary:
 	num.outline_modulate = Color(0.08, 0.06, 0.05)
 	num.position = Vector3(dx + door_w / 2.0 + 0.45, Y0 + 1.85, z1 + 0.04)
 	full.add_child(num)
+	await city.generation_checkpoint()
 	# --- garagem ---
 	if st["garage"]:
 		var gx0 := x0 + 0.5
@@ -331,7 +391,9 @@ func build(c: Node3D, lot: Dictionary) -> Dictionary:
 		kf.box_ab(Vector3(gx0, Y0, z1), Vector3(gx1, Y0 + 2.3, z1 + 0.06), Color("#e4e0d4"))
 		for li in 5:
 			kf.box_ab(Vector3(gx0, Y0 + 0.4 + li * 0.42, z1 + 0.06), Vector3(gx1, Y0 + 0.44 + li * 0.42, z1 + 0.09), Color("#b9b5a8"))
+	await city.generation_checkpoint()
 	# --- telhado ---
+	await city.generation_checkpoint()
 	# Objetos cotidianos na entrada, com mais plantas no Vale Sereno.
 	if not st["abandoned"]:
 		ka.box(Vector3(dx + door_w * 0.5, Y0 + 0.01, z1 + 0.32), Vector3(0.8, 0.02, 0.45), Color("#74624b"))
@@ -341,19 +403,28 @@ func build(c: Node3D, lot: Dictionary) -> Dictionary:
 		if Art.id() == "vale_sereno" or rng.randf() < 0.32:
 			ka.cyl(Vector3(dx - 0.35, Y0, z1 + 0.25), 0.14, 0.25, Color("#8f563c"))
 			ka.sphere(Vector3(dx - 0.35, Y0 + 0.48, z1 + 0.25), Vector3(0.45, 0.55, 0.4), Color("#587343"))
-	var rh := clampf(minf(w, d) * 0.4, 1.5, 2.7)
+	var rh := 0.85 if urban else clampf(minf(w, d) * 0.4, 1.5, 2.7)
 	var roof: Color = st["roof"]
-	var ov := 0.55
-	var ctr := Vector3(0, Y0 + H, 0)
+	var ov := 0.15 if urban else 0.55
+	var upper := H * (int(lot.get("floors", 1)) - 1)
+	if urban:
+		await _urban_floors(kf, kw, kl, w, d, int(lot.get("floors", 1)), wall, trim, holes)
+	var ctr := Vector3(0, Y0 + H + upper, 0)
 	match str(st["kind"]):
+		"flat":
+			kf.box(ctr + Vector3(0, 0.1, 0), Vector3(w + 0.2, 0.2, d + 0.2), roof)
+			for side in [-1, 1]:
+				kf.box(ctr + Vector3(0, 0.35, side * (d / 2.0 - 0.1)), Vector3(w, 0.45, 0.2), wall)
+				kf.box(ctr + Vector3(side * (w / 2.0 - 0.1), 0.35, 0), Vector3(0.2, 0.45, d), wall)
 		"gable_x":
 			kf.gable(ctr + Vector3(0, rh / 2.0 - 0.02, 0), Vector3(w + ov * 2.0, rh, d + ov * 2.0), roof, true)
 		"gable_z":
 			kf.gable(ctr + Vector3(0, rh / 2.0 - 0.02, 0), Vector3(w + ov * 2.0, rh, d + ov * 2.0), roof, false)
 		_:
 			kf.hip(ctr + Vector3(0, -0.02, 0), w + ov * 2.0, rh, d + ov * 2.0, roof)
+	await city.generation_checkpoint()
 	# calha
-	kf.box_ab(Vector3(x0 - ov, Y0 + H - 0.08, z1 + ov - 0.1), Vector3(x1 + ov, Y0 + H + 0.06, z1 + ov), Color("#9a9a9a"))
+	kf.box_ab(Vector3(x0 - ov, ctr.y - 0.08, z1 + ov - 0.1), Vector3(x1 + ov, ctr.y + 0.06, z1 + ov), Color("#9a9a9a"))
 	if st["chimney"]:
 		var chx := rng.randf_range(-w * 0.28, w * 0.28)
 		kf.box(Vector3(chx, Y0 + H + rh * 0.6, -d * 0.12), Vector3(0.75, rh + 1.2, 0.75), Color("#8a4a3a"))
@@ -367,30 +438,37 @@ func build(c: Node3D, lot: Dictionary) -> Dictionary:
 	if rng.randf() < 0.3:
 		kf.cyl(Vector3(w * 0.2, Y0 + H + rh * 0.55, d * 0.15), 0.18, 0.15, Color("#cfcfcf"))
 		kf.box(Vector3(w * 0.2, Y0 + H + rh * 0.7, d * 0.15), Vector3(0.9, 0.04, 0.9), Color("#d8d8d8"), 0.3)
+	await city.generation_checkpoint()
 	# --- extras de quintal ---
 	var side_x: float = x1 + 0.9 if rng.randf() < 0.5 else x0 - 0.9
-	if absf(side_x) < local_lot.size.x / 2.0 - 0.2 or true:
+	if not urban and absf(side_x) + 0.4 < local_lot.size.x / 2.0 - 0.2:
 		ka.box_ab(Vector3(side_x - 0.4, Y0, z1 - 2.6), Vector3(side_x + 0.4, Y0 + 0.75, z1 - 1.8), Color("#cfd2d6"))
-	for i in rng.randi_range(2, 4):
+	for i in (0 if urban else rng.randi_range(2, 4)):
+		await city.generation_checkpoint()
 		_bush(ka, Vector3(rng.randf_range(x0 + 0.5, x1 - 0.5), Y0, z1 + rng.randf_range(0.5, 1.0)), rng.randf_range(0.7, 1.1))
-	if rng.randf() < 0.65:
+	if not urban and rng.randf() < 0.65:
 		var tx: float = local_lot.position.x + rng.randf_range(1.0, 2.0) if rng.randf() < 0.5 else local_lot.end.x - rng.randf_range(1.0, 2.0)
 		_tree(ka, Vector3(tx, Y0, z1 + rng.randf_range(1.2, 2.2)), rng.randf_range(0.8, 1.1), rng.randi() % 3)
-	for i in rng.randi_range(1, 3):
+	for i in (0 if urban else rng.randi_range(1, 3)):
+		await city.generation_checkpoint()
 		_tree(ka, Vector3(rng.randf_range(local_lot.position.x + 1.2, local_lot.end.x - 1.2), Y0, z0 - rng.randf_range(0.8, 1.4)), rng.randf_range(0.9, 1.3), rng.randi() % 3)
 	_porch_life(ka, st, dx, z1, x0, x1, gar_w > 0.0, drive_x)
-	_regional(ka, kf, st, local_lot, x0, x1, z0, z1, dx, rh)
-	_street_tree(ka, st, local_lot, dx, drive_x, gar_w > 0.0)
+	if not urban:
+		_regional(ka, kf, st, local_lot, x0, x1, z0, z1, dx, rh)
+		_street_tree(ka, st, local_lot, dx, drive_x, gar_w > 0.0)
+	await city.generation_checkpoint()
 	# caixa de correio e lixeiras na calçada
 	var mbx := dx + 1.8
+	ka.solid_box(Vector3(mbx, Y0 + 0.65, front_z - 0.25), Vector3(0.45, 1.3, 0.3), 4, 0, "correio")
 	ka.box(Vector3(mbx, Y0 + 0.55, front_z - 0.25), Vector3(0.08, 1.1, 0.08), Color("#4a3a2a"))
 	ka.box(Vector3(mbx, Y0 + 1.15, front_z - 0.25), Vector3(0.45, 0.3, 0.3), Color("#2f4f6f") if rng.randf() < 0.5 else Color("#8a2f2f"))
 	if rng.randf() < 0.6:
 		for i in rng.randi_range(1, 2):
+			ka.solid_box(Vector3(dx - 2.2 + i * 0.6, Y0 + 0.425, front_z - 0.5), Vector3(0.52, 0.85, 0.52), 4, 0, "lixeira")
 			ka.cyl(Vector3(dx - 2.2 + i * 0.6, Y0, front_z - 0.5), 0.26, 0.85, Color("#2f6b3f") if i == 0 else Color("#33363a"))
-	if rng.randf() < 0.25:
+	if not urban and rng.randf() < 0.25:
 		ka.box(Vector3(x1 + 0.6, Y0 + 0.35, z0 + 1.0), Vector3(0.25, 0.7, 1.4), Color("#bcbcbc"))
-	if rng.randf() < 0.3:
+	if not urban and rng.randf() < 0.3:
 		# varal nos fundos
 		for sx in [-1, 1]:
 			ka.box(Vector3(sx * (w / 2.0 - 0.6), Y0 + 0.9, z0 - 1.4), Vector3(0.06, 1.8, 0.06), Color("#6a6a6a"))
@@ -399,8 +477,10 @@ func build(c: Node3D, lot: Dictionary) -> Dictionary:
 	if abandoned:
 		for i in 14:
 			ka.box(Vector3(rng.randf_range(local_lot.position.x + 1, local_lot.end.x - 1), Y0 + 0.05, rng.randf_range(local_lot.position.y + 1, local_lot.end.y - 1)), Vector3(rng.randf_range(0.2, 0.7), 0.12, rng.randf_range(0.2, 0.6)), Color("#5a4a3a").lerp(Color("#3a5a2a"), rng.randf()), rng.randf() * PI)
+	await city.generation_checkpoint()
 	# --- cerca ---
 	_fence(ka, body, s, local_lot, dx, drive_x, gar_w > 0.0)
+	await city.generation_checkpoint()
 	# colisão das paredes
 	_sb(body, Rect2(x0, z0, w, T), H)
 	_sb(body, Rect2(x0, z0, T, d), H)
@@ -408,19 +488,50 @@ func build(c: Node3D, lot: Dictionary) -> Dictionary:
 	_sb(body, Rect2(x0, z1 - T, gap0 - x0, T), H)
 	_sb(body, Rect2(gap1, z1 - T, x1 - gap1, T), H)
 	var door_cs := _sb(body, Rect2(gap0, z1 - T, gap1 - gap0, T), H)
+	await city.generation_checkpoint()
 	# malhas
 	_mesh(ka, root)
 	_mesh(kf, full)
 	_mesh(kc, cut)
-	_mesh(kcw, cut, city.glass_mat)
-	_mesh(kw, full, city.glass_mat)
-	var lit_mi := _mesh(kl, lit, city.lit_mat)
-	var dc_mi := _mesh(door_closed, root)
-	var do_mi := _mesh(door_open, root)
+	var back := Node3D.new()
+	var back_low := Node3D.new()
+	back_low.visible = false
+	cut.add_child(back)
+	cut.add_child(back_low)
+	_mesh(kb, back)
+	_mesh(kcw, back, city.glass_mat)
+	_mesh(kbl, back_low)
+	s["cut_back"] = back
+	s["cut_back_low"] = back_low
+	var opaque := _mesh(kw, full, city.window_mat)
+	var lit_mi := _mesh(kl, lit, city.window_lit_mat)
+	await city.generation_checkpoint()
+	# portas num nó próprio: somem junto com as paredes quando a casa abre para quem está fora
+	var doors := Node3D.new()
+	root.add_child(doors)
+	s["doors"] = doors
+	var dc_mi := _mesh(door_closed, doors)
+	var do_mi := _mesh(door_open, doors)
 	city.loc_info[id] = {"door": door_cs, "door_mesh": dc_mi, "door_open": do_mi, "light": null, "sign": null, "structure": s}
 	do_mi.visible = false
 	s["lit_mi"] = lit_mi
+	s["opaque_windows"] = [opaque, lit]
+	await Interiors.install_glass(s, city)
 	return s
+
+
+func _urban_floors(k: Kit, glass: Kit, lit: Kit, w: float, d: float, floors: int, wall: Color, trim: Color, holes: Array) -> void:
+	for floor in range(1, floors):
+		var y := Y0 + floor * H
+		for edge in [Rect2(-w / 2, -d / 2, w, T), Rect2(-w / 2, -d / 2, T, d), Rect2(w / 2 - T, -d / 2, T, d), Rect2(-w / 2, d / 2 - T, w, T)]:
+			await Interiors.wall_openings(Callable(k, "box_ab"), Vector3(edge.position.x, y, edge.position.y), Vector3(edge.end.x, y + H, edge.end.y), wall, holes, city.generation_pause)
+		k.box(Vector3(0, y, d / 2 + 0.06), Vector3(w + 0.1, 0.14, 0.16), trim.darkened(0.1))
+		for hole in holes:
+			var p: Vector3 = hole["center"]
+			if p.y < y or p.y >= y + H:
+				continue
+			Interiors.window_frame(k, hole, trim)
+			glass.box(p, Vector3(1.12, 1.22, 0.02) if hole["along_x"] else Vector3(0.02, 1.22, 1.12), Color.WHITE)
 
 
 func _fence(k: Kit, body: StaticBody3D, s: Dictionary, lr: Rect2, dx: float, drive_x: float, garage: bool) -> void:
@@ -525,6 +636,7 @@ func _gates(k: Kit, s: Dictionary, r: Rect2, dx: float, drive_x: float, garage: 
 		var hinge := Vector3(cx - gw / 2.0, Y0, fz - 0.12)
 		var yaw := -PI / 2.0 + 0.12
 		var bas := Basis(Vector3.UP, yaw)
+		k.solid_box(hinge + bas * Vector3(leaf / 2, 0.82, 0), Vector3(leaf, 1.6, 0.05), 4, yaw, "portao")
 		for bi in int(leaf / 0.14) + 1:
 			k.add("box", Transform3D(bas * Basis.from_scale(Vector3(0.03, 1.55, 0.03)), hinge + bas * Vector3(bi * 0.14, 0.82, 0)), gc)
 		for by in [0.12, 0.85, 1.58]:
@@ -617,7 +729,7 @@ func _porch_life(k: Kit, st: Dictionary, dx: float, z1: float, x0: float, x1: fl
 			# bicicleta encostada
 			var bp := Vector3(free_x, Y0, z1 + 0.35)
 			for wx in [-0.45, 0.45]:
-				k.add("cyl", Transform3D(Basis(Vector3.FORWARD, PI / 2.0).scaled(Vector3(0.62, 0.04, 0.62)), bp + Vector3(wx, 0.32, 0)), Color("#1c1c1c"))
+				k.add("cyl", Transform3D(Basis(Vector3.FORWARD, PI / 2.0) * Basis.from_scale(Vector3(0.62, 0.04, 0.62)), bp + Vector3(wx, 0.32, 0)), Color("#1c1c1c"))
 			k.box(bp + Vector3(0, 0.5, 0), Vector3(0.9, 0.04, 0.04), Color("#8a2a2a"))
 			k.box(bp + Vector3(0.1, 0.42, 0), Vector3(0.04, 0.32, 0.04), Color("#8a2a2a"))
 			k.box(bp + Vector3(0.38, 0.72, 0), Vector3(0.04, 0.04, 0.4), Color("#2a2a2a"))
@@ -629,6 +741,7 @@ func _porch_life(k: Kit, st: Dictionary, dx: float, z1: float, x0: float, x1: fl
 				k.sphere(vp + Vector3(0, 0.5, 0), Vector3(0.42, 0.45, 0.42), Color("#4f7a3a").lerp(Color("#6a8a3a"), rng.randf()))
 		3:
 			# vaso grande e banquinho
+			k.solid_box(Vector3(free_x, Y0 + 0.225, z1 + 0.4), Vector3(0.48, 0.45, 0.48), 4, 0, "vaso")
 			k.cyl(Vector3(free_x, Y0, z1 + 0.4), 0.24, 0.45, Color("#7a6a5a"))
 			k.sphere(Vector3(free_x, Y0 + 0.75, z1 + 0.4), Vector3(0.7, 0.7, 0.7), Color("#4a6a38"))
 			k.box(Vector3(free_x + 0.7, Y0 + 0.25, z1 + 0.4), Vector3(0.35, 0.5, 0.35), Color("#7a5534"))
@@ -652,6 +765,7 @@ func _street_tree(k: Kit, st: Dictionary, lot_r: Rect2, dx: float, drive_x: floa
 		k.box_ab(Vector3(x - 0.6, Y0, tz + 0.52), Vector3(x + 0.6, Y0 + 0.06, tz + 0.6), Color("#a39f95"))
 		var g := Color("#4e6a38").lerp(Color("#6f8a40"), rng.randf())
 		var h := rng.randf_range(2.6, 3.4)
+		k.solid_cylinder(Vector3(x, Y0, tz), 0.13, h, 128, "arvore")
 		k.cyl(Vector3(x, Y0, tz), 0.13, h, Color("#5a4636"))
 		k.sphere(Vector3(x, Y0 + h + 0.4, tz), Vector3(2.4, 1.9, 2.4), g)
 		k.sphere(Vector3(x + 0.4, Y0 + h + 1.0, tz + 0.2), Vector3(1.7, 1.4, 1.7), g.lightened(0.07))
@@ -661,163 +775,9 @@ func _street_tree(k: Kit, st: Dictionary, lot_r: Rect2, dx: float, drive_x: floa
 # ---------- interior (sob demanda) ----------
 
 func build_interior(s: Dictionary) -> Node3D:
-	var node := Node3D.new()
-	var body := StaticBody3D.new()
-	node.add_child(body)
-	var lot: Dictionary = s["lot"]
-	rng.seed = int(lot["seed"]) + 991
-	var st: Dictionary = s["style"]
-	var w: float = s["w"]
-	var d: float = s["d"]
-	var dx: float = s["dx"]
-	var x0 := -w / 2.0
-	var x1 := w / 2.0
-	var z0 := -d / 2.0
-	var z1 := d / 2.0
-	var ab: bool = st["abandoned"]
-	var kk := Kit.new()
-	var kf := Kit.new()
-	var inner_pal := ["#b9ae98", "#a9b0a6", "#c4b49c", "#a8a2b0", "#b7a58e", "#9fa9a8", "#c2b9a6"]
-	var inner := Color(inner_pal[rng.randi() % inner_pal.size()]) if not ab else Color("#6f695a")
-	var resident: String = str(Houses.st(str(lot["id"]))["tipo"])
-	var base_c := Color("#6a5a48")
-	var bd := clampf(d * 0.46, 2.9, 3.5)
-	var zdiv := z0 + bd
-	var gar_w: float = 3.2 if st["garage"] else 0.0
-	var xs := lerpf(x0 + gar_w, x1, 0.58)
-	var rooms: Array = []
-	var back_x: Array = []
-	if w >= 8.6:
-		back_x = [x0, x0 + w * 0.38, x0 + w * 0.6, x1]
-		rooms.append(["quarto", Rect2(back_x[0], z0, back_x[1] - back_x[0], bd)])
-		rooms.append(["banheiro", Rect2(back_x[1], z0, back_x[2] - back_x[1], bd)])
-		rooms.append(["quarto2", Rect2(back_x[2], z0, back_x[3] - back_x[2], bd)])
-	else:
-		back_x = [x0, x0 + w * 0.62, x1]
-		rooms.append(["quarto", Rect2(back_x[0], z0, back_x[1] - back_x[0], bd)])
-		rooms.append(["banheiro", Rect2(back_x[1], z0, back_x[2] - back_x[1], bd)])
-	if gar_w > 0.0:
-		rooms.append(["garagem", Rect2(x0, zdiv, gar_w, z1 - zdiv)])
-	rooms.append(["sala", Rect2(x0 + gar_w, zdiv, xs - x0 - gar_w, z1 - zdiv)])
-	rooms.append(["cozinha", Rect2(xs, zdiv, x1 - xs, z1 - zdiv)])
-	# pisos
-	for r in rooms:
-		var rr: Rect2 = r[1]
-		var tipo: String = r[0]
-		var fc := Color("#5e4429") if tipo.begins_with("quarto") or tipo == "sala" else (Color("#74726c") if tipo == "garagem" else Color("#8d9094"))
-		if ab:
-			fc = fc.darkened(0.3)
-		kk.box_ab(Vector3(rr.position.x, Y0 + 0.06, rr.position.y), Vector3(rr.end.x, Y0 + 0.075, rr.end.y), fc)
-		if tipo in ["cozinha", "banheiro"]:
-			var tx := rr.position.x
-			var flip := false
-			while tx < rr.end.x - 0.01:
-				var tz := rr.position.y
-				var f2 := flip
-				while tz < rr.end.y - 0.01:
-					if f2:
-						kk.box_ab(Vector3(tx, Y0 + 0.075, tz), Vector3(minf(tx + 0.6, rr.end.x), Y0 + 0.08, minf(tz + 0.6, rr.end.y)), Color("#6c7a86") if tipo == "banheiro" else Color("#7a6f60"))
-					f2 = not f2
-					tz += 0.6
-				flip = not flip
-				tx += 0.6
-		elif tipo.begins_with("quarto") or tipo == "sala":
-			var px := rr.position.x + 0.45
-			while px < rr.end.x:
-				kk.box_ab(Vector3(px, Y0 + 0.075, rr.position.y), Vector3(px + 0.02, Y0 + 0.078, rr.end.y), fc.darkened(0.25))
-				px += 0.45
-	# paredes internas (baixas, com vão de porta)
-	var it := 0.13
-	var wall_h := CUT_H
-	# divisória entre fundos e frente
-	var gaps: Array = []
-	for i in range(0, back_x.size() - 1):
-		var cxm: float = (float(back_x[i]) + float(back_x[i + 1])) / 2.0
-		gaps.append([cxm - 0.55, cxm + 0.55])
-	_wall_x(kk, body, x0 + 0.01, x1 - 0.01, zdiv, it, wall_h, inner, gaps)
-	for i in range(1, back_x.size() - 1):
-		_wall_z(kk, body, back_x[i], z0, zdiv, it, wall_h, inner, [])
-	if gar_w > 0.0:
-		_wall_z(kk, body, x0 + gar_w, zdiv, z1 - 0.01, it, wall_h, inner, [[zdiv + (z1 - zdiv) * 0.45 - 0.5, zdiv + (z1 - zdiv) * 0.45 + 0.5]])
-	_wall_z(kk, body, xs, zdiv, z1 - 0.01, it, wall_h, inner, [[zdiv + 0.15, zdiv + 1.85]])
-	# --- móveis ---
-	var use_models := Furn.available()
-	if use_models:
-		_furnish_models(node, rooms, st, w, d, zdiv, xs, ab)
-	var sofa_c := _c(SOFAS[rng.randi() % SOFAS.size()])
-	var wood := Color("#7a5a3a") if not ab else Color("#4a3a2a")
-	for r in (rooms if not use_models else []):
-		var rr: Rect2 = r[1]
-		var tipo: String = r[0]
-		match tipo:
-			"quarto", "quarto2":
-				var bx := rr.position.x + 1.15
-				if rr.size.x < 2.9:
-					bx = rr.get_center().x
-				_bed(kk, Vector3(bx, Y0 + 0.075, rr.position.y + 1.2), wood, _c(["#e6e1d6", "#cfd8e6", "#e6d2d2"][rng.randi() % 3]), ab)
-				_fb(kk, Vector3(rr.end.x - 0.45, Y0 + 1.0, rr.position.y + 0.38), Vector3(0.8, 2.0, 0.55), wood.lightened(0.08))
-				_fb(kk, Vector3(bx + 1.2, Y0 + 0.3, rr.position.y + 0.3), Vector3(0.45, 0.5, 0.4), wood)
-				_fb(kk, Vector3(bx + 1.2, Y0 + 0.62, rr.position.y + 0.3), Vector3(0.12, 0.2, 0.12), Color("#e8d8a0"))
-				if rr.size.x > 2.6 and rng.randf() < 0.7:
-					_fb(kk, Vector3(rr.get_center().x + 0.2, Y0 + 0.08, rr.get_center().y + 0.6), Vector3(1.6, 0.012, 1.1), _jit(Color("#9a4a4a"), 0.1))
-			"banheiro":
-				_fb(kk, Vector3(rr.get_center().x, Y0 + 0.28, rr.position.y + 0.45), Vector3(0.4, 0.55, 0.62), Color("#e8e8e8"))
-				_fb(kk, Vector3(rr.get_center().x, Y0 + 0.62, rr.position.y + 0.25), Vector3(0.38, 0.4, 0.2), Color("#e8e8e8"))
-				_fb(kk, Vector3(rr.position.x + 0.5, Y0 + 0.42, rr.position.y + 1.45), Vector3(0.5, 0.84, 0.4), Color("#eeeeee"))
-				_fb(kk, Vector3(rr.position.x + 0.5, Y0 + 1.5, rr.position.y + 1.66), Vector3(0.5, 0.6, 0.04), Color("#a8c4d0"))
-				_fb(kk, Vector3(rr.end.x - 0.45, Y0 + 0.3, rr.position.y + 1.3), Vector3(0.78, 0.55, 1.5), Color("#f2f2f2"))
-				_fb(kk, Vector3(rr.end.x - 0.45, Y0 + 0.5, rr.position.y + 1.3), Vector3(0.62, 0.1, 1.34), Color("#9fc6d8"))
-			"sala":
-				var wxr := rr.end.x
-				_fb(kk, Vector3(rr.get_center().x, Y0 + 0.08, rr.get_center().y + 0.1), Vector3(2.4, 0.012, 1.6), _jit(Color("#4a5a7a"), 0.1))
-				_sofa(kk, Vector3(rr.position.x + 0.55, Y0 + 0.075, rr.get_center().y + 0.3), -PI / 2.0, sofa_c)
-				_fb(kk, Vector3(rr.get_center().x + 0.2, Y0 + 0.3, rr.get_center().y + 0.2), Vector3(0.9, 0.4, 0.55), wood)
-				_fb(kk, Vector3(wxr - 0.5, Y0 + 0.28, rr.get_center().y + 0.3), Vector3(0.45, 0.55, 1.3), wood.darkened(0.1))
-				_fb(kk, Vector3(wxr - 0.5, Y0 + 0.82, rr.get_center().y + 0.3), Vector3(0.08, 0.6, 1.0), Color("#15171a"))
-				_fb(kk, Vector3(rr.position.x + 0.3, Y0 + 0.9, rr.position.y + 0.3), Vector3(0.9, 1.8, 0.35), wood)
-				for bi in 12:
-					_fb(kk, Vector3(rr.position.x + 0.05 + (bi % 6) * 0.14, Y0 + 0.55 + int(bi / 6) * 0.55, rr.position.y + 0.3), Vector3(0.1, 0.38, 0.28), Color.from_hsv(rng.randf(), 0.5, 0.7))
-				kk.cyl(Vector3(rr.position.x + 0.5, Y0 + 0.075, rr.end.y - 0.45), 0.2, 0.3, Color("#8a5a3a"))
-				kk.sphere(Vector3(rr.position.x + 0.5, Y0 + 0.65, rr.end.y - 0.45), Vector3(0.6, 0.7, 0.6), Color("#4f8a3f") if not ab else Color("#6a6a3a"))
-			"cozinha":
-				var cz := rr.position.y
-				_fb(kk, Vector3(rr.end.x - 0.4, Y0 + 0.9, cz + 0.45), Vector3(0.7, 1.8, 0.7), Color("#e8eaec"))
-				_fb(kk, Vector3(rr.end.x - 1.2, Y0 + 0.45, cz + 0.33), Vector3(0.7, 0.9, 0.62), Color("#cfcfd2"))
-				_fb(kk, Vector3(rr.end.x - 1.2, Y0 + 0.92, cz + 0.33), Vector3(0.6, 0.04, 0.5), Color("#222"))
-				_fb(kk, Vector3(rr.end.x - 2.05, Y0 + 0.45, cz + 0.33), Vector3(1.1, 0.9, 0.6), Color("#b49a78"))
-				_fb(kk, Vector3(rr.end.x - 2.05, Y0 + 0.92, cz + 0.33), Vector3(1.14, 0.05, 0.64), Color("#7a7a80"))
-				_fb(kk, Vector3(rr.end.x - 2.05, Y0 + 0.97, cz + 0.33), Vector3(0.5, 0.06, 0.4), Color("#9aa0a8"))
-				_fb(kk, Vector3(rr.end.x - 1.6, Y0 + 1.7, cz + 0.2), Vector3(2.4, 0.6, 0.35), Color("#b49a78"))
-				_fb(kk, Vector3(rr.get_center().x - 0.2, Y0 + 0.72, rr.get_center().y + 0.55), Vector3(1.2, 0.05, 0.8), wood.lightened(0.1))
-				for ci in 4:
-					var ang := ci * PI / 2.0
-					_fb(kk, Vector3(rr.get_center().x - 0.2, Y0 + 0.24, rr.get_center().y + 0.55) + Vector3(cos(ang) * 0.85, 0, sin(ang) * 0.6), Vector3(0.36, 0.45, 0.36), wood)
-			"garagem":
-				_fb(kk, Vector3(rr.position.x + 0.45, Y0 + 0.45, rr.get_center().y), Vector3(0.6, 0.9, 1.9), wood.darkened(0.15))
-				_fb(kk, Vector3(rr.position.x + 0.3, Y0 + 1.0, rr.get_center().y), Vector3(0.35, 1.9, 1.8), Color("#7a7a7e"))
-				for bi in 4:
-					_fb(kk, Vector3(rr.position.x + 1.5 + (bi % 2) * 0.6, Y0 + 0.25, rr.end.y - 0.5 - int(bi / 2) * 0.55), Vector3(0.5, 0.5, 0.5), Color("#a58a5a"), rng.randf())
-				kk.cyl(Vector3(rr.end.x - 0.5, Y0 + 0.075, rr.position.y + 0.6), 0.33, 0.25, Color("#1a1a1a"))
-	# quadros nas paredes e cortinas
-	if ab:
-		for i in 10:
-			var rrr: Rect2 = (rooms[rng.randi() % rooms.size()][1] as Rect2).grow(-0.4)
-			_fb(kk, Vector3(rng.randf_range(rrr.position.x, rrr.end.x), Y0 + 0.12, rng.randf_range(rrr.position.y, rrr.end.y)), Vector3(rng.randf_range(0.2, 0.6), 0.14, rng.randf_range(0.2, 0.6)), Color("#4a4034"), rng.randf() * PI)
-	if not ab:
-		_curtains(kk, s, resident)
-	if use_models and not ab:
-		_personal_touch(node, kk, rooms, resident)
-	node.add_child(_mk(kk))
-	var light := OmniLight3D.new()
-	light.position = Vector3(0, Y0 + 2.4, 0)
-	light.omni_range = maxf(w, d) * 0.95
-	light.light_energy = 0.9
-	light.light_color = Color("#ffe1ad")
-	light.visible = false
-	node.add_child(light)
-	s["light"] = light
-	return node
-
+	# Compatibilidade com chamadas antigas: toda casa usa o construtor compartilhado.
+	city.ensure_interior(s)
+	return s["interior"]
 
 
 const KM := "res://assets/furniture_k/Models/%s.fbx"
@@ -828,9 +788,18 @@ const KM := "res://assets/furniture_k/Models/%s.fbx"
 var pending: Array = []
 
 
-func _m(parent: Node3D, name: String, x: float, z: float, yaw: float, up: float = 0.0, scale_k: float = 0.2) -> Node3D:
-	pending.append([parent, KM % name, Vector3(x, Y0 + 0.075 + up, z), yaw, scale_k])
+func _m(parent: Node3D, name: String, x: float, z: float, yaw: float, up: float = 0.0, scale_k: float = 0.2, target: Dictionary = {}) -> Node3D:
+	var solid := name in ["bedDouble", "bedSingle", "loungeSofaLong", "loungeSofa", "tableCoffee", "cabinetTelevision", "bookcaseOpen", "bookcaseClosed", "kitchenFridge", "kitchenStove", "kitchenSink", "kitchenCabinet", "bathtub", "toilet", "bathroomSink", "table", "chair"]
+	pending.append([parent, KM % name, Vector3(x, Y0 + 0.075 + up, z), yaw, scale_k, solid, target])
 	return null
+
+
+func _place_model(it: Array) -> void:
+	var holder := Furn.place(it[0], it[1], it[2], it[3], it[4], Vector3.ZERO, it[5])
+	if holder == null or (it[6] as Dictionary).is_empty():
+		return
+	var target: Dictionary = it[6]
+	city.object_point(target["key"], target["loc"], target["label"], holder.global_transform * (holder.get_meta("bounds") as AABB), target["kind"], target["plan"], false, holder)
 
 
 # Coloca na hora os móveis de um interior específico (o jogador acabou de entrar nele).
@@ -841,7 +810,7 @@ func place_now(node: Node) -> void:
 	for it in pending:
 		var par: Node = it[0]
 		if is_instance_valid(par) and (par == node or node.is_ancestor_of(par)):
-			Furn.place(it[0], it[1], it[2], it[3], it[4])
+			_place_model(it)
 		else:
 			keep.append(it)
 	pending = keep
@@ -853,55 +822,93 @@ func place_pending(budget_usec: int) -> void:
 	while not pending.is_empty() and Time.get_ticks_usec() - t0 < budget_usec:
 		var it: Array = pending.pop_front()
 		if is_instance_valid(it[0]) and not (it[0] as Node).is_queued_for_deletion():
-			Furn.place(it[0], it[1], it[2], it[3], it[4])
+			_place_model(it)
 
 
-func _furnish_models(node: Node3D, rooms: Array, st: Dictionary, w: float, d: float, zdiv: float, xs: float, ab: bool) -> void:
+func _furnish_models(node: Node3D, rooms: Array, st: Dictionary, w: float, d: float, zdiv: float, xs: float, ab: bool, s: Dictionary) -> void:
 	var tilt := 0.0
+	var id := str(s["loc"])
+	city.use_points[id] = {"_rooms": [], "_root": s["root"]}
 	for r in rooms:
 		var rr: Rect2 = r[1]
 		var tipo: String = r[0]
 		var cx := rr.get_center().x
 		var cz := rr.get_center().y
+		var exit: Array = []
+		if tipo.begins_with("quarto") or tipo == "banheiro":
+			exit = [Vector2(cx, zdiv - 0.4), Vector2(cx, zdiv + 0.45)]
+		elif tipo == "cozinha":
+			exit = [Vector2(xs + 0.4, zdiv + 1.25), Vector2(xs + 0.4, zdiv + 1.4), Vector2(xs - 0.7, zdiv + 1.4)]
+		city.use_points[id]["_rooms"].append({"rect": rr, "exit": _world_path(s, exit)})
 		match tipo:
 			"quarto", "quarto2":
 				var wide_room: bool = rr.size.x > 2.9
 				var bedn := "bedDouble" if wide_room else "bedSingle"
 				var bx: float = rr.position.x + (1.2 if wide_room else rr.size.x / 2.0)
-				_m(node, bedn, bx, rr.position.y + 1.25, tilt)
-				_m(node, "cabinetBed", bx + (1.3 if wide_room else 0.9), rr.position.y + 0.4, tilt)
-				_m(node, "bookcaseClosed", rr.end.x - 0.35, rr.position.y + 1.4, -PI / 2.0)
+				var bed_plan := _room_plan(s, rr, tipo, zdiv, xs, Vector2(bx + (1.25 if wide_room else 0.9), zdiv - 0.65), 0.0)
+				bed_plan["anchor"] = (s["root"] as Node3D).to_global(Vector3(bx, 0, rr.position.y + 2.3))
+				bed_plan["h"] = 0.5
+				city.use_points[id]["cama"] = bed_plan
+				_m(node, bedn, bx, rr.position.y + 1.25, tilt, 0, 0.2, _target(s, "cama_" + tipo, "Cama", "bed", bed_plan))
+				_m(node, "cabinetBed", bx + (1.3 if wide_room else 0.9), rr.position.y + 0.4, tilt, 0, 0.2, _target(s, "criado_" + tipo, "Mesa de cabeceira", "inspect", bed_plan))
+				var cupboard := _room_plan(s, rr, tipo, zdiv, xs, Vector2(rr.end.x - 1.0, rr.position.y + 1.4), PI / 2.0)
+				_m(node, "bookcaseClosed", rr.end.x - 0.35, rr.position.y + 1.4, -PI / 2.0, 0, 0.2, _target(s, "armario_" + tipo, "Armário", "storage", cupboard))
 				_m(node, "lampRoundFloor", rr.position.x + 0.3, rr.end.y - 0.3, 0.0)
 				if wide_room:
 					_m(node, "rugRectangle", cx + 0.3, cz + 0.5, 0.0)
 			"banheiro":
 				_m(node, "toilet", rr.position.x + 0.5, rr.position.y + 0.55, 0.0)
 				_m(node, "bathroomSink", rr.position.x + 0.4, rr.position.y + 1.7, PI / 2.0)
-				_m(node, "bathtub", rr.end.x - 0.6, rr.position.y + 1.45, -PI / 2.0)
+				var bath := _room_plan(s, rr, tipo, zdiv, xs, Vector2(cx, zdiv - 0.65), PI / 2.0)
+				bath["head"] = (s["root"] as Node3D).to_global(Vector3(cx, Y0 + 1.9, zdiv - 0.65))
+				city.use_points[id]["chuveiro"] = bath
+				_m(node, "bathtub", rr.end.x - 0.6, rr.position.y + 1.45, -PI / 2.0, 0, 0.2, _target(s, "banho", "Banheira / banho", "bath", bath))
 			"sala":
 				_m(node, "rugRectangle", cx, cz + 0.2, 0.0)
-				_m(node, "loungeSofaLong" if rr.size.y > 3.4 else "loungeSofa", rr.position.x + 0.55, cz + 0.1, PI / 2.0)
-				_m(node, "tableCoffee", cx - 0.2, cz + 0.1, PI / 2.0)
-				_m(node, "cabinetTelevision", rr.end.x - 0.35, cz + 0.1, -PI / 2.0)
-				_m(node, "bookcaseOpen", rr.position.x + 1.3, rr.position.y + 0.3, 0.0)
+				var sofa := _room_plan(s, rr, tipo, zdiv, xs, Vector2(rr.position.x + 1.3, cz + 0.1), PI / 2.0)
+				var seat_pos: Vector3 = (s["root"] as Node3D).to_global(Vector3(rr.position.x + 0.65, Y0, cz + 0.1))
+				sofa["seat"] = {"p": Vector2(seat_pos.x, seat_pos.z), "yaw": sofa["yaw"]}
+				city.use_points[id]["sofa"] = sofa
+				_m(node, "loungeSofaLong" if rr.size.y > 3.4 else "loungeSofa", rr.position.x + 0.55, cz + 0.1, PI / 2.0, 0, 0.2, _target(s, "sofa", "Sofá", "seat", sofa))
+				_m(node, "tableCoffee", cx - 0.2, cz + 0.1, PI / 2.0, 0, 0.2, _target(s, "mesa_sala", "Mesa de centro", "inspect", sofa))
+				_m(node, "cabinetTelevision", cx - 0.35, rr.end.y - 0.6, PI, 0, 0.16, _target(s, "tv", "Televisão", "tv", sofa))
+				_m(node, "bookcaseOpen", cx + 1.1, rr.position.y + 0.3, 0.0, 0, 0.16, _target(s, "estante", "Estante", "storage", sofa))
 				_m(node, "lampRoundFloor", rr.end.x - 0.35, rr.position.y + 0.4, 0.0)
 				_m(node, "plantSmall1", rr.position.x + 0.45, rr.end.y - 0.4, 0.0, 0.0, 0.5)
 			"cozinha":
+				var compact := rr.size.y < 3.4
 				var ex := rr.end.x - 0.5
-				_m(node, "kitchenFridge", ex, rr.position.y + 0.4, 0.0)
+				var kitchen_plan := _room_plan(s, rr, tipo, zdiv, xs, Vector2(cx - 0.1, rr.position.y + 1.25), PI)
+				_m(node, "kitchenFridge", ex, rr.position.y + 0.4, 0.0, 0, 0.2, _target(s, "geladeira", "Geladeira", "inspect", kitchen_plan))
 				var items := ["kitchenStove", "kitchenSink", "kitchenCabinet", "kitchenCabinet"]
 				var px := ex - 0.95
 				for i in items.size():
 					if px - 0.43 < rr.position.x + 0.05:
 						break
-					_m(node, items[i], px, rr.position.y + 0.47, 0.0)
-					if i < 2:
+					var appliance := Vector2(ex, rr.position.y + 1.35 + i * 0.9) if compact else Vector2(px, rr.position.y + 0.47)
+					if compact and i > 1:
+						break
+					_m(node, items[i], appliance.x, appliance.y, PI / 2.0 if compact else 0.0)
+					if i == 1:
+						pending.back()[6] = _target(s, "pia", "Pia da cozinha", "inspect", kitchen_plan)
+					if i == 0:
+						var stove := _room_plan(s, rr, tipo, zdiv, xs, Vector2(ex - 0.9, appliance.y) if compact else Vector2(px, rr.position.y + 1.2), PI / 2.0 if compact else PI)
+						stove["steam"] = (s["root"] as Node3D).to_global(Vector3(appliance.x, Y0 + 1.0, appliance.y))
+						city.use_points[id]["fogao"] = stove
+						pending.back()[6] = _target(s, "fogao", "Fogão", "stove", stove)
+					if i < 2 and not compact:
 						_m(node, "kitchenCabinetUpper", px, rr.position.y + 0.25, 0.0, 1.3)
 					px -= 0.9
-				_m(node, "table", cx - 0.1, rr.end.y - 1.3, 0.0)
-				for ci in 4:
-					var ang := ci * PI / 2.0
-					_m(node, "chair", cx - 0.1 + cos(ang) * 0.85, rr.end.y - 1.3 + sin(ang) * 0.6, ang + PI / 2.0)
+				var table_z := rr.end.y - (0.5 if compact else 1.3)
+				_m(node, "table", cx - 0.1, table_z, 0.0, 0, 0.16 if compact else 0.2, _target(s, "mesa_cozinha", "Mesa de refeições", "inspect", kitchen_plan))
+				for ci in (1 if rr.size.y < 3.4 else 4):
+					var ang := PI / 2.0 if compact else ci * PI / 2.0
+					var point := Vector2(cx - 0.1, rr.end.y - 0.22) if compact else Vector2(cx - 0.1 + cos(ang) * 0.85, table_z + sin(ang) * 0.6)
+					var approach := Vector2(point.x, rr.position.y + 1.25) if compact else point + Vector2(0, 0.5)
+					var chair := _room_plan(s, rr, tipo, zdiv, xs, approach, ang + PI / 2.0)
+					var seat: Vector3 = (s["root"] as Node3D).to_global(Vector3(point.x, Y0, point.y))
+					chair["seat"] = {"p": Vector2(seat.x, seat.z), "yaw": chair["yaw"]}
+					_m(node, "chair", point.x, point.y, ang + PI / 2.0, 0, 0.2, _target(s, "cadeira_%d" % ci, "Cadeira", "seat", chair))
 			"garagem":
 				_m(node, "washer", rr.position.x + 0.5, rr.position.y + 0.5, 0.0)
 				_m(node, "desk", rr.position.x + 0.5, cz + 0.4, PI / 2.0)
@@ -910,6 +917,54 @@ func _furnish_models(node: Node3D, rooms: Array, st: Dictionary, w: float, d: fl
 
 
 # Cortinas por dentro das janelas: tecidos diferentes para cada morador.
+func _world_path(s: Dictionary, points: Array) -> Array:
+	var out: Array = []
+	for p in points:
+		var world: Vector3 = (s["root"] as Node3D).to_global(Vector3(p.x, Y0, p.y))
+		out.append(Vector2(world.x, world.z))
+	return out
+
+
+func _room_plan(s: Dictionary, room: Rect2, kind: String, zdiv: float, xs: float, target: Vector2, yaw: float) -> Dictionary:
+	var points: Array = [Vector2(xs - 0.7, zdiv + 1.4)]
+	if kind.begins_with("quarto") or kind == "banheiro":
+		points.append(Vector2(room.get_center().x, zdiv + 0.45))
+		points.append(Vector2(room.get_center().x, zdiv - 0.4))
+	elif kind == "cozinha":
+		points.append(Vector2(xs + 0.4, zdiv + 1.4))
+		points.append(Vector2(xs + 0.4, target.y))
+	elif kind == "sala":
+		points.append(Vector2(target.x, zdiv + 0.5))
+	points.append(target)
+	return {"path": _world_path(s, points), "yaw": yaw + (s["root"] as Node3D).rotation.y, "room": room}
+
+
+func _target(s: Dictionary, slot: String, label: String, kind: String, plan: Dictionary) -> Dictionary:
+	return {"key": str(s["loc"]) + "/" + slot, "loc": str(s["loc"]), "label": label, "kind": kind, "plan": plan}
+
+
+func _lived_in(k: Kit, rooms: Array) -> void:
+	for entry in rooms:
+		var room: Rect2 = entry[1]
+		if str(entry[0]) == "cozinha":
+			var p := Vector3(room.get_center().x - 0.1, Y0 + (0.60 if room.size.y < 3.4 else 0.73), room.end.y - (0.5 if room.size.y < 3.4 else 1.3))
+			k.cyl(p + Vector3(-0.25, 0, 0), 0.14, 0.025, Color("#bdb7a6"))
+			k.cyl(p + Vector3(0.24, 0, 0.08), 0.055, 0.12, Color("#796c56"))
+			k.cyl(p + Vector3(0.24, 0.12, 0.08), 0.045, 0.008, Color("#3f3427"))
+			k.box(p + Vector3(0, 0.012, -0.2), Vector3(0.25, 0.02, 0.18), Color("#c6baa0"))
+			k.box(p + Vector3(-0.45, 0.016, 0), Vector3(0.018, 0.015, 0.2), Color("#a1a29a"))
+		elif str(entry[0]).begins_with("quarto"):
+			var wide := room.size.x > 2.9
+			var bx := room.position.x + (1.2 if wide else room.size.x / 2.0)
+			var p := Vector3(bx + (1.3 if wide else 0.9), Y0 + 0.075 + 0.4664 + 0.01, room.position.y + 0.4)
+			k.box(p, Vector3(0.13, 0.02, 0.21), Color("#3a4142"), 0.2)
+			k.box(p + Vector3(0, 0.012, 0), Vector3(0.1, 0.008, 0.17), Color("#758982"), 0.2)
+		elif str(entry[0]) == "banheiro":
+			k.box(Vector3(room.position.x + 0.4, Y0 + 1.0, room.position.y + 1.7), Vector3(0.62, 0.045, 0.25), Color("#87725b"))
+			k.box(Vector3(room.position.x + 0.23, Y0 + 1.04, room.position.y + 1.7), Vector3(0.2, 0.03, 0.14), Color("#bcb4a6"))
+			k.cyl(Vector3(room.position.x + 0.52, Y0 + 1.025, room.position.y + 1.7), 0.04, 0.16, Color("#6f8a82"))
+
+
 func _curtains(k: Kit, s: Dictionary, resident: String) -> void:
 	var pal := {"familia": ["#c9a06a", "#8a9a6a", "#b07a5a"], "idoso": ["#d8c8a8", "#b8a08a", "#a87a6a"], "estudante": ["#5a6a8a", "#3a3a3a", "#7a3a3a"], "casal": ["#d8d0c0", "#8a7a6a", "#6a7a8a"]}
 	var cols: Array = pal.get(resident, ["#c8b8a0"])
@@ -918,8 +973,16 @@ func _curtains(k: Kit, s: Dictionary, resident: String) -> void:
 		var p: Vector3 = wc
 		var d: float = s["d"]
 		var w: float = s["w"]
+		# só janelas das paredes do fundo (ficam inteiras com o jogador dentro)
+		var north: bool = s["lot"]["north"]
+		var back_z: bool = (p.z < 0.0) != north
+		var back_x: bool = (p.x < 0.0) != north
+		var on_z := absf(absf(p.z) - d / 2.0) < 0.3
+		var on_x := absf(absf(p.x) - w / 2.0) < 0.3
+		if (on_z and not back_z) or (on_x and not on_z and not back_x):
+			continue
 		# janela da frente/fundos (normal em z) ou lateral (normal em x)
-		if absf(absf(p.z) - d / 2.0) < 0.3:
+		if on_z:
 			var nz := -signf(p.z)
 			for sx in [-1, 1]:
 				_fb(k, Vector3(p.x + sx * 0.5, p.y + 0.05, p.z + nz * (T + 0.05)), Vector3(0.32, 1.45, 0.04), c)

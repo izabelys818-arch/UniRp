@@ -41,6 +41,7 @@ func _skip(minutes: int) -> void:
 
 
 func _ready() -> void:
+	AIService.mock = _stream_mock
 	preload("res://world3d/world_view.gd").realtime = false
 	WorldEvents.random_enabled = false
 	SaveManager.path = "user://calendario_save.json"
@@ -129,15 +130,21 @@ func _ready() -> void:
 	for i in 10:
 		await get_tree().process_frame
 	check(phone.title_label.text == "Calendário", "app Calendário abre no celular")
-	await RenderingServer.frame_post_draw
-	var path := OS.get_user_data_dir() + "/calendario_celular.png"
-	get_viewport().get_texture().get_image().save_png(path)
-	print("SHOT ", path)
+	if DisplayServer.get_name() != "headless":
+		await RenderingServer.frame_post_draw
+		var path := OS.get_user_data_dir() + "/calendario_celular.png"
+		get_viewport().get_texture().get_image().save_png(path)
+		print("SHOT ", path)
 	phone.open("home")
 	for i in 4:
 		await get_tree().process_frame
-	await RenderingServer.frame_post_draw
-	get_viewport().get_texture().get_image().save_png(OS.get_user_data_dir() + "/calendario_home.png")
+	if DisplayServer.get_name() != "headless":
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png(OS.get_user_data_dir() + "/calendario_home.png")
 	print("RESULTADO CALENDARIO: ", "OK" if fails == 0 else "%d falha(s)" % fails)
 	SaveManager.delete_save()
 	get_tree().quit()
+
+
+func _stream_mock(_messages: Array) -> Dictionary:
+	return {"ok": true, "text": "{\"fala\":\"Tudo bem.\",\"emocao\":\"neutro\"}"}

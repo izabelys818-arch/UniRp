@@ -11,8 +11,24 @@ const BLOCK := 30.0
 const STREET := 10.0
 const PITCH := BLOCK + STREET
 const SIZE := GRID * PITCH + STREET
+const CHUNK_SIZE := 80.0
+const CENTER := Vector2(SIZE * 0.5, SIZE * 0.5)
+const LANDMARK_CELLS := {
+	"prefeitura": Vector2i(9, 4), "boate": Vector2i(-2, 3),
+	"shopping": Vector2i(4, -3), "universidade": Vector2i(20, 8),
+	"estadio": Vector2i(9, 18), "cemiterio": Vector2i(-30, 3),
+	"aeroporto": Vector2i(65, 10),
+}
+const LANDMARK_NAMES := {"prefeitura": "Prefeitura — Palácio Municipal", "boate": "Boate Aurora",
+	"shopping": "Shopping Central", "universidade": "Universidade Municipal",
+	"estadio": "Estádio Municipal", "cemiterio": "Cemitério Municipal", "aeroporto": "Aeroporto Regional"}
 const SIDEWALK := 2.2
 const SETBACK := 3.2
+
+# Um único quarteirão de avaliação. Sem alterar grade, marcos ou IDs antigos.
+static var urban_prototype_enabled := true
+var prototype_cell := Vector2i(-1, -1)
+var prototype_house_ids: Array[String] = []
 
 const STREETS_V := ["Av. Brasil", "Rua das Acácias", "Rua XV de Novembro", "Rua das Flores", "Av. Central", "Rua do Comércio", "Rua das Palmeiras", "Rua Sete de Setembro", "Rua da Estação"]
 const STREETS_H := ["Rua Augusta", "Rua Marechal Deodoro", "Rua São José", "Av. Getúlio Vargas", "Rua da Paz", "Rua Santa Rita", "Rua dos Ipês", "Rua Tiradentes", "Rua Pernambuco"]
@@ -28,12 +44,247 @@ var blocks: Dictionary = {}      # Vector2i -> {"loc": id or "", "kind": ..., "l
 var lots: Dictionary = {}        # id -> lote
 var rng := RandomNumberGenerator.new()
 var house_ids: Array = []
+var world_seed := 7741
+var chunk_cells: Dictionary = {}
+var street_graph := AStar2D.new()
+var street_nodes: Dictionary = {}
+var street_refs: Dictionary = {}
+var region_nodes: Dictionary = {}
+var _next_node := 0
 
 
 func _init() -> void:
+	for id in World.locations.keys():
+		if World.locations[id].get("generated_building", false) or World.locations[id].get("streamed", false):
+			World.locations.erase(id)
 	rng.seed = 7741
 	_assign()
+	if urban_prototype_enabled:
+		_make_market_houses()
 	_register_houses()
+	var state := stream_state()
+	world_seed = int(state["seed"])
+	_add_street_region("central", Vector2i.ZERO, Vector2i(GRID, GRID))
+	for id in ["hospital", "delegacia", "rodoviaria", "parque"]:
+		if lots.has(id):
+			state["landmarks"][id] = [lots[id]["cell"].x, lots[id]["cell"].y]
+	for id in LANDMARK_CELLS:
+		var cell: Vector2i = LANDMARK_CELLS[id]
+		state["landmarks"][id] = [cell.x, cell.y]
+		_register_landmark(id)
+	_restore_saved_places()
+
+
+static func stream_state() -> Dictionary:
+	# Campo opcional dentro do player do save v1; o envelope/versão são preservados.
+	var state: Dictionary = GameState.player.get("world_stream", {})
+	for pair in [["seed", 7741], ["chunks", {}], ["landmarks", {}], ["npc_positions", {}]]:
+		if not state.has(pair[0]):
+			state[pair[0]] = pair[1]
+	GameState.player["world_stream"] = state
+	return state
+
+
+static func chunk_key(coord: Vector2i) -> String:
+	return "%d,%d" % [coord.x, coord.y]
+
+
+static func chunk_at(point: Vector2) -> Vector2i:
+	return Vector2i(floori(point.x / CHUNK_SIZE), floori(point.y / CHUNK_SIZE))
+
+
+static func central_cell(cell: Vector2i) -> bool:
+	return cell.x >= 0 and cell.y >= 0 and cell.x < GRID and cell.y < GRID
+
+
+func seed_chunk(coord: Vector2i, salt: String = "") -> int:
+	# Hash explícito de inteiros/texto, independente de ordem de carga e arquitetura.
+	var result := world_seed & 0x7fffffff
+	for byte in (chunk_key(coord) + ":" + salt).to_utf8_buffer():
+		result = ((result ^ int(byte)) * 16777619) & 0x7fffffff
+	return result
+
+
+static func density_ring(point: Vector2) -> int:
+	var distance := point.distance_to(CENTER)
+	return 0 if distance < 400.0 else (1 if distance < 1000.0 else (2 if distance < 2000.0 else (3 if distance < 3500.0 else 4)))
+
+
+static func street_name(index: int, vertical: bool = false) -> String:
+	var names: Array = STREETS_V if vertical else STREETS_H
+	if index >= 0 and index < names.size():
+		return str(names[index])
+	return "%s %s %d" % ["Estrada" if absi(index) > 50 else "Rua", "Leste/Oeste" if vertical else "Norte/Sul", index]
+
+
+func _restore_saved_places() -> void:
+	var ids: Array = GameState.player.get("houses", {}).keys()
+	ids.append_array(GameState.player.get("housing", {}).get("contracts", {}).keys())
+	ids.append(str(GameState.player.get("home", "")))
+	ids.append(str(GameState.player.get("location", "")))
+	for id in ids:
+		var parts := str(id).split("_")
+		if parts.size() == 4 and parts[0] == "casa" and parts[1].is_valid_int() and parts[2].is_valid_int():
+			var cell := Vector2i(int(parts[1]), int(parts[2]))
+			if not central_cell(cell):
+				ensure_chunk(Vector2i(floori(cell.x / 2.0), floori(cell.y / 2.0)))
+	var saved: Array = GameState.player.get("pos", [])
+	if saved.size() >= 2:
+		ensure_chunk(chunk_at(Vector2(float(saved[0]), float(saved[1]))))
+
+
+func _register_landmark(id: String) -> void:
+	var cell: Vector2i = LANDMARK_CELLS[id]
+	var point := to_map(block_rect(cell).get_center())
+	World.locations[id] = {"nome": LANDMARK_NAMES[id], "tipo": "publico", "abre": 0, "fecha": 24,
+		"x": point.x, "y": point.y, "loja": [], "servicos": [], "streamed": true,
+		"descricao": "Um marco da cidade, integrado às ruas e aos bairros."}
+	if id == "boate":
+		World.locations[id].merge({"tipo": "bar", "idade_minima": 18, "abre": 18, "fecha": 6}, true)
+
+
+func ensure_place(id: String) -> bool:
+	if lots.has(id):
+		return true
+	if LANDMARK_CELLS.has(id):
+		var cell: Vector2i = LANDMARK_CELLS[id]
+		ensure_chunk(Vector2i(floori(cell.x / 2.0), floori(cell.y / 2.0)))
+	else:
+		var parts := id.split("_")
+		if parts.size() == 4 and parts[0] == "casa" and parts[1].is_valid_int() and parts[2].is_valid_int():
+			ensure_chunk(Vector2i(floori(int(parts[1]) / 2.0), floori(int(parts[2]) / 2.0)))
+	return lots.has(id)
+
+
+func ensure_chunk(coord: Vector2i) -> Array:
+	if chunk_cells.has(coord):
+		return chunk_cells[coord]
+	var cells: Array = []
+	for x in range(coord.x * 2, coord.x * 2 + 2):
+		for y in range(coord.y * 2, coord.y * 2 + 2):
+			var cell := Vector2i(x, y)
+			if central_cell(cell):
+				continue
+			cells.append(cell)
+			if blocks.has(cell):
+				continue
+			var local_rng := RandomNumberGenerator.new()
+			local_rng.seed = seed_chunk(coord, "%d:%d" % [x, y])
+			var landmark := ""
+			for id in LANDMARK_CELLS:
+				if LANDMARK_CELLS[id] == cell:
+					landmark = id
+			var ring := density_ring(block_rect(cell).get_center())
+			var kind := Art.fill_kind(local_rng.randf(), block_rect(cell).get_center().distance_to(CENTER))
+			if ring == 4 and block_rect(cell).get_center().x > 4600.0:
+				kind = "costa"
+			if cell.x >= 65 and cell.x < 75 and cell.y >= 10 and cell.y < 14:
+				kind = "aeroporto_area"
+			blocks[cell] = {"loc": landmark, "kind": kind, "seed": local_rng.seed, "ring": ring, "lots": [], "chunk": coord}
+			if landmark != "":
+				_register_landmark(landmark)
+				lots[landmark] = _make_lot(landmark, cell)
+				blocks[cell]["lots"].append(landmark)
+			elif kind in ["casas", "chacara"]:
+				var keep := rng
+				rng = local_rng
+				if kind == "chacara":
+					var id := "casa_%d_%d_0" % [x, y]
+					lots[id] = _house_lot(id, cell, block_rect(cell).grow(-SIDEWALK), false)
+					blocks[cell]["lots"].append(id)
+					house_ids.append(id)
+				else:
+					_make_houses(cell)
+				rng = keep
+				for id in blocks[cell]["lots"]:
+					lots[id]["seed"] = seed_chunk(coord, str(id))
+					lots[id]["floors"] = local_rng.randi_range(2, 4) if ring < 2 else 1
+					lots[id]["urban"] = ring < 2
+					lots[id]["street"] = street_name(cell.y if lots[id]["north"] else cell.y + 1)
+					lots[id]["number"] = absi(cell.x * 100 + int(str(id).get_slice("_", 3)) * 12) + 10
+					Houses.register(id, "Casa %d, %s" % [lots[id]["number"], lots[id]["street"]], int(lots[id]["seed"]))
+					World.locations[id]["streamed"] = true
+					var map_point := to_map((lots[id]["building"] as Rect2).get_center())
+					World.locations[id]["x"] = map_point.x
+					World.locations[id]["y"] = map_point.y
+	chunk_cells[coord] = cells
+	_add_street_region(chunk_key(coord), coord * 2, coord * 2 + Vector2i(2, 2))
+	return cells
+
+
+func release_chunk(coord: Vector2i) -> void:
+	for cell in chunk_cells.get(coord, []):
+		if not blocks.has(cell):
+			continue
+		for id in blocks[cell]["lots"]:
+			lots.erase(id)
+			house_ids.erase(id)
+			if not HomeSystem.has_access(id) and not LANDMARK_CELLS.has(id):
+				World.locations.erase(id)
+		blocks.erase(cell)
+	chunk_cells.erase(coord)
+	_remove_street_region(chunk_key(coord))
+
+
+func _add_street_region(key: String, first: Vector2i, last: Vector2i) -> void:
+	if region_nodes.has(key):
+		return
+	var nodes: Array = []
+	for x in range(first.x, last.x + 1):
+		for y in range(first.y, last.y + 1):
+			var point := Vector2i(x, y)
+			nodes.append(point)
+			street_refs[point] = int(street_refs.get(point, 0)) + 1
+			if not street_nodes.has(point):
+				street_nodes[point] = _next_node
+				street_graph.add_point(_next_node, _node_pos(point))
+				_next_node += 1
+	for point in nodes:
+		for direction in [Vector2i.RIGHT, Vector2i.LEFT, Vector2i.UP, Vector2i.DOWN]:
+			var other: Vector2i = point + direction
+			if street_nodes.has(other) and road_edge(point, other):
+				street_graph.connect_points(street_nodes[point], street_nodes[other])
+	region_nodes[key] = nodes
+
+
+static func road_edge(a: Vector2i, b: Vector2i) -> bool:
+	# A pista ocupa dez por quatro blocos; ruas seguem pelo perímetro.
+	return not (a.x > 65 and a.x < 75 and b.x > 65 and b.x < 75 and a.y > 10 and a.y < 14 and b.y > 10 and b.y < 14)
+
+
+func _remove_street_region(key: String) -> void:
+	for point in region_nodes.get(key, []):
+		street_refs[point] = int(street_refs[point]) - 1
+		if int(street_refs[point]) == 0:
+			street_graph.remove_point(street_nodes[point])
+			street_nodes.erase(point)
+			street_refs.erase(point)
+	region_nodes.erase(key)
+
+
+func is_prototype(c: Vector2i) -> bool:
+	return urban_prototype_enabled and c == prototype_cell
+
+
+func _make_market_houses() -> void:
+	if not lots.has("mercado"):
+		return
+	prototype_cell = lots["mercado"]["cell"]
+	var block := block_rect(prototype_cell)
+	lots["mercado"]["rect"] = Rect2(block.position + Vector2(0, 9.8), Vector2(BLOCK, BLOCK - 9.8))
+	# Fundos do mercado: três moradias reais reutilizando Houses e HouseGen.
+	# O edifício e a porta do mercado permanecem exatamente nas mesmas coordenadas.
+	for i in 3:
+		var id := "casa_%d_%d_%d" % [prototype_cell.x, prototype_cell.y, i]
+		var lr := Rect2(block.position + Vector2(SIDEWALK + i * (BLOCK - 2 * SIDEWALK) / 3.0, 0), Vector2((BLOCK - 2 * SIDEWALK) / 3.0, 9.8))
+		var b := Rect2(lr.position + Vector2(0.2, 3.2), Vector2(lr.size.x - 0.4, 5.8))
+		var door := Vector2(b.get_center().x + [-1.2, 0.8, -0.4][i], b.position.y)
+		lots[id] = {"id": id, "cell": prototype_cell, "rect": lr, "building": b, "dir": Vector2(0, -1),
+			"door": door, "door_x": door.x, "kind": "house", "seed": hash(id), "north": true,
+			"door_off": door.x - b.get_center().x, "urban": true, "floors": [2, 3, 2][i]}
+		blocks[prototype_cell]["lots"].push_front(id)
+		house_ids.append(id)
+		prototype_house_ids.append(id)
 
 
 static func block_origin(c: Vector2i) -> Vector2:
@@ -52,7 +303,7 @@ func _assign() -> void:
 	var ids: Array = []
 	for id in World.locations:
 		var loc: Dictionary = World.locations[id]
-		if loc.get("interior", false) or loc.get("via", false) or loc.get("casa_generica", false):
+		if loc.get("interior", false) or loc.get("via", false) or loc.get("casa_generica", false) or loc.get("generated_building", false):
 			continue
 		ids.append(id)
 	ids.sort()
@@ -186,6 +437,12 @@ func lot_at(p: Vector2) -> String:
 	if not blocks.has(c):
 		return ""
 	var info: Dictionary = blocks[c]
+	# Anexos acessíveis podem compartilhar o quarteirão de um marco. O lote
+	# amplo do marco não pode capturar também o interior do edifício anexo.
+	for id in info["lots"]:
+		var footprint: Rect2 = lots[id]["building"]
+		if footprint.size != Vector2.ZERO and footprint.has_point(p):
+			return id
 	for id in info["lots"]:
 		var rr: Rect2 = lots[id]["rect"]
 		if rr.grow(0.4 if info["loc"] != "" else 0.0).has_point(p):
@@ -238,19 +495,17 @@ func _to_street(p: Vector2, dir: Vector2 = Vector2(0, 1)) -> Dictionary:
 	if blocks.has(cell) and block_rect(cell).grow(SIDEWALK * 0.4).has_point(p):
 		var idx := cell.y + (1 if dir.y >= 0 else 0)
 		var zl := _line_pos(idx)
-		var i0 := clampi(int(floor(gx)), 0, GRID)
-		return {"pt": Vector2(clampf(p.x, _line_pos(0), _line_pos(GRID)), zl), "a": Vector2i(i0, idx), "b": Vector2i(mini(i0 + 1, GRID), idx)}
+		var i0 := floori(gx)
+		return {"pt": Vector2(p.x, zl), "a": Vector2i(i0, idx), "b": Vector2i(i0 + 1, idx)}
 	var nx := int(round(gx))
 	var ny := int(round(gy))
 	var dx := absf(p.x - _line_pos(nx))
 	var dy := absf(p.y - _line_pos(ny))
 	if dy <= dx:
-		var i1 := clampi(int(floor(gx)), 0, GRID)
-		var row := clampi(ny, 0, GRID)
-		return {"pt": Vector2(clampf(p.x, _line_pos(0), _line_pos(GRID)), _line_pos(row)), "a": Vector2i(i1, row), "b": Vector2i(mini(i1 + 1, GRID), row)}
-	var j0 := clampi(int(floor(gy)), 0, GRID)
-	var col := clampi(nx, 0, GRID)
-	return {"pt": Vector2(_line_pos(col), clampf(p.y, _line_pos(0), _line_pos(GRID))), "a": Vector2i(col, j0), "b": Vector2i(col, mini(j0 + 1, GRID))}
+		var i1 := floori(gx)
+		return {"pt": Vector2(p.x, _line_pos(ny)), "a": Vector2i(i1, ny), "b": Vector2i(i1 + 1, ny)}
+	var j0 := floori(gy)
+	return {"pt": Vector2(_line_pos(nx), p.y), "a": Vector2i(nx, j0), "b": Vector2i(nx, j0 + 1)}
 
 
 static func _node_pos(n: Vector2i) -> Vector2:
@@ -258,33 +513,16 @@ static func _node_pos(n: Vector2i) -> Vector2:
 
 
 func _astar(from: Vector2i, to: Vector2i) -> Array:
-	var open: Array = [from]
-	var came: Dictionary = {}
-	var g: Dictionary = {from: 0.0}
-	while not open.is_empty():
-		var best_i := 0
-		for i in open.size():
-			if float(g[open[i]]) + (Vector2(open[i] - to)).length() < float(g[open[best_i]]) + (Vector2(open[best_i] - to)).length():
-				best_i = i
-		var cur: Vector2i = open[best_i]
-		open.remove_at(best_i)
-		if cur == to:
-			var path: Array = [cur]
-			while came.has(cur):
-				cur = came[cur]
-				path.push_front(cur)
-			return path
-		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-			var nb: Vector2i = cur + d
-			if nb.x < 0 or nb.y < 0 or nb.x > GRID or nb.y > GRID:
-				continue
-			var ng := float(g[cur]) + 1.0
-			if not g.has(nb) or ng < float(g[nb]):
-				g[nb] = ng
-				came[nb] = cur
-				if not nb in open:
-					open.append(nb)
-	return [from, to]
+	if street_nodes.has(from) and street_nodes.has(to):
+		var result: Array = []
+		for point in street_graph.get_point_path(street_nodes[from], street_nodes[to]):
+			result.append(Vector2i(roundi((point.x - STREET * 0.5) / PITCH), roundi((point.y - STREET * 0.5) / PITCH)))
+		if not result.is_empty():
+			return result
+	# Viagem distante fora da região renderizada: mantém percurso nas ruas,
+	# sem criar/memorizar milhares de chunks para um NPC fora da câmera.
+	var corner := Vector2i(to.x, from.y)
+	return [from, corner, to] if corner != from and corner != to else [from, to]
 
 
 # Pontos que levam alguém de dentro do lote (casa, quintal) até a calçada em frente.
@@ -359,7 +597,9 @@ func route(a: Vector2, b: Vector2) -> PackedVector2Array:
 		for na in [sa["a"], sa["b"]]:
 			for nb in [sb["a"], sb["b"]]:
 				var p := _astar(na, nb)
-				var length: float = (_node_pos(na) - sa["pt"]).length() + (_node_pos(nb) - sb["pt"]).length() + (p.size() - 1) * PITCH
+				var length: float = (_node_pos(na) - sa["pt"]).length() + (_node_pos(nb) - sb["pt"]).length()
+				for index in range(1, p.size()):
+					length += _node_pos(p[index - 1]).distance_to(_node_pos(p[index]))
 				if length < best_len:
 					best_len = length
 					best = p

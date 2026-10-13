@@ -108,7 +108,7 @@ func _ready() -> void:
 	thinking.add_theme_color_override("font_color", UI.INK_SOFT)
 	foot.add_child(thinking)
 	hint = Label.new()
-	hint.text = "clique para continuar  ▼"
+	hint.text = "clique / Enter para continuar  ▼"
 	hint.autowrap_mode = TextServer.AUTOWRAP_OFF
 	hint.add_theme_font_size_override("font_size", 13)
 	hint.add_theme_color_override("font_color", UI.INK_SOFT)
